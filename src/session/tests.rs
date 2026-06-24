@@ -299,6 +299,37 @@ fn insert_pane_preserves_non_target_leaves() {
     assert_eq!(ids.len(), 3);
 }
 
+#[test]
+fn insert_pane_equalizes_ratios_same_direction() {
+    // Splitting p2 horizontally in a horizontal split should flatten: [p1, p2, p_new]
+    let layout = split("horizontal", vec![leaf("p1"), leaf("p2")]);
+    let result = insert_pane_into_layout(&layout, "p2", "horizontal", "p_new").unwrap();
+    let children = result.get("children").unwrap().as_array().unwrap();
+    assert_eq!(children.len(), 3, "same-direction split should flatten to 3 siblings");
+    let ratios: Vec<f64> =
+        result["ratios"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
+    assert_eq!(ratios.len(), 3);
+    for r in &ratios {
+        assert!((r - 1.0 / 3.0).abs() < 1e-10, "expected 1/3, got {r}");
+    }
+    let ids = collect_leaf_pane_ids(&result);
+    assert_eq!(ids, vec!["p1", "p2", "p_new"]);
+}
+
+#[test]
+fn insert_pane_nested_different_direction() {
+    // Splitting p2 vertically in a horizontal split should nest: [p1, [p2, p_new]]
+    let layout = split("horizontal", vec![leaf("p1"), leaf("p2")]);
+    let result = insert_pane_into_layout(&layout, "p2", "vertical", "p_new").unwrap();
+    let children = result.get("children").unwrap().as_array().unwrap();
+    assert_eq!(children.len(), 2, "different-direction split should nest");
+    let inner = &children[1];
+    assert_eq!(inner.get("type").unwrap(), "split");
+    assert_eq!(inner.get("direction").unwrap(), "vertical");
+    let inner_ids = collect_leaf_pane_ids(inner);
+    assert_eq!(inner_ids, vec!["p2", "p_new"]);
+}
+
 // ── SessionManager tab operations ───────────────────────────────
 
 #[test]
@@ -490,4 +521,76 @@ fn on_pty_exited_multi_pane_updates_layout() {
 fn on_pty_exited_unknown_pane_returns_none() {
     let manager = SessionManager::new();
     assert!(manager.on_pty_exited("nonexistent").is_none());
+}
+
+// ── No pane limit ──────────────────────────────────────────────────
+
+#[test]
+fn insert_many_panes_into_layout() {
+    // Verify there is no artificial limit — inserting many panes should work.
+    let mut layout = leaf("p1");
+    for i in 2..=12 {
+        let new_id = format!("p{i}");
+        let result = insert_pane_into_layout(&layout, "p1", "horizontal", &new_id);
+        assert!(result.is_some(), "insert_pane should succeed for pane {i}");
+        layout = result.unwrap();
+    }
+    let ids = collect_leaf_pane_ids(&layout);
+    assert_eq!(ids.len(), 12);
+}
+
+// ── Tab list operations ────────────────────────────────────────────
+
+#[test]
+fn tab_list_prunes_stale_tabs() {
+    let manager = SessionManager::new();
+    // Insert tab without a matching session — tab_list should prune it
+    manager
+        .insert_tab("t1".into(), serde_json::json!({"layout": leaf("p1"), "active_pane_id": "p1"}));
+    let (tabs, _) = manager.tab_list();
+    assert!(tabs.is_empty(), "tab without session should be pruned");
+}
+
+#[test]
+fn tab_list_returns_empty_for_no_tabs() {
+    let manager = SessionManager::new();
+    let (tabs, active) = manager.tab_list();
+    assert!(tabs.is_empty());
+    assert!(active.is_none());
+}
+
+// ── CWD state tracking ─────────────────────────────────────────────
+
+#[test]
+fn cwd_state_default_path() {
+    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
+    let state = CwdState { cwd: home.clone(), sniff_buf: Vec::new() };
+    assert_eq!(state.cwd, home);
+}
+
+#[test]
+fn sniff_cwd_updates_cwd_state() {
+    // Use a path that exists and canonicalizes to itself
+    let home = PathBuf::from("/");
+    let mut cwd = home.clone();
+    let mut buf = Vec::new();
+    // OSC 0: \x1b]0;user@host:path\x07
+    sniff_cwd_from_title_osc(&mut buf, b"\x1b]0;user@host:/usr\x07", &home, &mut cwd);
+    // canonicalize("/usr") works on both macOS and Linux
+    assert!(cwd.ends_with("usr"), "cwd should end with 'usr', got: {cwd:?}");
+}
+
+#[test]
+fn sniff_cwd_ignores_nonexistent_path() {
+    let home = PathBuf::from("/");
+    let mut cwd = home.clone();
+    let mut buf = Vec::new();
+    // Path does not exist — canonicalize() fails, cwd should not change
+    sniff_cwd_from_title_osc(
+        &mut buf,
+        b"\x1b]0;user@host:/nonexistent_path_12345\x07",
+        &home,
+        &mut cwd,
+    );
+    assert_eq!(cwd, PathBuf::from("/"));
 }

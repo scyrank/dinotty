@@ -46,7 +46,7 @@ pub async fn create_tab(State(manager): State<Arc<SessionManager>>) -> impl Into
     let pane_id = uuid::Uuid::new_v4().to_string();
 
     // Create PTY session
-    let (_session, _shell_type) = match pty::create_session(&manager, &pane_id, None) {
+    let (_session, _shell_type) = match pty::create_session(&manager, &pane_id, None, None) {
         Ok(x) => x,
         Err(e) => {
             tracing::error!("Failed to create PTY: {}", e);
@@ -158,26 +158,27 @@ pub async fn split_pane(
             .into_response();
     }
 
-    // Check max panes
-    if leaf_ids.len() >= 6 {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": "maximum 6 panes per tab" })),
-        )
-            .into_response();
-    }
-
     let new_pane_id = uuid::Uuid::new_v4().to_string();
 
+    // Inherit CWD from source pane
+    let source_cwd = manager
+        .sessions
+        .get(&req.pane_id)
+        .and_then(|s| s.cwd_state.lock().ok().map(|state| state.cwd.clone()));
+
     // Create PTY for new pane
-    let (_session, _shell_type) = match pty::create_session(&manager, &new_pane_id, None) {
-        Ok(x) => x,
-        Err(e) => {
-            tracing::error!("Failed to create PTY for split: {}", e);
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": e })))
-                .into_response();
-        }
-    };
+    let (_session, _shell_type) =
+        match pty::create_session(&manager, &new_pane_id, None, source_cwd) {
+            Ok(x) => x,
+            Err(e) => {
+                tracing::error!("Failed to create PTY for split: {}", e);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": e })),
+                )
+                    .into_response();
+            }
+        };
 
     // Update layout tree
     let Some(new_layout) =

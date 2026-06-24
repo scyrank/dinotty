@@ -188,14 +188,11 @@ import PreviewPanel from './components/preview/PreviewPanel.vue'
 import CommandBookmarks from './components/command/CommandBookmarks.vue'
 import ServerList from './components/ServerList.vue'
 import StatusBar from './components/terminal/StatusBar.vue'
-import type { SyncServerMsg, SyncClientMsg } from './types/protocol'
 import type { Tab, TerminalTab, PluginTab, PaneLayout } from './types/pane'
-import { migrateTab, getAllLeaves, findLeaf, findFirstLeaf, ensureSplitRoot } from './types/pane'
+import { getAllLeaves, findLeaf, findFirstLeaf, ensureSplitRoot } from './types/pane'
 // useSettings replaced by useSettingsStore
 import {
   getApiBase,
-  wsUrlWithToken,
-  hasAuthToken,
   checkTokenConfigured,
   setAuthToken,
 } from './composables/apiBase'
@@ -204,11 +201,12 @@ import { isTouchDevice, setActivePaneId } from './composables/useTerminal'
 import { useI18n } from './composables/useI18n'
 import { useKeybindings } from './composables/useKeybindings'
 import { useSplitPane } from './composables/useSplitPane'
+import { useSyncWebSocket } from './composables/useSyncWebSocket'
 import { isWebPreviewInput } from './utils/previewRouting'
 import { initMonitorHistory } from './composables/useMonitor'
 import NotificationPanel from './components/notification/NotificationPanel.vue'
 import { useNotification } from './composables/useNotification'
-import { usePluginLoader, handlePluginChanged } from './composables/usePluginLoader'
+import { usePluginLoader } from './composables/usePluginLoader'
 import PluginView from './components/plugin/PluginView.vue'
 import {
   apiCreateTab,
@@ -297,13 +295,20 @@ watch(
 const termRefs = shallowReactive<Record<string, InstanceType<typeof TerminalPane>>>({})
 const outputListeners = new Set<(paneId: string, data: string) => void>()
 
+const syncWs = useSyncWebSocket({
+  termRefs,
+  persist,
+  focusActive,
+  newTab: async () => { await newTab() },
+})
+
 const splitPane = useSplitPane({
   tabs,
   activePaneId,
   termRefs,
   genPaneId,
-  sendSync,
-  sendLayoutSync,
+  sendSync: syncWs.sendSync,
+  sendLayoutSync: syncWs.sendLayoutSync,
   persist,
 })
 
@@ -316,8 +321,6 @@ function registerTermRef(paneId: string, el: InstanceType<typeof TerminalPane> |
   }
 }
 
-let syncWs: WebSocket | null = null
-let suppressSync = false
 let viewportRefitTimer = 0
 
 function onViewportResize() {
@@ -346,20 +349,10 @@ function tabKey(tab: Tab): string {
   return leaf ? leaf.paneId : tab.paneId
 }
 
-function sendSync(msg: SyncClientMsg) {
-  if (syncWs && syncWs.readyState === WebSocket.OPEN && !suppressSync) {
-    syncWs.send(JSON.stringify(msg))
-  }
-}
-
-function sendLayoutSync(tabPaneId: string, layout: any, activePaneIdVal: string) {
-  sendSync({ type: 'update_layout', pane_id: tabPaneId, layout, active_pane_id: activePaneIdVal })
-}
-
 function onDividerDragEnd(tab: Tab) {
   if (tab.type === 'terminal') {
     persist()
-    sendLayoutSync(tab.paneId, tab.layout, tab.activePaneId)
+    syncWs.sendLayoutSync(tab.paneId, tab.layout, tab.activePaneId)
   }
 }
 
@@ -387,31 +380,6 @@ function persist() {
   })
   const activeIdx = tabs.value.findIndex((t) => t.paneId === activePaneId.value)
   localStorage.setItem('dinotty_tabs', JSON.stringify({ tabs: state, activeIdx }))
-}
-
-function getSavedTab(paneId: string): any {
-  try {
-    const raw = localStorage.getItem('dinotty_tabs')
-    if (!raw) return null
-    const { tabs: savedTabs } = JSON.parse(raw)
-    // Search by tab paneId first
-    const direct = savedTabs?.find((t: any) => t.paneId === paneId)
-    if (direct) return direct
-    // Search within layouts for leaf paneId
-    return (
-      savedTabs?.find((t: any) => {
-        if (!t.layout) return false
-        const leaves = getAllLeaves(t.layout)
-        return leaves.some((l) => l.paneId === paneId)
-      }) ?? null
-    )
-  } catch {
-    return null
-  }
-}
-
-function getSavedTitle(paneId: string): string | null {
-  return getSavedTab(paneId)?.title ?? null
 }
 
 const DEFAULT_PREVIEW_URL = ''
@@ -677,7 +645,7 @@ async function onLoginSuccess() {
   await getApiBase()
   await settingsStore.load()
   void loadAll()
-  void connectSyncWS()
+  void syncWs.connectSyncWS()
   initMonitorHistory()
 }
 
@@ -757,7 +725,7 @@ function openPlugin(pluginId: string) {
     }
     tabs.value.push(newTab)
     activePaneId.value = paneId
-    sendSync({ type: 'activate_tab', pane_id: paneId })
+    syncWs.sendSync({ type: 'activate_tab', pane_id: paneId })
     persist()
     nextTick(() => focusActive())
   } catch (err) {
@@ -975,280 +943,6 @@ function onGlobalKeydown(e: KeyboardEvent) {
   }
 }
 
-let syncReconnectDelay = 1000
-
-async function connectSyncWS() {
-  let url: string
-  if (isTauri()) {
-    const origin = await getApiBase()
-    url = `${origin.replace(/^http/, 'ws')}/ws/sync`
-  } else {
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    url = `${proto}//${location.host}/ws/sync`
-  }
-  const wsUrl = wsUrlWithToken(url)
-  if (wsUrl === url && hasAuthToken()) {
-    // Token exists in localStorage but wsUrlWithToken didn't append it — should not happen
-    console.warn('[sync] token available but not appended to WS URL')
-  }
-  syncWs = new WebSocket(wsUrl)
-
-  syncWs.onopen = () => {
-    console.log('[sync] connected')
-    syncConnected.value = true
-    syncReconnectDelay = 1000
-  }
-
-  syncWs.onmessage = (e) => {
-    let msg: SyncServerMsg
-    try {
-      msg = JSON.parse(e.data)
-    } catch {
-      return
-    }
-
-    if (msg.type === 'tab_list') {
-      // Collect all local leaf paneIds and tab-level paneIds
-      const localLeafIds = new Set<string>()
-      const localTabIds = new Set<string>()
-      for (const t of tabs.value) {
-        if (t.type === 'terminal') {
-          localTabIds.add(t.paneId)
-          for (const leaf of getAllLeaves(t.layout)) {
-            localLeafIds.add(leaf.paneId)
-          }
-        }
-      }
-
-      // Create tabs for any server paneIds we don't have locally
-      for (const tab of msg.tabs) {
-        if (
-          !localLeafIds.has(tab.pane_id) &&
-          !localTabIds.has(tab.pane_id) &&
-          !localTabIds.has(tab.tab_id)
-        ) {
-          // Prefer server layout, then localStorage, then default single leaf
-          const serverLayout = tab.layout ?? null
-          const saved = !serverLayout ? getSavedTab(tab.pane_id) : null
-          const migrated = saved ? migrateTab(saved) : null
-          tabs.value.push({
-            type: 'terminal',
-            paneId: tab.tab_id,
-            layout: ensureSplitRoot(
-              serverLayout ??
-                migrated?.layout ?? {
-                  type: 'leaf',
-                  paneId: tab.pane_id,
-                  title: 'Terminal',
-                  ratio: 1,
-                  zoomed: false,
-                }
-            ),
-            activePaneId: tab.active_pane_id ?? migrated?.activePaneId ?? tab.pane_id,
-            broadcastMode: false,
-            broadcastActivity: 0,
-            previewVisible: migrated?.previewVisible ?? false,
-            previewAddress: migrated?.previewAddress ?? '',
-            previewUrl: migrated?.previewUrl ?? '',
-            previewKind: migrated?.previewKind ?? 'web',
-          })
-        }
-      }
-
-      // Restore plugin tabs from localStorage
-      try {
-        const raw = localStorage.getItem('dinotty_tabs')
-        if (raw) {
-          const { tabs: savedTabs } = JSON.parse(raw)
-          for (const st of savedTabs) {
-            if (st.type === 'plugin' && !tabs.value.some((t) => t.paneId === st.paneId)) {
-              tabs.value.push({
-                type: 'plugin',
-                paneId: st.paneId,
-                title: st.title || st.pluginId,
-                pluginId: st.pluginId,
-              })
-            }
-          }
-        }
-      } catch {
-        /* noop */
-      }
-
-      // Remove terminal tabs whose leaf paneIds are no longer on the server
-      const serverTabIds = new Set(msg.tabs.map((t) => t.tab_id))
-      const serverLeafIds = new Set(
-        msg.tabs.flatMap((t) => (t.layout ? getAllLeaves(t.layout).map((l) => l.paneId) : []))
-      )
-      tabs.value = tabs.value.filter((t) => {
-        if (t.type === 'plugin') return true
-        // Keep tab if it matches a server tab by tabId or leaf paneId, or if at least one leaf is in a server layout
-        return (
-          serverTabIds.has(t.paneId) ||
-          getAllLeaves(t.layout).some((l) => serverLeafIds.has(l.paneId))
-        )
-      })
-
-      if (msg.active_pane_id) {
-        const cur = tabs.value.find((t) => t.paneId === activePaneId.value)
-        if (!cur || cur.type !== 'plugin') {
-          // Find the tab containing this leaf paneId
-          const targetTab = tabs.value.find((t) => {
-            if (t.type !== 'terminal') return false
-            return !!findLeaf(t.layout, msg.active_pane_id!)
-          }) as TerminalTab | undefined
-          if (targetTab) {
-            suppressSync = true
-            targetTab.activePaneId = msg.active_pane_id
-            activePaneId.value = targetTab.paneId
-            suppressSync = false
-          }
-        }
-      }
-
-      if (msg.tabs.length === 0 && tabs.value.length === 0) {
-        newTab()
-      }
-
-      // Fallback: ensure at least one tab is active after sync
-      if (!activePaneId.value || !tabs.value.some((t) => t.paneId === activePaneId.value)) {
-        if (tabs.value.length > 0) {
-          activePaneId.value = tabs.value[0].paneId
-        }
-      }
-
-      persist()
-      nextTick(() => focusActive())
-    } else if (msg.type === 'tab_created') {
-      // Check if this tab already exists locally (either our own or from tab_list)
-      const exists = tabs.value.some((t) => {
-        if (t.type !== 'terminal') return false
-        return t.paneId === msg.tab_id || !!findLeaf(t.layout, msg.pane_id)
-      })
-      if (!exists) {
-        const layout = msg.layout
-          ? ensureSplitRoot(msg.layout)
-          : ensureSplitRoot({
-              type: 'leaf',
-              paneId: msg.pane_id,
-              title: 'Terminal',
-              ratio: 1,
-              zoomed: false,
-            })
-        tabs.value.push({
-          type: 'terminal',
-          paneId: msg.tab_id,
-          layout,
-          activePaneId: msg.pane_id,
-          broadcastMode: false,
-          broadcastActivity: 0,
-          previewVisible: false,
-          previewAddress: '',
-          previewUrl: '',
-          previewKind: 'web',
-        })
-        // Activate the new tab so it becomes visible immediately.
-        // broadcast_sync echoes to the sender — without this, the sender's
-        // own tab stays hidden until the REST response arrives.
-        activePaneId.value = msg.tab_id
-        persist()
-        nextTick(() => focusActive())
-      }
-    } else if (msg.type === 'tab_closed') {
-      // Find the tab by its paneId (server's tab_id), or by leaf paneId in layouts
-      let tabIdx = tabs.value.findIndex((t) => t.type === 'terminal' && t.paneId === msg.pane_id)
-      if (tabIdx === -1) {
-        // Fallback: search by leaf paneId in layouts (handles PTY exit case)
-        tabIdx = tabs.value.findIndex(
-          (t) => t.type === 'terminal' && !!findLeaf(t.layout, msg.pane_id)
-        )
-      }
-      if (tabIdx !== -1) {
-        const tab = tabs.value[tabIdx] as TerminalTab
-        for (const leaf of getAllLeaves(tab.layout)) {
-          delete termRefs[leaf.paneId]
-        }
-        tabs.value.splice(tabIdx, 1)
-        if (tabs.value.length === 0) {
-          newTab()
-        } else if (activePaneId.value === tab.paneId) {
-          activePaneId.value = tabs.value[Math.min(tabIdx, tabs.value.length - 1)].paneId
-          persist()
-          nextTick(() => focusActive())
-        }
-      }
-    } else if (msg.type === 'tab_activated') {
-      const cur = tabs.value.find((t) => t.paneId === activePaneId.value)
-      if (!cur || cur.type !== 'plugin') {
-        // Find the tab containing this leaf paneId
-        const targetTab = tabs.value.find((t) => {
-          if (t.type !== 'terminal') return false
-          return !!findLeaf(t.layout, msg.pane_id)
-        }) as TerminalTab | undefined
-        if (targetTab && activePaneId.value !== targetTab.paneId) {
-          suppressSync = true
-          targetTab.activePaneId = msg.pane_id
-          activePaneId.value = targetTab.paneId
-          suppressSync = false
-        }
-      }
-    } else if (msg.type === 'layout_updated') {
-      // Find the tab by tab-level paneId OR by shared leaf paneIds
-      // (tab-level paneIds are client-local, so fall back to leaf matching)
-      const targetTab = tabs.value.find((t) => {
-        if (t.type !== 'terminal') return false
-        if (t.paneId === msg.pane_id) return true
-        const incomingLeafIds = getAllLeaves(msg.layout).map((l: any) => l.paneId)
-        const localLeafIds = getAllLeaves(t.layout).map((l) => l.paneId)
-        return incomingLeafIds.some((id: string) => localLeafIds.includes(id))
-      }) as TerminalTab | undefined
-      if (targetTab) {
-        const incomingLeafIds = getAllLeaves(msg.layout).map((l: any) => l.paneId)
-        const localLeafIds = getAllLeaves(targetTab.layout).map((l) => l.paneId)
-        const sameLeaves =
-          incomingLeafIds.length === localLeafIds.length &&
-          incomingLeafIds.every((id: string) => localLeafIds.includes(id))
-
-        suppressSync = true
-        if (!sameLeaves) {
-          // Structural change from another client — replace layout
-          targetTab.layout = ensureSplitRoot(msg.layout)
-        }
-        targetTab.activePaneId = msg.active_pane_id
-        suppressSync = false
-
-        // Remove orphaned tabs whose sole leaf paneId is now inside this layout
-        const updatedLeafIds = new Set(getAllLeaves(targetTab.layout).map((l) => l.paneId))
-        tabs.value = tabs.value.filter((t) => {
-          if (t.type !== 'terminal') return true
-          if (t.paneId === targetTab.paneId) return true
-          const leaves = getAllLeaves(t.layout)
-          return !leaves.every((l) => updatedLeafIds.has(l.paneId))
-        })
-
-        persist()
-        nextTick(() => {
-          getAllLeaves(targetTab.layout).forEach((l) => termRefs[l.paneId]?.fit())
-        })
-      }
-    } else if (msg.type === 'plugin_changed') {
-      handlePluginChanged(msg.plugin_id, msg.change)
-    }
-  }
-
-  syncWs.onclose = (e) => {
-    console.warn('[sync] disconnected', e.code, e.reason)
-    syncWs = null
-    syncConnected.value = false
-    setTimeout(connectSyncWS, syncReconnectDelay)
-    syncReconnectDelay = Math.min(syncReconnectDelay * 2, 30000)
-  }
-
-  syncWs.onerror = (e) => {
-    console.error('[sync] error', e)
-  }
-}
-
 function onOrientationChange() {
   isLandscape.value = window.innerWidth > window.innerHeight
 }
@@ -1268,12 +962,12 @@ onMounted(async () => {
   }
   if (authenticated.value) {
     await getApiBase()
-    void connectSyncWS()
+    void syncWs.connectSyncWS()
     initMonitorHistory()
     void loadAll()
     // Fallback: if sync WS hasn't delivered tabs within 3s, load via REST
     setTimeout(async () => {
-      if (tabs.value.length === 0 && (!syncWs || syncWs.readyState !== WebSocket.OPEN)) {
+      if (tabs.value.length === 0 && !syncWs.isConnected()) {
         try {
           const data = await apiListTabs()
           for (const tab of data.tabs) {
@@ -1339,10 +1033,7 @@ onBeforeUnmount(() => {
   if (window.visualViewport) {
     window.visualViewport.removeEventListener('resize', onViewportResize)
   }
-  if (syncWs) {
-    syncWs.close()
-    syncWs = null
-  }
+  syncWs.closeWs()
 })
 </script>
 

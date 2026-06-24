@@ -1,6 +1,6 @@
 <template>
-  <div v-if="monitorSettings.enabled" class="status-bar">
-    <div class="status-bar-metrics">
+  <div v-if="monitorSettings.enabled || warning.message.value" class="status-bar">
+    <div v-if="monitorSettings.enabled" class="status-bar-metrics">
       <button
         v-for="m in visibleMetrics"
         :key="m.key"
@@ -11,6 +11,7 @@
         <span class="metric-value">{{ m.label }}</span>
       </button>
     </div>
+    <span v-if="warning.message.value" class="pane-warning">{{ warning.message.value }}</span>
 
     <MonitorPopover
       :visible="!!activePopover"
@@ -41,10 +42,12 @@ import {
   gpuMemHistory,
 } from '../../composables/useMonitor'
 import { useSettings } from '../../composables/useSettings'
+import { usePaneWarning } from '../../composables/usePaneWarning'
 import MonitorPopover from './MonitorPopover.vue'
 
 const data = monitorData
 const { settings } = useSettings()
+const warning = usePaneWarning()
 
 const monitorSettings = computed(
   () => settings.monitor ?? { enabled: true, cpu: true, memory: true, disk: true, network: true }
@@ -165,5 +168,18 @@ function togglePopover(key: MetricKey, event: MouseEvent) {
 }
 .metric-value {
   font-variant-numeric: tabular-nums;
+}
+.pane-warning {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--color-yellow, #f59e0b);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: warning-fade 4s ease-in forwards;
+}
+@keyframes warning-fade {
+  0%, 70% { opacity: 1; }
+  100% { opacity: 0; }
 }
 </style>

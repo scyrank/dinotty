@@ -18,6 +18,8 @@ import type TerminalPane from '../components/terminal/TerminalPane.vue'
 import type { SyncClientMsg } from '../types/protocol'
 import { apiSplitPane, apiClosePane } from './useTabApi'
 import { setActivePaneId } from './useTerminal'
+import { useI18n } from './useI18n'
+import { usePaneWarning } from './usePaneWarning'
 
 export function useSplitPane(opts: {
   tabs: Ref<Tab[]>
@@ -53,7 +55,10 @@ export function useSplitPane(opts: {
   async function splitPane(direction: 'horizontal' | 'vertical') {
     const tab = getActiveTerminal()
     if (!tab) return
-    if (getAllLeaves(tab.layout).length >= 6) return
+    if (getAllLeaves(tab.layout).length >= 6) {
+      const { t } = useI18n()
+      usePaneWarning().show(t('split.tooManyPanes'))
+    }
 
     try {
       const result = await apiSplitPane(tab.paneId, tab.activePaneId, direction)

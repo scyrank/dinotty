@@ -233,6 +233,7 @@ fn collect_leaf_ids_recursive(node: &serde_json::Value, ids: &mut Vec<String>) {
 /// Insert a new pane into the layout tree by splitting the target pane.
 /// Returns the updated layout, or None if the target pane was not found.
 #[must_use]
+#[allow(clippy::cast_precision_loss)]
 pub fn insert_pane_into_layout(
     layout: &serde_json::Value,
     target_pane_id: &str,
@@ -266,15 +267,30 @@ pub fn insert_pane_into_layout(
             }
         }
         "split" => {
+            let parent_dir = layout.get("direction")?.as_str()?;
             let children = layout.get("children")?.as_array()?;
-            let mut new_children = Vec::new();
+            let mut new_children: Vec<serde_json::Value> = Vec::new();
             let mut found = false;
             for child in children {
                 if let Some(updated) =
                     insert_pane_into_layout(child, target_pane_id, direction, new_pane_id)
                 {
-                    if !found && updated != *child {
+                    let changed = found || updated != *child;
+                    if changed {
                         found = true;
+                    }
+                    // If the child became a split with the same direction, flatten it
+                    // (insert its children as siblings instead of nesting)
+                    if changed
+                        && updated.get("type").and_then(|t| t.as_str()) == Some("split")
+                        && updated.get("direction").and_then(|d| d.as_str()) == Some(parent_dir)
+                    {
+                        if let Some(inner_children) =
+                            updated.get("children").and_then(|c| c.as_array())
+                        {
+                            new_children.extend(inner_children.iter().cloned());
+                            continue;
+                        }
                     }
                     new_children.push(updated);
                 }
@@ -283,7 +299,17 @@ pub fn insert_pane_into_layout(
                 return Some(layout.clone());
             }
             let mut result = layout.clone();
+            // Redistribute ratios equally among all children after insertion
+            let n = new_children.len();
+            let ratio = 1.0 / n as f64;
+            for child in &mut new_children {
+                if let Some(obj) = child.as_object_mut() {
+                    obj.insert("ratio".to_string(), serde_json::json!(ratio));
+                }
+            }
             result["children"] = serde_json::Value::Array(new_children);
+            let ratios: Vec<serde_json::Value> = (0..n).map(|_| serde_json::json!(ratio)).collect();
+            result["ratios"] = serde_json::json!(ratios);
             Some(result)
         }
         _ => Some(layout.clone()),

@@ -222,25 +222,60 @@ function onTouchStart(e: TouchEvent) {
   longPressStartY = touch.clientY
   longPressTimer = setTimeout(() => {
     longPressFired = true
-    if (!cacheCellDims()) return
-    const xt = terminal!.xterm
-    if (!xt) return
-    const pos = touchToBufferPos(longPressStartX, longPressStartY)
-    if (!pos) return
-    const bufferRow = xt.buffer.active.viewportY + pos.row
-    const word = findWordAt(bufferRow, pos.col)
-    if (word) {
-      xt.select(word.start, bufferRow, word.length)
-      terminal!.selStartRow = bufferRow
-      terminal!.selStartCol = word.start
-    } else {
-      xt.select(pos.col, bufferRow, 1)
-      terminal!.selStartRow = bufferRow
-      terminal!.selStartCol = pos.col
-    }
-    terminal!.inTouchSelection = true
-    menuSelectedText.value = xt.getSelection()
+
+    // Programmatically select the word at the touch position
+    selectWordAtTouch(longPressStartX, longPressStartY)
+
+    const text = terminal!.getSelection()
+    menuSelectedText.value = text
+    menuX.value = longPressStartX
+    menuY.value = longPressStartY
+    menuVisible.value = true
   }, 500)
+}
+
+function selectWordAtTouch(clientX: number, clientY: number) {
+  const xterm = terminal?.xterm
+  if (!xterm) return
+
+  const xtermEl = xterm.element
+  if (!xtermEl) return
+
+  const screen = xtermEl.querySelector('.xterm-screen') as HTMLElement
+  if (!screen) return
+
+  // Get cell dimensions from xterm.js internals
+  const core = (xterm as any)._core
+  const dims = core?._renderService?.dimensions
+  if (!dims?.css?.cell?.width || !dims.css.cell.height) return
+
+  const { width: cellW, height: cellH } = dims.css.cell
+  const rect = screen.getBoundingClientRect()
+
+  // Convert pixel coords to terminal col/row
+  const col = Math.floor((clientX - rect.left) / cellW)
+  const row = Math.floor((clientY - rect.top) / cellH)
+
+  if (col < 0 || row < 0 || col >= xterm.cols || row >= xterm.rows) return
+
+  // Read the buffer line at the touch position (viewport-relative)
+  const buffer = xterm.buffer.active
+  const bufferRow = buffer.viewportY + row
+  const line = buffer.getLine(bufferRow)
+  if (!line) return
+
+  const lineText = line.translateToString(true)
+  if (!lineText) return
+
+  // Find word boundaries at the touch column
+  const wordRegex = /[\w.:/@-]+/g
+  let match: RegExpExecArray | null
+  while ((match = wordRegex.exec(lineText)) !== null) {
+    if (col >= match.index && col < match.index + match[0].length) {
+      xterm.select(match.index, bufferRow, match[0].length)
+      return
+    }
+  }
 }
 
 function onTouchMove(e: TouchEvent) {

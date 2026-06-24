@@ -636,20 +636,4 @@ pub async fn get_background() -> impl IntoResponse {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn old_config_missing_confirm_before_close_tab_defaults_to_true() {
-        // Simulate an old config file that predates the new field.
-        // The deserialized Settings should still set confirm_before_close_tab = true
-        // for backward compatibility.
-        let old_config = r#"{}"#;
-        let settings: Settings = serde_json::from_str(old_config)
-            .expect("old config without confirm_before_close_tab should still parse");
-        assert!(
-            settings.confirm_before_close_tab,
-            "missing field should default to true for backward compatibility"
-        );
-    }
-}
+mod tests;

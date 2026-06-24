@@ -19,6 +19,7 @@ pub fn create_session(
     manager: &Arc<SessionManager>,
     pane_id: &str,
     tauri_on_exit: Option<Arc<dyn Fn(String) + Send + Sync>>,
+    cwd: Option<PathBuf>,
 ) -> Result<(Arc<Session>, String), String> {
     let pty_system = NativePtySystem::default();
     let pair = pty_system
@@ -31,8 +32,16 @@ pub fn create_session(
     cmd.args(get_shell_args(&shell));
     cmd.env("TERM", "xterm-256color");
 
-    let home_for_cwd = if let Ok(ref home) = std::env::var("HOME") {
-        cmd.cwd(home);
+    let home_path = std::env::var("HOME").map_or_else(
+        |_| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")),
+        PathBuf::from,
+    );
+
+    let effective_cwd = cwd.filter(|p| p.is_dir()).unwrap_or_else(|| home_path.clone());
+    cmd.cwd(&effective_cwd);
+
+    // Shell-specific env setup still uses $HOME (for ZDOTDIR/PROMPT_COMMAND)
+    if let Ok(ref home) = std::env::var("HOME") {
         match shell_type.as_str() {
             "zsh" => {
                 if let Some(zdotdir) = setup_zsh_title_hooks(home) {
@@ -47,10 +56,9 @@ pub fn create_session(
             }
             _ => {}
         }
-        PathBuf::from(home)
-    } else {
-        std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))
-    };
+    }
+
+    let home_for_cwd = effective_cwd;
 
     let child = pair.slave.spawn_command(cmd).map_err(|e| format!("spawn shell: {e}"))?;
     drop(pair.slave);

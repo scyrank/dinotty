@@ -462,7 +462,7 @@ async fn handle_socket(
 
     // ── New session ──
     info!("No existing session found for pane={}, creating new PTY session (this is unexpected for new tabs!)", pane_id);
-    let (session, shell_type) = match crate::pty::create_session(&manager, &pane_id, None) {
+    let (session, shell_type) = match crate::pty::create_session(&manager, &pane_id, None, None) {
         Ok(x) => x,
         Err(e) => {
             error!("{}", e);
@@ -766,3 +766,6 @@ pub async fn handle_open_api_ws(socket: WebSocket, manager: Arc<SessionManager>,
     writer_task.abort();
     ping_task.abort();
 }
+
+#[cfg(test)]
+mod tests;
