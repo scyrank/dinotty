@@ -14,6 +14,7 @@
       @action="onNewMenuAction"
       @reorder="reorderTab"
       @open-plugin="openPlugin"
+      @rename="onRenameTab"
     >
       <template #left>
         <button
@@ -282,14 +283,22 @@ watch(
 )
 
 // Track effective active pane for Tauri WKWebView input guard
+function syncActivePaneId() {
+  const tab = tabs.value.find((t) => t.paneId === activePaneId.value)
+  const paneId = tab?.type === 'terminal' ? tab.activePaneId : null
+  setActivePaneId(paneId)
+}
+// Fire on tab switch (store activePaneId change) and initial load
+watch(activePaneId, syncActivePaneId, { immediate: true })
+// Fire when tab list changes (add/remove) — not deep, just array reference
+watch(() => tabs.value.length, syncActivePaneId)
+// Fire when active terminal tab's internal focus changes (sync WS, etc.)
 watch(
-  [activePaneId, tabs],
   () => {
     const tab = tabs.value.find((t) => t.paneId === activePaneId.value)
-    const paneId = tab?.type === 'terminal' ? tab.activePaneId : null
-    setActivePaneId(paneId)
+    return tab?.type === 'terminal' ? tab.activePaneId : null
   },
-  { immediate: true, deep: true }
+  (paneId) => setActivePaneId(paneId),
 )
 
 const termRefs = shallowReactive<Record<string, InstanceType<typeof TerminalPane>>>({})
@@ -356,7 +365,8 @@ function onDividerDragEnd(tab: Tab) {
   }
 }
 
-function persist() {
+let persistTimer: ReturnType<typeof setTimeout> | null = null
+function persistNow() {
   const state = tabs.value.map((t) => {
     if (t.type === 'terminal') {
       return {
@@ -369,6 +379,7 @@ function persist() {
         previewAddress: t.previewAddress,
         previewUrl: t.previewUrl,
         previewKind: t.previewKind,
+        customTitle: t.customTitle,
       }
     }
     return {
@@ -381,6 +392,17 @@ function persist() {
   const activeIdx = tabs.value.findIndex((t) => t.paneId === activePaneId.value)
   localStorage.setItem('dinotty_tabs', JSON.stringify({ tabs: state, activeIdx }))
 }
+function persist() {
+  if (persistTimer) clearTimeout(persistTimer)
+  persistTimer = setTimeout(persistNow, 200)
+}
+// Flush pending persist on page unload
+window.addEventListener('beforeunload', () => {
+  if (persistTimer) {
+    clearTimeout(persistTimer)
+    persistNow()
+  }
+})
 
 const DEFAULT_PREVIEW_URL = ''
 
@@ -447,6 +469,11 @@ async function activateTab(tabId: string) {
 
 function reorderTab(fromId: string, toId: string) {
   session.reorderTab(fromId, toId)
+  persist()
+}
+
+function onRenameTab(paneId: string, title: string) {
+  session.renameTab(paneId, title)
   persist()
 }
 

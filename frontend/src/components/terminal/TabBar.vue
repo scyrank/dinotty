@@ -12,13 +12,31 @@
         @click="onTabClick($event, tab.paneId)"
         @touchend.prevent="onTabTouchEnd($event, tab.paneId)"
       >
-        <span class="tab-title">{{ tab.title }}</span>
+        <span class="tab-index">{{ tab.index }}</span>
+        <input
+          v-if="editingPaneId === tab.paneId"
+          ref="editInputRef"
+          class="tab-title-input"
+          :value="editValue"
+          @input="editValue = ($event.target as HTMLInputElement).value"
+          @blur="finishEdit(tab.paneId)"
+          @keydown.enter="finishEdit(tab.paneId)"
+          @keydown.escape.stop="cancelEdit"
+          @mousedown.stop
+          @click.stop
+        />
+        <span
+          v-else
+          class="tab-title"
+          @dblclick="startEdit(tab)"
+        >{{ tab.title }}</span>
         <span
           v-if="indicators[tab.paneId]"
           class="tab-notif-dot"
           :class="'dot-' + indicators[tab.paneId]"
         ></span>
         <button
+          v-if="editingPaneId !== tab.paneId"
           class="tab-close"
           @click.stop="$emit('close', tab.paneId)"
           @touchend.stop.prevent="$emit('close', tab.paneId)"
@@ -115,7 +133,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onBeforeUnmount } from 'vue'
+import { ref, watch, onBeforeUnmount, nextTick } from 'vue'
 import { X, Terminal, Blocks, Columns2, Rows2, Radio } from 'lucide-vue-next'
 import { useI18n } from '../../composables/useI18n'
 import { useKeybindings } from '../../composables/useKeybindings'
@@ -130,6 +148,8 @@ const kbdBroadcast = formatBinding(getBinding('toggleBroadcast')).join('')
 export interface TabInfo {
   paneId: string
   title: string
+  index: number
+  type: 'terminal' | 'plugin'
 }
 
 export interface PluginInfo {
@@ -163,7 +183,52 @@ const emit = defineEmits<{
   action: [type: 'new-tab' | 'split-h' | 'split-v' | 'broadcast']
   reorder: [fromId: string, toId: string]
   'open-plugin': [pluginId: string]
+  rename: [paneId: string, title: string]
 }>()
+
+const editingPaneId = ref<string | null>(null)
+const editValue = ref('')
+const editInputRef = ref<HTMLInputElement | null>(null)
+
+function onDocMouseDown(e: MouseEvent) {
+  const el = e.target as HTMLElement
+  if (!el.closest('.tab-title-input')) {
+    finishEditIfAny()
+  }
+}
+
+function finishEditIfAny() {
+  if (editingPaneId.value != null) {
+    finishEdit(editingPaneId.value)
+  }
+}
+
+function startEdit(tab: TabInfo) {
+  if (tab.type !== 'terminal') return
+  editingPaneId.value = tab.paneId
+  editValue.value = tab.title
+  document.addEventListener('mousedown', onDocMouseDown)
+  nextTick(() => {
+    const input = editInputRef.value
+    if (input) {
+      input.focus()
+      input.select()
+    }
+  })
+}
+
+function finishEdit(paneId: string) {
+  if (editingPaneId.value !== paneId) return
+  const val = editValue.value.trim()
+  editingPaneId.value = null
+  document.removeEventListener('mousedown', onDocMouseDown)
+  if (val) emit('rename', paneId, val)
+}
+
+function cancelEdit() {
+  editingPaneId.value = null
+  document.removeEventListener('mousedown', onDocMouseDown)
+}
 
 const pluginMenuOpen = ref(false)
 const pluginWrapRef = ref<HTMLElement>()
@@ -315,11 +380,33 @@ function cleanup() {
 
 onBeforeUnmount(() => {
   cleanup()
+  document.removeEventListener('mousedown', onDocMouseDown)
   document.removeEventListener('touchstart', onDocTouchStart)
 })
 </script>
 
 <style scoped>
+.tab-index {
+  font-size: 10px;
+  color: var(--text-muted, #888);
+  min-width: 12px;
+  text-align: center;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+.tab-title-input {
+  background: var(--bg-input, #2a2a2a);
+  border: 1px solid var(--accent, #8a8a8a);
+  border-radius: 3px;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  padding: 0 4px;
+  min-width: 0;
+  width: 100%;
+  max-width: 160px;
+  outline: none;
+}
 .tab {
   cursor: grab;
 }

@@ -78,7 +78,7 @@ fn pty_spawn(
     }
 
     let (session, shell_type) =
-        pty::create_session(&manager, &pane_id, Some(Arc::clone(&exit_cb)))?;
+        pty::create_session(&manager, &pane_id, Some(Arc::clone(&exit_cb)), None)?;
 
     spawn_tauri_output_forwarder(app.clone(), pane_id.clone(), Arc::clone(&session));
 
