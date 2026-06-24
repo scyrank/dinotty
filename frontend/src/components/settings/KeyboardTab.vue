@@ -11,19 +11,21 @@
             <kbd v-for="(k, i) in formatBinding(getBinding(def.id))" :key="i">{{ k }}</kbd>
           </span>
           <span v-else class="kb-keys recording">{{ t('keybinding.pressKeys') }}</span>
-          <button v-if="kbRecording !== def.id" class="shortcut-add" @click="startKbRecord(def.id)">
-            {{ t('settings.record') }}
-          </button>
-          <button v-else class="shortcut-add kb-stop" @click="stopKbRecord()">
-            {{ t('settings.stop') }}
-          </button>
-          <button
-            v-if="settings.keybindings[def.id]"
-            class="shortcut-del"
-            @click="resetKbBinding(def.id)"
-          >
-            {{ t('keybinding.reset') }}
-          </button>
+          <template v-if="!isReadOnly(def.id)">
+            <button v-if="kbRecording !== def.id" class="shortcut-add" @click="startKbRecord(def.id)">
+              {{ t('settings.record') }}
+            </button>
+            <button v-else class="shortcut-add kb-stop" @click="stopKbRecord()">
+              {{ t('settings.stop') }}
+            </button>
+            <button
+              v-if="settings.keybindings[def.id]"
+              class="shortcut-del"
+              @click="resetKbBinding(def.id)"
+            >
+              {{ t('keybinding.reset') }}
+            </button>
+          </template>
         </div>
       </div>
     </section>
@@ -250,7 +252,7 @@ import { getApiBase, apiUrl, authFetch } from '../../composables/apiBase'
 
 const { settings, saveSettings } = useSettings()
 const { t } = useI18n()
-const { defs, getBinding, formatBinding } = useKeybindings()
+const { defs, getBinding, formatBinding, isReadOnly } = useKeybindings()
 
 const openApiPaneId = ref('')
 const openApiData = ref('')

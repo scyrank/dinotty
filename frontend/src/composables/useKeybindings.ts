@@ -10,6 +10,7 @@ export interface KeyBindingDef {
   defaultBinding: KeyBinding
   icon: string
   titleKey: string
+  readonly?: boolean
 }
 
 const defs: KeyBindingDef[] = [
@@ -85,6 +86,13 @@ const defs: KeyBindingDef[] = [
     icon: '🔍',
     titleKey: 'keybinding.searchTerminal',
   },
+  {
+    id: 'switchTab',
+    defaultBinding: { key: '1', shift: false },
+    icon: '⌨',
+    titleKey: 'keybinding.switchTab',
+    readonly: true,
+  },
 ]
 
 export function useKeybindings() {
@@ -101,6 +109,10 @@ export function useKeybindings() {
     return parts
   }
 
+  function isReadOnly(id: string): boolean {
+    return defs.find((d) => d.id === id)?.readonly === true
+  }
+
   function getAllWithDisplay() {
     return defs.map((def) => {
       const binding = getBinding(def.id)
@@ -112,5 +124,5 @@ export function useKeybindings() {
     })
   }
 
-  return { defs, getBinding, formatBinding, getAllWithDisplay }
+  return { defs, getBinding, formatBinding, getAllWithDisplay, isReadOnly }
 }
