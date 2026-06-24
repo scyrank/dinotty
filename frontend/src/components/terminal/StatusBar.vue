@@ -32,14 +32,23 @@
 import { computed, ref } from 'vue'
 import { Cpu, MemoryStick, HardDrive, Wifi, Gpu } from 'lucide-vue-next'
 import { monitorData } from '../../composables/useMonitor'
-import { cpuHistory, memHistory, netRxHistory, netTxHistory, gpuUtilHistory, gpuMemHistory } from '../../composables/useMonitor'
+import {
+  cpuHistory,
+  memHistory,
+  netRxHistory,
+  netTxHistory,
+  gpuUtilHistory,
+  gpuMemHistory,
+} from '../../composables/useMonitor'
 import { useSettings } from '../../composables/useSettings'
 import MonitorPopover from './MonitorPopover.vue'
 
 const data = monitorData
 const { settings } = useSettings()
 
-const monitorSettings = computed(() => settings.monitor ?? { enabled: true, cpu: true, memory: true, disk: true, network: true })
+const monitorSettings = computed(
+  () => settings.monitor ?? { enabled: true, cpu: true, memory: true, disk: true, network: true }
+)
 
 type MetricKey = 'cpu' | 'memory' | 'disk' | 'network' | 'gpu'
 
@@ -82,9 +91,7 @@ const allMetrics = computed(() => {
     {
       key: 'disk' as MetricKey,
       icon: HardDrive,
-      label: mainDisk
-        ? `${fmtBytes(mainDisk.used)}/${fmtBytes(mainDisk.total)}`
-        : '—',
+      label: mainDisk ? `${fmtBytes(mainDisk.used)}/${fmtBytes(mainDisk.total)}` : '—',
     },
     {
       key: 'network' as MetricKey,
@@ -96,7 +103,7 @@ const allMetrics = computed(() => {
   if (d.gpu?.length > 0) {
     const totalUsed = d.gpu.reduce((s, g) => s + g.memory_used, 0)
     const totalMem = d.gpu.reduce((s, g) => s + g.memory_total, 0)
-    const pct = totalMem > 0 ? (totalUsed / totalMem * 100) : 0
+    const pct = totalMem > 0 ? (totalUsed / totalMem) * 100 : 0
     metrics.push({
       key: 'gpu' as MetricKey,
       icon: Gpu,
@@ -107,16 +114,14 @@ const allMetrics = computed(() => {
   return metrics
 })
 
-const visibleMetrics = computed(() =>
-  allMetrics.value.filter((m) => monitorSettings.value[m.key])
-)
+const visibleMetrics = computed(() => allMetrics.value.filter((m) => monitorSettings.value[m.key]))
 
 function togglePopover(key: MetricKey, event: MouseEvent) {
   if (activePopover.value === key) {
     activePopover.value = null
     return
   }
-  const el = (event.currentTarget as HTMLElement)
+  const el = event.currentTarget as HTMLElement
   anchorRect.value = el.getBoundingClientRect()
   activePopover.value = key
 }
@@ -126,7 +131,7 @@ function togglePopover(key: MetricKey, event: MouseEvent) {
 .status-bar {
   height: calc(24px + env(safe-area-inset-bottom, 0px));
   background: var(--bg, #1a1a2e);
-  border-top: 1px solid var(--border, #3C3C3C);
+  border-top: 1px solid var(--border, #3c3c3c);
   display: flex;
   align-items: center;
   justify-content: flex-start;

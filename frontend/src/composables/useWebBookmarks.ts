@@ -7,7 +7,7 @@ export function useWebBookmarks() {
   const bookmarks = computed(() => settings.web_bookmarks)
 
   function isBookmarked(url: string): boolean {
-    return settings.web_bookmarks.some(b => b.url === url)
+    return settings.web_bookmarks.some((b) => b.url === url)
   }
 
   function addBookmark(name: string, url: string, group?: string) {
@@ -22,7 +22,7 @@ export function useWebBookmarks() {
   }
 
   function removeBookmark(id: string) {
-    const idx = settings.web_bookmarks.findIndex(b => b.id === id)
+    const idx = settings.web_bookmarks.findIndex((b) => b.id === id)
     if (idx !== -1) {
       settings.web_bookmarks.splice(idx, 1)
       saveSettings()
@@ -30,7 +30,7 @@ export function useWebBookmarks() {
   }
 
   function toggleBookmark(name: string, url: string) {
-    const existing = settings.web_bookmarks.find(b => b.url === url)
+    const existing = settings.web_bookmarks.find((b) => b.url === url)
     if (existing) {
       removeBookmark(existing.id)
     } else {
@@ -39,7 +39,7 @@ export function useWebBookmarks() {
   }
 
   function renameBookmark(id: string, newName: string) {
-    const bm = settings.web_bookmarks.find(b => b.id === id)
+    const bm = settings.web_bookmarks.find((b) => b.id === id)
     if (bm) {
       bm.name = newName
       saveSettings()

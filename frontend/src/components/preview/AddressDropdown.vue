@@ -37,7 +37,13 @@ function formatTime(visitedAt: number): string {
 }
 
 // Context menu
-const ctxMenu = ref<{ x: number; y: number; type: 'bookmark' | 'recent'; id?: string; url?: string } | null>(null)
+const ctxMenu = ref<{
+  x: number
+  y: number
+  type: 'bookmark' | 'recent'
+  id?: string
+  url?: string
+} | null>(null)
 
 function onItemContext(e: MouseEvent, type: 'bookmark' | 'recent', id?: string, url?: string) {
   e.preventDefault()
@@ -50,7 +56,7 @@ function closeCtxMenu() {
 
 function ctxRenameBookmark() {
   if (!ctxMenu.value?.id) return
-  const bm = bookmarks.value.find(b => b.id === ctxMenu.value!.id)
+  const bm = bookmarks.value.find((b) => b.id === ctxMenu.value!.id)
   if (!bm) return
   const newName = prompt(t('webBookmark.rename'), bm.name)
   if (newName && newName.trim()) {
@@ -68,7 +74,11 @@ function ctxRemoveBookmark() {
 function ctxAddToBookmarks() {
   if (!ctxMenu.value?.url) return
   const name = (() => {
-    try { return new URL(ctxMenu.value.url).hostname } catch { return ctxMenu.value.url }
+    try {
+      return new URL(ctxMenu.value.url).hostname
+    } catch {
+      return ctxMenu.value.url
+    }
   })()
   addBookmark(name, ctxMenu.value.url)
   closeCtxMenu()
@@ -127,10 +137,7 @@ function ctxRemoveRecent() {
       @click="closeCtxMenu"
       @contextmenu.prevent="closeCtxMenu"
     >
-      <div
-        class="address-ctx-menu"
-        :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
-      >
+      <div class="address-ctx-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }">
         <template v-if="ctxMenu.type === 'bookmark'">
           <button class="tree-ctx-item" @click="ctxRenameBookmark">
             <span class="tree-ctx-label">{{ t('webBookmark.rename') }}</span>
@@ -165,7 +172,7 @@ function ctxRemoveRecent() {
   background: var(--bg-surface, #252526);
   border: 1px solid var(--border, #3c3c3c);
   border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   z-index: 500;
   padding: 4px 0;
 }
@@ -198,7 +205,7 @@ function ctxRemoveRecent() {
   overflow: hidden;
 }
 .address-dropdown-item:hover {
-  background: var(--tab-hover-bg, #2A2A2C);
+  background: var(--tab-hover-bg, #2a2a2c);
 }
 
 .address-dropdown-url {
@@ -212,7 +219,10 @@ function ctxRemoveRecent() {
   margin-left: auto;
   font-size: 11px;
   color: var(--fg-muted, #858585);
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
   flex-shrink: 0;
 }
 
@@ -228,7 +238,7 @@ function ctxRemoveRecent() {
   background: #252526;
   border: 1px solid #3c3c3c;
   border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   padding: 4px 0;
   z-index: 100001;
 }

@@ -13,7 +13,10 @@
           class="settings-tab"
           :class="{ active: activeTab === tab.id }"
           @click="activeTab = tab.id"
-        ><span class="settings-tab-icon"><component :is="tab.icon" :size="20" /></span><span class="settings-tab-label">{{ tab.label }}</span></button>
+        >
+          <span class="settings-tab-icon"><component :is="tab.icon" :size="20" /></span
+          ><span class="settings-tab-label">{{ tab.label }}</span>
+        </button>
       </div>
 
       <div class="settings-body">
@@ -25,7 +28,6 @@
         <PluginsTab v-show="activeTab === 'plugins'" />
         <AboutTab v-show="activeTab === 'about'" />
       </div>
-
     </div>
   </div>
 </template>
@@ -34,7 +36,16 @@
 import { ref, computed, watch } from 'vue'
 import { useSettings, notifyTextChange } from '../composables/useSettings'
 import { useI18n } from '../composables/useI18n'
-import { Settings as SettingsIcon, Palette, Keyboard, Activity, Bell, Puzzle, Info, X } from 'lucide-vue-next'
+import {
+  Settings as SettingsIcon,
+  Palette,
+  Keyboard,
+  Activity,
+  Bell,
+  Puzzle,
+  Info,
+  X,
+} from 'lucide-vue-next'
 import GeneralTab from './settings/GeneralTab.vue'
 import AppearanceTab from './settings/AppearanceTab.vue'
 import KeyboardTab from './settings/KeyboardTab.vue'
@@ -49,7 +60,9 @@ defineEmits<{ close: [] }>()
 const { settings, saveSettings, applyCurrentTheme } = useSettings()
 const { t } = useI18n()
 
-const activeTab = ref<'general' | 'appearance' | 'keyboard' | 'monitor' | 'notification' | 'plugins' | 'about'>('general')
+const activeTab = ref<
+  'general' | 'appearance' | 'keyboard' | 'monitor' | 'notification' | 'plugins' | 'about'
+>('general')
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 function scheduleSave() {
@@ -81,7 +94,7 @@ const tabs = computed(() => [
 .settings-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.4);
+  background: rgba(0, 0, 0, 0.4);
   z-index: 900;
   opacity: 0;
   pointer-events: none;
@@ -99,7 +112,7 @@ const tabs = computed(() => [
   right: 0;
   width: min(520px, calc(100vw - 12px));
   max-width: 100%;
-  background: var(--bg-surface, #1A1A1A);
+  background: var(--bg-surface, #1a1a1a);
   border-left: 1px solid var(--border, #333);
   display: flex;
   flex-direction: column;
@@ -122,7 +135,7 @@ const tabs = computed(() => [
 .settings-header h2 {
   font-size: 16px;
   font-weight: 600;
-  color: var(--fg-bright, #F0F6FC);
+  color: var(--fg-bright, #f0f6fc);
 }
 .settings-close {
   width: 28px;
@@ -135,8 +148,8 @@ const tabs = computed(() => [
   color: var(--fg-muted, #666);
 }
 .settings-close:hover {
-  background: rgba(255,255,255,0.1);
-  color: var(--fg-bright, #F0F6FC);
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--fg-bright, #f0f6fc);
 }
 
 .settings-tabs {
@@ -156,7 +169,9 @@ const tabs = computed(() => [
   font-weight: 500;
   color: var(--fg-muted, #666);
   border-bottom: 2px solid transparent;
-  transition: color 0.15s, border-color 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
   white-space: nowrap;
   display: flex;
   flex-direction: column;
@@ -179,11 +194,11 @@ const tabs = computed(() => [
   opacity: 1;
 }
 .settings-tab:hover {
-  color: var(--fg, #C7C7C7);
+  color: var(--fg, #c7c7c7);
 }
 .settings-tab.active {
-  color: var(--accent, #8A8A8A);
-  border-bottom-color: var(--accent, #8A8A8A);
+  color: var(--accent, #8a8a8a);
+  border-bottom-color: var(--accent, #8a8a8a);
 }
 
 .settings-body {
@@ -215,15 +230,17 @@ const tabs = computed(() => [
   border-radius: 6px;
   overflow: hidden;
   cursor: pointer;
-  transition: border-color 0.15s, transform 0.15s;
+  transition:
+    border-color 0.15s,
+    transform 0.15s;
   text-align: left;
 }
 .theme-card.active {
-  border-color: var(--accent, #8A8A8A);
-  box-shadow: 0 0 0 1px var(--accent, #8A8A8A);
+  border-color: var(--accent, #8a8a8a);
+  box-shadow: 0 0 0 1px var(--accent, #8a8a8a);
 }
 .theme-card:hover {
-  border-color: var(--accent-hover, #9E9E9E);
+  border-color: var(--accent-hover, #9e9e9e);
   transform: translateY(-1px);
 }
 .theme-preview {
@@ -276,7 +293,7 @@ const tabs = computed(() => [
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--bg-input, #1A1A1A);
+  background: var(--bg-input, #1a1a1a);
   border: 1px solid var(--border, #333);
   border-radius: 6px;
   padding: 8px 12px;
@@ -286,7 +303,7 @@ const tabs = computed(() => [
   flex: 1;
   font-family: var(--font-mono);
   font-size: 13px;
-  color: var(--accent, #8A8A8A);
+  color: var(--accent, #8a8a8a);
   word-break: break-all;
 }
 .access-url-copy {
@@ -299,11 +316,11 @@ const tabs = computed(() => [
   justify-content: center;
   font-size: 14px;
   color: var(--fg-muted, #666);
-  background: rgba(255,255,255,0.05);
+  background: rgba(255, 255, 255, 0.05);
 }
 .access-url-copy:hover {
-  background: rgba(255,255,255,0.1);
-  color: var(--fg-bright, #F0F6FC);
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--fg-bright, #f0f6fc);
 }
 
 /* ── Custom Colors ──────────────────────────────────────── */
@@ -326,12 +343,12 @@ const tabs = computed(() => [
   display: flex;
   align-items: center;
   gap: 6px;
-  background: var(--bg-input, #1A1A1A);
+  background: var(--bg-input, #1a1a1a);
   border: 1px solid var(--border, #333);
   border-radius: 6px;
   padding: 4px 8px;
 }
-.color-input-wrap input[type="color"] {
+.color-input-wrap input[type='color'] {
   width: 24px;
   height: 24px;
   border: none;
@@ -340,11 +357,11 @@ const tabs = computed(() => [
   padding: 0;
   background: none;
 }
-.color-input-wrap input[type="color"]::-webkit-color-swatch-wrapper {
+.color-input-wrap input[type='color']::-webkit-color-swatch-wrapper {
   padding: 0;
 }
-.color-input-wrap input[type="color"]::-webkit-color-swatch {
-  border: 1px solid rgba(255,255,255,0.1);
+.color-input-wrap input[type='color']::-webkit-color-swatch {
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 4px;
 }
 .color-hex {
@@ -364,7 +381,7 @@ const tabs = computed(() => [
   user-select: none;
 }
 .ansi-details summary:hover {
-  color: var(--fg, #C7C7C7);
+  color: var(--fg, #c7c7c7);
 }
 .ansi-grid {
   display: grid;
@@ -378,19 +395,19 @@ const tabs = computed(() => [
   align-items: center;
   gap: 2px;
 }
-.ansi-field input[type="color"] {
+.ansi-field input[type='color'] {
   width: 28px;
   height: 28px;
-  border: 1px solid rgba(255,255,255,0.1);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 4px;
   cursor: pointer;
   padding: 0;
   background: none;
 }
-.ansi-field input[type="color"]::-webkit-color-swatch-wrapper {
+.ansi-field input[type='color']::-webkit-color-swatch-wrapper {
   padding: 0;
 }
-.ansi-field input[type="color"]::-webkit-color-swatch {
+.ansi-field input[type='color']::-webkit-color-swatch {
   border: none;
   border-radius: 3px;
 }
@@ -410,23 +427,23 @@ const tabs = computed(() => [
 }
 .settings-row label {
   font-size: 13px;
-  color: var(--fg, #C7C7C7);
+  color: var(--fg, #c7c7c7);
   white-space: nowrap;
 }
 .settings-row select,
-.settings-row input[type="color"] {
-  background: var(--bg-input, #1A1A1A);
+.settings-row input[type='color'] {
+  background: var(--bg-input, #1a1a1a);
   border: 1px solid var(--border, #333);
   border-radius: 4px;
-  color: var(--fg, #C7C7C7);
+  color: var(--fg, #c7c7c7);
   padding: 4px 8px;
   font-size: 13px;
 }
-.settings-row input[type="range"] {
+.settings-row input[type='range'] {
   flex: 1;
-  accent-color: var(--accent, #8A8A8A);
+  accent-color: var(--accent, #8a8a8a);
 }
-.settings-row input[type="file"] {
+.settings-row input[type='file'] {
   font-size: 12px;
   color: var(--fg-muted, #666);
 }
@@ -447,7 +464,7 @@ const tabs = computed(() => [
   min-height: 28px;
 }
 .font-dropdown-trigger:hover {
-  border-color: var(--accent, #8A8A8A);
+  border-color: var(--accent, #8a8a8a);
 }
 .font-dropdown-arrow {
   font-size: 10px;
@@ -466,10 +483,10 @@ const tabs = computed(() => [
   right: 0;
   max-height: 260px;
   overflow-y: auto;
-  background: var(--bg-surface, #1A1A1A);
+  background: var(--bg-surface, #1a1a1a);
   border: 1px solid var(--border, #333);
   border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   z-index: 1000;
   padding: 4px 0;
 }
@@ -480,16 +497,16 @@ const tabs = computed(() => [
   gap: 8px;
   padding: 6px 12px;
   font-size: 13px;
-  color: var(--fg, #C7C7C7);
+  color: var(--fg, #c7c7c7);
   cursor: pointer;
   transition: background 0.1s;
 }
 .font-dropdown-item:hover {
-  background: rgba(255,255,255,0.06);
+  background: rgba(255, 255, 255, 0.06);
 }
 .font-dropdown-item.active {
-  background: rgba(77,127,255,0.15);
-  color: var(--accent, #8A8A8A);
+  background: rgba(77, 127, 255, 0.15);
+  color: var(--accent, #8a8a8a);
 }
 .font-item-label {
   flex: 1;
@@ -506,7 +523,7 @@ const tabs = computed(() => [
 .font-dropdown-divider {
   height: 1px;
   margin: 4px 8px;
-  background: rgba(255,255,255,0.08);
+  background: rgba(255, 255, 255, 0.08);
 }
 .font-custom-input-wrap {
   padding: 4px 8px 6px;
@@ -522,7 +539,7 @@ const tabs = computed(() => [
   gap: 10px;
   flex: 1;
 }
-.range-wrap input[type="range"] {
+.range-wrap input[type='range'] {
   flex: 1;
   height: 4px;
   -webkit-appearance: none;
@@ -531,12 +548,12 @@ const tabs = computed(() => [
   border-radius: 2px;
   outline: none;
 }
-.range-wrap input[type="range"]::-webkit-slider-thumb {
+.range-wrap input[type='range']::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--accent, #8A8A8A);
+  background: var(--accent, #8a8a8a);
   cursor: pointer;
 }
 .range-val {
@@ -566,7 +583,7 @@ const tabs = computed(() => [
   transition: background 0.2s;
 }
 .toggle input:checked + .toggle-track {
-  background: var(--accent, #8A8A8A);
+  background: var(--accent, #8a8a8a);
 }
 .toggle-thumb {
   position: absolute;
@@ -584,10 +601,10 @@ const tabs = computed(() => [
 
 .shortcut-input {
   flex: 1;
-  background: var(--bg-input, #1A1A1A);
+  background: var(--bg-input, #1a1a1a);
   border: 1px solid var(--border, #333);
   border-radius: 4px;
-  color: var(--fg, #C7C7C7);
+  color: var(--fg, #c7c7c7);
   padding: 4px 8px;
   font-size: 12px;
 }
@@ -610,12 +627,12 @@ const tabs = computed(() => [
   justify-content: center;
 }
 .shortcut-del:hover {
-  background: rgba(255,100,100,0.2);
+  background: rgba(255, 100, 100, 0.2);
   color: #ff6b6b;
 }
 .shortcut-add {
   font-size: 12px;
-  color: var(--accent, #8A8A8A);
+  color: var(--accent, #8a8a8a);
   padding: 4px 0;
 }
 
@@ -777,7 +794,7 @@ const tabs = computed(() => [
 .ak-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0, 0, 0, 0.5);
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -785,7 +802,7 @@ const tabs = computed(() => [
 }
 
 .ak-modal {
-  background: var(--bg-surface, #1A1A1A);
+  background: var(--bg-surface, #1a1a1a);
   border: 1px solid var(--border, #333);
   border-radius: 10px;
   padding: 20px;
@@ -796,7 +813,7 @@ const tabs = computed(() => [
 .ak-modal h4 {
   font-size: 14px;
   font-weight: 600;
-  color: var(--fg-bright, #F0F6FC);
+  color: var(--fg-bright, #f0f6fc);
   margin-bottom: 12px;
 }
 
@@ -858,7 +875,7 @@ const tabs = computed(() => [
   border-radius: 4px;
   font-size: 11px;
   background: #2c2c2e;
-  color: var(--fg, #C7C7C7);
+  color: var(--fg, #c7c7c7);
   border: 1px solid var(--border, #333);
 }
 .ak-record-btn.recording {
@@ -895,6 +912,6 @@ const tabs = computed(() => [
   transition: background 0.15s;
 }
 .settings-save:hover {
-  background: rgba(255,255,255,0.06);
+  background: rgba(255, 255, 255, 0.06);
 }
 </style>

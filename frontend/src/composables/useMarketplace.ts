@@ -42,7 +42,7 @@ export function useMarketplace() {
       let lastErr = ''
       const delays = [0, 1000, 2000, 4000]
       for (let i = 0; i < delays.length; i++) {
-        if (delays[i] > 0) await new Promise(r => setTimeout(r, delays[i]))
+        if (delays[i] > 0) await new Promise((r) => setTimeout(r, delays[i]))
         try {
           res = await authFetch(url)
           if (res.ok) break

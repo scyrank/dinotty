@@ -3,15 +3,27 @@
     <section class="settings-section">
       <h3>{{ t('keybinding.title') }}</h3>
       <div v-for="def in defs" :key="def.id" class="settings-row kb-shortcut-row">
-        <label><span class="kb-icon">{{ def.icon }}</span> {{ t(def.titleKey) }}</label>
+        <label
+          ><span class="kb-icon">{{ def.icon }}</span> {{ t(def.titleKey) }}</label
+        >
         <div class="kb-shortcut-ctrl">
           <span v-if="kbRecording !== def.id" class="kb-keys">
             <kbd v-for="(k, i) in formatBinding(getBinding(def.id))" :key="i">{{ k }}</kbd>
           </span>
           <span v-else class="kb-keys recording">{{ t('keybinding.pressKeys') }}</span>
-          <button v-if="kbRecording !== def.id" class="shortcut-add" @click="startKbRecord(def.id)">{{ t('settings.record') }}</button>
-          <button v-else class="shortcut-add kb-stop" @click="stopKbRecord()">{{ t('settings.stop') }}</button>
-          <button v-if="settings.keybindings[def.id]" class="shortcut-del" @click="resetKbBinding(def.id)">{{ t('keybinding.reset') }}</button>
+          <button v-if="kbRecording !== def.id" class="shortcut-add" @click="startKbRecord(def.id)">
+            {{ t('settings.record') }}
+          </button>
+          <button v-else class="shortcut-add kb-stop" @click="stopKbRecord()">
+            {{ t('settings.stop') }}
+          </button>
+          <button
+            v-if="settings.keybindings[def.id]"
+            class="shortcut-del"
+            @click="resetKbBinding(def.id)"
+          >
+            {{ t('keybinding.reset') }}
+          </button>
         </div>
       </div>
     </section>
@@ -27,19 +39,22 @@
                 v-if="ri === 0"
                 class="mkb-btn mkb-mod mkb-action-back ak-wyg-chrome"
                 style="flex-grow: 1.5; flex-basis: 0"
-              >⌨</div>
+              >
+                ⌨
+              </div>
               <div
                 v-for="(key, ki) in row"
                 :key="akItemKey(key)"
                 class="ak-wyg-slot"
                 :style="akPreviewSlotStyle(ri, ki)"
               >
-                <div
-                  class="mkb-btn ak-wyg-key"
-                  :class="[previewDef(ri, ki).cls]"
-                >
-                  <span class="ak-wyg-label" @click="editActionKey(ri, ki)">{{ previewLabel(key) }}</span>
-                  <button type="button" class="ak-key-del" @click.stop="removeActionKey(ri, ki)">✕</button>
+                <div class="mkb-btn ak-wyg-key" :class="[previewDef(ri, ki).cls]">
+                  <span class="ak-wyg-label" @click="editActionKey(ri, ki)">{{
+                    previewLabel(key)
+                  }}</span>
+                  <button type="button" class="ak-key-del" @click.stop="removeActionKey(ri, ki)">
+                    ✕
+                  </button>
                   <div
                     class="ak-key-resize"
                     :title="t('settings.dragResize')"
@@ -51,7 +66,9 @@
                 type="button"
                 class="mkb-btn mkb-mod ak-wyg-add-key"
                 @click="addActionKey(ri)"
-              >+</button>
+              >
+                +
+              </button>
             </div>
           </div>
           <button
@@ -60,7 +77,9 @@
             class="ak-wyg-remove-row"
             :title="t('settings.deleteRow')"
             @click="removeActionRow(ri)"
-          >✕</button>
+          >
+            ✕
+          </button>
         </div>
 
         <div class="mkb-action-bottom ak-wyg-fixed-cluster">
@@ -76,7 +95,9 @@
       </div>
       <div class="ak-actions">
         <button class="shortcut-add" @click="addActionRow">{{ t('settings.addRow') }}</button>
-        <button class="shortcut-add ak-reset" @click="resetActionKeyboard">{{ t('settings.resetDefault') }}</button>
+        <button class="shortcut-add ak-reset" @click="resetActionKeyboard">
+          {{ t('settings.resetDefault') }}
+        </button>
       </div>
 
       <!-- Edit modal -->
@@ -89,11 +110,22 @@
           </label>
           <label class="ak-field">
             <span>{{ t('settings.send') }}</span>
-            <textarea v-model="akEdit.sendRaw" class="shortcut-input ak-send-textarea" rows="4" spellcheck="false" :placeholder="t('settings.sendPlaceholder')" />
+            <textarea
+              v-model="akEdit.sendRaw"
+              class="shortcut-input ak-send-textarea"
+              rows="4"
+              spellcheck="false"
+              :placeholder="t('settings.sendPlaceholder')"
+            />
           </label>
           <div class="ak-send-row">
             <code class="ak-esc-preview">{{ akSendPreview }}</code>
-            <button type="button" class="ak-record-btn" :class="{ recording: akRecording }" @click.stop="toggleRecord">
+            <button
+              type="button"
+              class="ak-record-btn"
+              :class="{ recording: akRecording }"
+              @click.stop="toggleRecord"
+            >
               {{ akRecording ? t('settings.stop') : t('settings.record') }}
             </button>
           </div>
@@ -152,15 +184,23 @@
           <span class="method-badge">POST</span>
           <span class="api-url">/api/input</span>
           <div class="mode-tabs">
-            <button :class="{ active: openApiMode === 'form' }" @click="switchOpenApiMode('form')">Form</button>
-            <button :class="{ active: openApiMode === 'raw' }" @click="switchOpenApiMode('raw')">Raw</button>
+            <button :class="{ active: openApiMode === 'form' }" @click="switchOpenApiMode('form')">
+              Form
+            </button>
+            <button :class="{ active: openApiMode === 'raw' }" @click="switchOpenApiMode('raw')">
+              Raw
+            </button>
           </div>
         </div>
 
         <template v-if="openApiMode === 'form'">
           <div class="api-field">
             <label>pane_id</label>
-            <input type="text" v-model="openApiPaneId" :placeholder="t('settings.keyboard.openApiPaneHint')" />
+            <input
+              type="text"
+              v-model="openApiPaneId"
+              :placeholder="t('settings.keyboard.openApiPaneHint')"
+            />
           </div>
           <div class="api-field">
             <label>data <span class="required">*</span></label>
@@ -174,18 +214,24 @@
         </template>
 
         <div class="api-actions">
-          <button class="send-btn" :disabled="!openApiCanSend || openApiSending" @click="sendOpenApiTest">
+          <button
+            class="send-btn"
+            :disabled="!openApiCanSend || openApiSending"
+            @click="sendOpenApiTest"
+          >
             {{ openApiSending ? '...' : '▶ Send' }}
           </button>
-          <span v-if="openApiResult" class="api-result" :class="openApiResultOk ? 'ok' : 'err'">{{ openApiResult }}</span>
+          <span v-if="openApiResult" class="api-result" :class="openApiResultOk ? 'ok' : 'err'">{{
+            openApiResult
+          }}</span>
         </div>
 
         <details class="open-api-curl">
           <summary>curl {{ t('settings.keyboard.openApiExample') }}</summary>
-          <code class="open-api-curl-code">curl -X POST {{ apiBaseUrl }}/api/input \
-  -H "Authorization: Bearer &lt;token&gt;" \
-  -H "Content-Type: application/json" \
-  -d '{"data":"hello\\n"}'</code>
+          <code class="open-api-curl-code"
+            >curl -X POST {{ apiBaseUrl }}/api/input \ -H "Authorization: Bearer &lt;token&gt;" \ -H
+            "Content-Type: application/json" \ -d '{"data":"hello\\n"}'</code
+          >
         </details>
       </div>
     </section>
@@ -215,7 +261,9 @@ const openApiResult = ref('')
 const openApiResultOk = ref(false)
 const openApiSending = ref(false)
 const apiBaseUrl = ref('')
-getApiBase().then(b => { apiBaseUrl.value = b })
+getApiBase().then((b) => {
+  apiBaseUrl.value = b
+})
 
 // --- Keyboard shortcuts recording ---
 const kbRecording = ref<string | null>(null)
@@ -258,7 +306,12 @@ function unescapeData(s: string): string {
 
 const openApiCanSend = computed(() => {
   if (openApiMode.value === 'form') return !!openApiData.value
-  try { JSON.parse(openApiRawJson.value); return true } catch { return false }
+  try {
+    JSON.parse(openApiRawJson.value)
+    return true
+  } catch {
+    return false
+  }
 })
 
 function switchOpenApiMode(mode: 'form' | 'raw') {
@@ -443,14 +496,23 @@ function akResizePointerDown(ri: number, ki: number, e: PointerEvent) {
   window.addEventListener('pointercancel', end)
 }
 
-const akEdit = ref<{ ri: number; ki: number; label: string; sendRaw: string; style: string; repeat: boolean; auto_enter: boolean } | null>(null)
+const akEdit = ref<{
+  ri: number
+  ki: number
+  label: string
+  sendRaw: string
+  style: string
+  repeat: boolean
+  auto_enter: boolean
+} | null>(null)
 const akRecording = ref(false)
 const recordFocusSinkRef = ref<HTMLElement | null>(null)
 
 function editActionKey(ri: number, ki: number) {
   const key = actionRows.value[ri][ki]
   akEdit.value = {
-    ri, ki,
+    ri,
+    ki,
     label: key.label,
     sendRaw: escapeForDisplay(key.send),
     style: key.style || '',
@@ -628,7 +690,7 @@ function keyEventToLabel(e: KeyboardEvent): string {
 }
 
 function escapeForDisplay(s: string): string {
-  return s.replace(/[\x00-\x1f\x7f]/g, c => {
+  return s.replace(/[\x00-\x1f\x7f]/g, (c) => {
     const code = c.charCodeAt(0)
     if (code === 0x1b) return '\\e'
     if (code === 0x09) return '\\t'
@@ -665,7 +727,7 @@ function unescapeFromDisplay(s: string): string {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: var(--bg-secondary, rgba(255,255,255,0.03));
+  background: var(--bg-secondary, rgba(255, 255, 255, 0.03));
 }
 .api-method-row {
   display: flex;
@@ -765,14 +827,23 @@ function unescapeFromDisplay(s: string): string {
   font-weight: 600;
   cursor: pointer;
 }
-.send-btn:hover { opacity: 0.85; }
-.send-btn:disabled { opacity: 0.4; cursor: default; }
+.send-btn:hover {
+  opacity: 0.85;
+}
+.send-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 .api-result {
   font-size: 12px;
   font-family: monospace;
 }
-.api-result.ok { color: #49cc90; }
-.api-result.err { color: #ef4444; }
+.api-result.ok {
+  color: #49cc90;
+}
+.api-result.err {
+  color: #ef4444;
+}
 .open-api-curl {
   font-size: 11px;
   color: var(--fg-muted, #999);
@@ -814,7 +885,7 @@ function unescapeFromDisplay(s: string): string {
   font-family: inherit;
   line-height: 1.4;
   color: var(--fg, #e0e0e0);
-  background: var(--bg-secondary, rgba(255,255,255,0.06));
+  background: var(--bg-secondary, rgba(255, 255, 255, 0.06));
   border: 1px solid var(--border, #444);
   border-radius: 4px;
   min-width: 18px;

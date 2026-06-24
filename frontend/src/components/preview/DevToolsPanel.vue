@@ -20,7 +20,9 @@
         >
           <Globe :size="12" />
           {{ t('devtools.network') }}
-          <span v-if="networkEntries.length > 0" class="devtools-badge net">{{ networkEntries.length }}</span>
+          <span v-if="networkEntries.length > 0" class="devtools-badge net">{{
+            networkEntries.length
+          }}</span>
         </button>
       </div>
       <div class="devtools-header-actions">
@@ -37,8 +39,22 @@
             {{ levelLabels[lv] }}
           </button>
         </template>
-        <button type="button" class="devtools-action-btn" :title="t('devtools.clear')" @click="tab === 'console' ? $emit('clearConsole') : $emit('clearNetwork')"><Trash2 :size="12" /></button>
-        <button type="button" class="devtools-action-btn" :title="t('devtools.close')" @click="$emit('update:visible', false)"><X :size="12" /></button>
+        <button
+          type="button"
+          class="devtools-action-btn"
+          :title="t('devtools.clear')"
+          @click="tab === 'console' ? $emit('clearConsole') : $emit('clearNetwork')"
+        >
+          <Trash2 :size="12" />
+        </button>
+        <button
+          type="button"
+          class="devtools-action-btn"
+          :title="t('devtools.close')"
+          @click="$emit('update:visible', false)"
+        >
+          <X :size="12" />
+        </button>
       </div>
     </div>
 
@@ -81,14 +97,14 @@
     <!-- Network view -->
     <template v-if="tab === 'network'">
       <div class="devtools-body" ref="netBodyRef">
-        <div
-          v-for="entry in networkEntries"
-          :key="entry.id"
-          class="devtools-net"
-        >
-          <span class="devtools-net-method" :class="'method-' + entry.method">{{ entry.method }}</span>
+        <div v-for="entry in networkEntries" :key="entry.id" class="devtools-net">
+          <span class="devtools-net-method" :class="'method-' + entry.method">{{
+            entry.method
+          }}</span>
           <span class="devtools-net-url" :title="entry.url">{{ truncateUrl(entry.url) }}</span>
-          <span class="devtools-net-status" :class="statusClass(entry.status)">{{ entry.status || 'ERR' }}</span>
+          <span class="devtools-net-status" :class="statusClass(entry.status)">{{
+            entry.status || 'ERR'
+          }}</span>
           <span class="devtools-net-duration">{{ entry.duration }}ms</span>
           <span class="devtools-log-time">{{ formatTime(entry.ts) }}</span>
         </div>
@@ -152,7 +168,7 @@ function toggleLevel(lv: string) {
 }
 
 const filteredEntries = computed(() =>
-  props.consoleEntries.filter(e => activeLevels.value.has(e.level))
+  props.consoleEntries.filter((e) => activeLevels.value.has(e.level))
 )
 
 const evalCode = ref('')
@@ -346,11 +362,21 @@ watch(
   color: var(--fg, #ccc);
 }
 
-.devtools-level-btn.active.level-error { color: #e74c3c; }
-.devtools-level-btn.active.level-warn { color: #f39c12; }
-.devtools-level-btn.active.level-info { color: #3498db; }
-.devtools-level-btn.active.level-debug { color: #9b59b6; }
-.devtools-level-btn.active.level-log { color: var(--fg-muted, #888); }
+.devtools-level-btn.active.level-error {
+  color: #e74c3c;
+}
+.devtools-level-btn.active.level-warn {
+  color: #f39c12;
+}
+.devtools-level-btn.active.level-info {
+  color: #3498db;
+}
+.devtools-level-btn.active.level-debug {
+  color: #9b59b6;
+}
+.devtools-level-btn.active.level-log {
+  color: var(--fg-muted, #888);
+}
 
 .devtools-action-btn {
   background: none;
@@ -383,12 +409,12 @@ watch(
   display: flex;
   align-items: flex-start;
   padding: 1px 8px;
-  border-bottom: 1px solid rgba(255,255,255,0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
   gap: 6px;
 }
 
 .devtools-log:hover {
-  background: rgba(255,255,255,0.03);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .devtools-log-icon {
@@ -399,11 +425,21 @@ watch(
   line-height: 1.5;
 }
 
-.devtools-log-error .devtools-log-icon { color: #e74c3c; }
-.devtools-log-warn .devtools-log-icon { color: #f39c12; }
-.devtools-log-info .devtools-log-icon { color: #3498db; }
-.devtools-log-debug .devtools-log-icon { color: #9b59b6; }
-.devtools-log-log .devtools-log-icon { color: var(--fg-muted, #666); }
+.devtools-log-error .devtools-log-icon {
+  color: #e74c3c;
+}
+.devtools-log-warn .devtools-log-icon {
+  color: #f39c12;
+}
+.devtools-log-info .devtools-log-icon {
+  color: #3498db;
+}
+.devtools-log-debug .devtools-log-icon {
+  color: #9b59b6;
+}
+.devtools-log-log .devtools-log-icon {
+  color: var(--fg-muted, #666);
+}
 
 .devtools-log-content {
   flex: 1;
@@ -412,11 +448,23 @@ watch(
   white-space: pre-wrap;
 }
 
-.devtools-log-error { color: #e74c3c; background: rgba(231,76,60,0.06); }
-.devtools-log-warn { color: #f39c12; background: rgba(243,156,18,0.06); }
-.devtools-log-info { color: var(--fg, #ccc); }
-.devtools-log-debug { color: var(--fg-muted, #888); }
-.devtools-log-log { color: var(--fg, #ccc); }
+.devtools-log-error {
+  color: #e74c3c;
+  background: rgba(231, 76, 60, 0.06);
+}
+.devtools-log-warn {
+  color: #f39c12;
+  background: rgba(243, 156, 18, 0.06);
+}
+.devtools-log-info {
+  color: var(--fg, #ccc);
+}
+.devtools-log-debug {
+  color: var(--fg-muted, #888);
+}
+.devtools-log-log {
+  color: var(--fg, #ccc);
+}
 
 .devtools-log-sep {
   margin: 0 2px;
@@ -434,12 +482,12 @@ watch(
   display: flex;
   align-items: center;
   padding: 1px 8px;
-  border-bottom: 1px solid rgba(255,255,255,0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
   gap: 6px;
 }
 
 .devtools-net:hover {
-  background: rgba(255,255,255,0.03);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .devtools-net-method {
@@ -452,11 +500,21 @@ watch(
   border-radius: 2px;
 }
 
-.method-GET { color: #2ecc71; }
-.method-POST { color: #f39c12; }
-.method-PUT { color: #3498db; }
-.method-DELETE { color: #e74c3c; }
-.method-PATCH { color: #9b59b6; }
+.method-GET {
+  color: #2ecc71;
+}
+.method-POST {
+  color: #f39c12;
+}
+.method-PUT {
+  color: #3498db;
+}
+.method-DELETE {
+  color: #e74c3c;
+}
+.method-PATCH {
+  color: #9b59b6;
+}
 
 .devtools-net-url {
   flex: 1;
@@ -475,11 +533,21 @@ watch(
   text-align: center;
 }
 
-.status-2xx { color: #2ecc71; }
-.status-3xx { color: #3498db; }
-.status-4xx { color: #f39c12; }
-.status-5xx { color: #e74c3c; }
-.status-err { color: #e74c3c; }
+.status-2xx {
+  color: #2ecc71;
+}
+.status-3xx {
+  color: #3498db;
+}
+.status-4xx {
+  color: #f39c12;
+}
+.status-5xx {
+  color: #e74c3c;
+}
+.status-err {
+  color: #e74c3c;
+}
 
 .devtools-net-duration {
   flex-shrink: 0;

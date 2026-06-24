@@ -17,7 +17,9 @@ let lastFocusedInstance: TerminalInstance | null = null
 
 // Guard for Tauri WKWebView multi-focus: only the active pane should send input.
 let _activePaneId: string | null = null
-export function setActivePaneId(paneId: string | null) { _activePaneId = paneId }
+export function setActivePaneId(paneId: string | null) {
+  _activePaneId = paneId
+}
 
 function setupGlobalTauriDragDrop() {
   if (tauriDragDropRegistered) return
@@ -148,7 +150,9 @@ export class TerminalInstance {
       const webgl = new WebglAddon()
       webgl.onContextLoss(() => webgl.dispose())
       this.xterm.loadAddon(webgl)
-    } catch { /* DOM renderer fallback */ }
+    } catch {
+      /* DOM renderer fallback */
+    }
 
     this.searchAddon = new SearchAddon()
     this.xterm.loadAddon(this.searchAddon)
@@ -164,7 +168,10 @@ export class TerminalInstance {
       const onCompositionEnd = (e: Event) => {
         compositionJustEnded = true
         compositionData = ''
-        setTimeout(() => { compositionJustEnded = false; compositionData = '' }, 0)
+        setTimeout(() => {
+          compositionJustEnded = false
+          compositionData = ''
+        }, 0)
       }
       textarea.addEventListener('compositionend', onCompositionEnd)
       this._compositionCleanup = () => {
@@ -185,7 +192,10 @@ export class TerminalInstance {
     this.xterm.registerLinkProvider({
       provideLinks: (bufferLineNumber: number, callback: (links: any[] | undefined) => void) => {
         const line = this.xterm!.buffer.active.getLine(bufferLineNumber - 1)
-        if (!line) { callback(undefined); return }
+        if (!line) {
+          callback(undefined)
+          return
+        }
         const text = line.translateToString()
         const regex = /(?:^|\s)((?:\/|\.\/|~\/)[^\s:]+)/g
         const links: any[] = []
@@ -194,9 +204,14 @@ export class TerminalInstance {
           const path = match[1]
           const startX = match.index + (match[0].length - match[1].length)
           links.push({
-            range: { start: { x: startX + 1, y: bufferLineNumber }, end: { x: startX + path.length + 1, y: bufferLineNumber } },
+            range: {
+              start: { x: startX + 1, y: bufferLineNumber },
+              end: { x: startX + path.length + 1, y: bufferLineNumber },
+            },
             text: path,
-            activate: (event: MouseEvent) => { this.onFileClick?.(path, event.clientX, event.clientY) },
+            activate: (event: MouseEvent) => {
+              this.onFileClick?.(path, event.clientX, event.clientY)
+            },
           })
         }
         callback(links.length > 0 ? links : undefined)
@@ -207,9 +222,13 @@ export class TerminalInstance {
     this.xterm.registerLinkProvider({
       provideLinks: (bufferLineNumber: number, callback: (links: any[] | undefined) => void) => {
         const line = this.xterm!.buffer.active.getLine(bufferLineNumber - 1)
-        if (!line) { callback(undefined); return }
+        if (!line) {
+          callback(undefined)
+          return
+        }
         const text = line.translateToString()
-        const regex = /(?:https?:\/\/[^\s"'<>]+|(?:www\.)[a-zA-Z0-9][-a-zA-Z0-9]*(?:\.[a-zA-Z]{2,})+(?:\/[^\s"'<>]*)?)/g
+        const regex =
+          /(?:https?:\/\/[^\s"'<>]+|(?:www\.)[a-zA-Z0-9][-a-zA-Z0-9]*(?:\.[a-zA-Z]{2,})+(?:\/[^\s"'<>]*)?)/g
         const links: any[] = []
         let match
         while ((match = regex.exec(text)) !== null) {
@@ -217,7 +236,10 @@ export class TerminalInstance {
           const uri = raw.startsWith('http') ? raw : `http://${raw}`
           const startX = match.index
           links.push({
-            range: { start: { x: startX + 1, y: bufferLineNumber }, end: { x: startX + raw.length + 1, y: bufferLineNumber } },
+            range: {
+              start: { x: startX + 1, y: bufferLineNumber },
+              end: { x: startX + raw.length + 1, y: bufferLineNumber },
+            },
             text: uri,
             activate: (event: MouseEvent) => {
               if (this.onPreviewLink) {
@@ -265,7 +287,9 @@ export class TerminalInstance {
     this._textUnsub = onTextChange((text) => {
       if (!this.xterm) return
       this.xterm.options.fontSize = text.font_size
-      this.xterm.options.fontFamily = text.font_family || getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim()
+      this.xterm.options.fontFamily =
+        text.font_family ||
+        getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim()
       this.xterm.options.lineHeight = text.line_height
       this.xterm.options.letterSpacing = text.letter_spacing
       this.xterm.options.cursorBlink = text.cursor_blink
@@ -337,7 +361,11 @@ export class TerminalInstance {
       const xt = this.xterm
       this.xterm = null
       this.fitAddon = null
-      try { xt.dispose() } catch { /* already disposed or addon race */ }
+      try {
+        xt.dispose()
+      } catch {
+        /* already disposed or addon race */
+      }
     }
   }
 
@@ -389,7 +417,9 @@ export class TerminalInstance {
 
   private _connectWS() {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const url = wsUrlWithToken(`${proto}//${location.host}/ws?paneId=${encodeURIComponent(this.paneId)}`)
+    const url = wsUrlWithToken(
+      `${proto}//${location.host}/ws?paneId=${encodeURIComponent(this.paneId)}`
+    )
     this.ws = new WebSocket(url)
 
     this.ws.onopen = () => {
@@ -402,7 +432,11 @@ export class TerminalInstance {
     this.ws.onmessage = (e) => {
       if (this._destroyed) return
       let msg: ServerMsg
-      try { msg = JSON.parse(e.data) } catch { return }
+      try {
+        msg = JSON.parse(e.data)
+      } catch {
+        return
+      }
       if (!this.xterm) return
       if (msg.type === 'reconnected') {
         this._suppressTitleChange = true
@@ -529,7 +563,11 @@ export class TerminalInstance {
     if (!this.fitAddon || !this.xterm || !this._wrapper) return
     const rect = this._wrapper.getBoundingClientRect()
     if (rect.width === 0 || rect.height === 0) return
-    try { this.fitAddon.fit() } catch { return }
+    try {
+      this.fitAddon.fit()
+    } catch {
+      return
+    }
     const cols = this.xterm.cols
     const rows = this.xterm.rows
     if (cols < 2 || rows < 2) return
@@ -551,7 +589,9 @@ export class TerminalInstance {
   private _setupDragDrop(wrapper: HTMLElement) {
     if (isTauri()) {
       lastFocusedInstance = this
-      const handler = () => { lastFocusedInstance = this }
+      const handler = () => {
+        lastFocusedInstance = this
+      }
       wrapper.addEventListener('focusin', handler)
       this._focusinCleanup = () => wrapper.removeEventListener('focusin', handler)
       setupGlobalTauriDragDrop()
@@ -593,19 +633,20 @@ export class TerminalInstance {
         uriList.split('\n').forEach((u) => {
           u = u.trim()
           if (!u || u.startsWith('#')) return
-          try { paths.push(decodeURIComponent(new URL(u).pathname)) } catch {}
+          try {
+            paths.push(decodeURIComponent(new URL(u).pathname))
+          } catch {}
         })
       }
 
       if (paths.length === 0 && types.includes('text/plain')) {
         const text = dt.getData('text/plain').trim()
         const absPlain =
-          text &&
-          (text.startsWith('/') ||
-            /^[A-Za-z]:[\\/]/.test(text) ||
-            text.startsWith('\\\\'))
+          text && (text.startsWith('/') || /^[A-Za-z]:[\\/]/.test(text) || text.startsWith('\\\\'))
         if (absPlain) {
-          text.split('\n').forEach((l) => { if (l.trim()) paths.push(l.trim()) })
+          text.split('\n').forEach((l) => {
+            if (l.trim()) paths.push(l.trim())
+          })
         }
       }
 
@@ -655,7 +696,10 @@ export class TerminalInstance {
       const SCROLL_THRESHOLD = 12 // Lower threshold for more responsive feel
 
       const clearMomentum = () => {
-        if (momentumId) { cancelAnimationFrame(momentumId); momentumId = 0 }
+        if (momentumId) {
+          cancelAnimationFrame(momentumId)
+          momentumId = 0
+        }
       }
 
       const onTouchStart = (e: TouchEvent) => {
@@ -744,20 +788,22 @@ export class TerminalInstance {
       // Do NOT call scrollLines() — that shifts xterm's viewport into the main-screen
       // scrollback while the app is rendering on the alternate screen, causing a
       // garbled display when both effects are applied simultaneously.
-      target.dispatchEvent(new WheelEvent('wheel', {
-        deltaY,
-        deltaX: 0,
-        deltaZ: 0,
-        deltaMode: 0,
-        bubbles: true,
-        cancelable: true,
-        clientX,
-        clientY,
-      }))
+      target.dispatchEvent(
+        new WheelEvent('wheel', {
+          deltaY,
+          deltaX: 0,
+          deltaZ: 0,
+          deltaMode: 0,
+          bubbles: true,
+          cancelable: true,
+          clientX,
+          clientY,
+        })
+      )
     } else {
       // No mouse tracking: scroll xterm's viewport directly (normal shell / less / man).
-      const lineHeight = (this.xterm.rows && target.clientHeight)
-        ? (target.clientHeight / this.xterm.rows) : 20
+      const lineHeight =
+        this.xterm.rows && target.clientHeight ? target.clientHeight / this.xterm.rows : 20
       const lines = Math.round(deltaY / lineHeight)
       if (lines !== 0) this.xterm.scrollLines(lines)
     }

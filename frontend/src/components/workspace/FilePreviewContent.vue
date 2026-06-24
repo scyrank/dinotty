@@ -1,6 +1,8 @@
 <template>
   <div class="file-workspace-preview">
-    <div v-if="previewLoading" class="file-workspace-placeholder">{{ t('filePreview.loading') }}</div>
+    <div v-if="previewLoading" class="file-workspace-placeholder">
+      {{ t('filePreview.loading') }}
+    </div>
     <div v-else-if="previewErr" class="file-workspace-placeholder err">{{ previewErr }}</div>
     <div v-else-if="!selectedRel || selectedIsDir" class="file-workspace-placeholder">
       {{ t('filePreview.pickFile') }}
@@ -67,88 +69,108 @@
       <iframe v-else-if="meta?.kind === 'pdf'" class="file-pdf" :src="rawUrl"></iframe>
       <template v-else-if="meta?.kind === 'html'">
         <div class="file-editor-root">
-        <div class="file-editor-chrome">
-          <span v-if="editorDirty" class="file-editor-dirty">{{ t('filePreview.modified') }}</span>
-          <button type="button" class="file-editor-tab" @click="$emit('update:htmlShowPreview', false)">
-            {{ t('filePreview.source') }}
-          </button>
-          <button type="button" class="file-editor-tab" @click="$emit('update:htmlShowPreview', true)">
-            {{ t('filePreview.preview') }}
-          </button>
-          <button
-            v-if="showSave"
-            type="button"
-            class="file-editor-save"
-            :disabled="!canSaveEditor"
-            @click="$emit('saveEditor')"
-          >
-            {{ t('filePreview.save') }}
-          </button>
-        </div>
-        <iframe
-          v-if="htmlShowPreview"
-          class="file-pdf"
-          :srcdoc="editorText"
-        ></iframe>
-        <MonacoEditor
-          v-else
-          :model-value="editorText"
-          :language="language"
-          :readonly="!!meta?.truncated"
-          :file-path="filePath"
-          :pane-id="paneId"
-          @update:model-value="$emit('update:editorText', $event)"
-          @save="$emit('saveEditor')"
-          @selection-change="(p) => $emit('selection-change', p)"
-        />
+          <div class="file-editor-chrome">
+            <span v-if="editorDirty" class="file-editor-dirty">{{
+              t('filePreview.modified')
+            }}</span>
+            <button
+              type="button"
+              class="file-editor-tab"
+              @click="$emit('update:htmlShowPreview', false)"
+            >
+              {{ t('filePreview.source') }}
+            </button>
+            <button
+              type="button"
+              class="file-editor-tab"
+              @click="$emit('update:htmlShowPreview', true)"
+            >
+              {{ t('filePreview.preview') }}
+            </button>
+            <button
+              v-if="showSave"
+              type="button"
+              class="file-editor-save"
+              :disabled="!canSaveEditor"
+              @click="$emit('saveEditor')"
+            >
+              {{ t('filePreview.save') }}
+            </button>
+          </div>
+          <iframe v-if="htmlShowPreview" class="file-pdf" :srcdoc="editorText"></iframe>
+          <MonacoEditor
+            v-else
+            :model-value="editorText"
+            :language="language"
+            :readonly="!!meta?.truncated"
+            :file-path="filePath"
+            :pane-id="paneId"
+            @update:model-value="$emit('update:editorText', $event)"
+            @save="$emit('saveEditor')"
+            @selection-change="(p) => $emit('selection-change', p)"
+          />
         </div>
       </template>
       <template v-else-if="meta?.kind === 'text' || meta?.kind === 'markdown'">
         <div class="file-editor-root">
-        <div class="file-editor-chrome">
-          <span v-if="editorDirty" class="file-editor-dirty">{{ t('filePreview.modified') }}</span>
-          <template v-if="meta?.kind === 'markdown'">
-            <button type="button" class="file-editor-tab" @click="$emit('update:mdShowPreview', false)">
-              {{ t('filePreview.source') }}
+          <div class="file-editor-chrome">
+            <span v-if="editorDirty" class="file-editor-dirty">{{
+              t('filePreview.modified')
+            }}</span>
+            <template v-if="meta?.kind === 'markdown'">
+              <button
+                type="button"
+                class="file-editor-tab"
+                @click="$emit('update:mdShowPreview', false)"
+              >
+                {{ t('filePreview.source') }}
+              </button>
+              <button
+                type="button"
+                class="file-editor-tab"
+                @click="$emit('update:mdShowPreview', true)"
+              >
+                {{ t('filePreview.preview') }}
+              </button>
+            </template>
+            <button
+              v-if="showSave"
+              type="button"
+              class="file-editor-save"
+              :disabled="!canSaveEditor"
+              @click="$emit('saveEditor')"
+            >
+              {{ t('filePreview.save') }}
             </button>
-            <button type="button" class="file-editor-tab" @click="$emit('update:mdShowPreview', true)">
-              {{ t('filePreview.preview') }}
-            </button>
-          </template>
-          <button
-            v-if="showSave"
-            type="button"
-            class="file-editor-save"
-            :disabled="!canSaveEditor"
-            @click="$emit('saveEditor')"
-          >
-            {{ t('filePreview.save') }}
-          </button>
-        </div>
-        <div
-          v-if="meta?.kind === 'markdown' && mdShowPreview"
-          class="file-md file-md-body file-editor-preview"
-          v-html="markdownEditorHtml"
-        ></div>
-        <MonacoEditor
-          v-else
-          :model-value="editorText"
-          :language="language"
-          :readonly="!!meta?.truncated"
-          :file-path="filePath"
-          :pane-id="paneId"
-          @update:model-value="$emit('update:editorText', $event)"
-          @save="$emit('saveEditor')"
-          @selection-change="(p) => $emit('selection-change', p)"
-        />
+          </div>
+          <div
+            v-if="meta?.kind === 'markdown' && mdShowPreview"
+            class="file-md file-md-body file-editor-preview"
+            v-html="markdownEditorHtml"
+          ></div>
+          <MonacoEditor
+            v-else
+            :model-value="editorText"
+            :language="language"
+            :readonly="!!meta?.truncated"
+            :file-path="filePath"
+            :pane-id="paneId"
+            @update:model-value="$emit('update:editorText', $event)"
+            @save="$emit('saveEditor')"
+            @selection-change="(p) => $emit('selection-change', p)"
+          />
         </div>
       </template>
       <div v-else-if="meta?.kind === 'office'" class="file-office">
-        <div v-if="officeLoading" class="file-workspace-placeholder">{{ t('filePreview.loading') }}</div>
+        <div v-if="officeLoading" class="file-workspace-placeholder">
+          {{ t('filePreview.loading') }}
+        </div>
         <div v-else-if="officeErr" class="file-workspace-placeholder err">{{ officeErr }}</div>
         <div v-else class="file-office-body" v-html="officeHtml"></div>
       </div>
-      <div v-else class="file-workspace-placeholder">{{ meta?.message || t('filePreview.unsupported') }}</div>
+      <div v-else class="file-workspace-placeholder">
+        {{ meta?.message || t('filePreview.unsupported') }}
+      </div>
     </template>
   </div>
 </template>
@@ -267,9 +289,15 @@ video.file-media {
   color: var(--fg, #d6d6d6);
 }
 
-.file-audio-el { display: none; }
+.file-audio-el {
+  display: none;
+}
 
-.file-audio-head { display: flex; gap: 14px; align-items: center; }
+.file-audio-head {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
 
 .file-audio-cover {
   width: clamp(64px, 9vmin, 92px);
@@ -285,7 +313,12 @@ video.file-media {
   flex: 0 0 auto;
 }
 
-.file-audio-meta { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.file-audio-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 
 .file-audio-title {
   font-size: clamp(15px, 3vmin, 20px);
@@ -313,10 +346,21 @@ video.file-media {
   max-width: 400px;
 }
 
-.file-audio-time { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--fg-muted, #9a9a9a); }
-.file-audio-seek { width: 100%; accent-color: rgba(255, 255, 255, 0.85); }
+.file-audio-time {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--fg-muted, #9a9a9a);
+}
+.file-audio-seek {
+  width: 100%;
+  accent-color: rgba(255, 255, 255, 0.85);
+}
 
-.file-audio-controls { display: flex; align-items: center; gap: 10px; }
+.file-audio-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 
 .file-audio-btn {
   border: 1px solid rgba(255, 255, 255, 0.16);
@@ -329,10 +373,23 @@ video.file-media {
   user-select: none;
 }
 
-.file-audio-btn.play { padding: 10px 14px; font-weight: 650; }
-.file-audio-spacer { flex: 1 1 0; min-width: 0; }
-.file-audio-vol-ico { color: var(--fg-muted, #9a9a9a); font-size: 12px; }
-.file-audio-vol { width: 140px; max-width: 30vw; accent-color: rgba(255, 255, 255, 0.85); }
+.file-audio-btn.play {
+  padding: 10px 14px;
+  font-weight: 650;
+}
+.file-audio-spacer {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.file-audio-vol-ico {
+  color: var(--fg-muted, #9a9a9a);
+  font-size: 12px;
+}
+.file-audio-vol {
+  width: 140px;
+  max-width: 30vw;
+  accent-color: rgba(255, 255, 255, 0.85);
+}
 
 .file-office {
   flex: 1 1 0;
@@ -342,19 +399,45 @@ video.file-media {
   color: var(--fg, #ccc);
 }
 
-.file-office-body :deep(p) { margin: 0.55em 0; line-height: 1.55; }
+.file-office-body :deep(p) {
+  margin: 0.55em 0;
+  line-height: 1.55;
+}
 .file-office-body :deep(h1),
 .file-office-body :deep(h2),
 .file-office-body :deep(h3),
 .file-office-body :deep(h4),
 .file-office-body :deep(h5),
-.file-office-body :deep(h6) { margin: 1.05em 0 0.45em; font-weight: 600; line-height: 1.25; color: var(--fg-bright, #e8e8e8); }
-.file-office-body :deep(table) { border-collapse: collapse; width: 100%; margin: 0.75em 0; font-size: 0.92em; }
+.file-office-body :deep(h6) {
+  margin: 1.05em 0 0.45em;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--fg-bright, #e8e8e8);
+}
+.file-office-body :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.75em 0;
+  font-size: 0.92em;
+}
 .file-office-body :deep(td),
-.file-office-body :deep(th) { border: 1px solid var(--border, #444); padding: 0.35em 0.55em; text-align: left; vertical-align: top; }
-.file-office-body :deep(th) { background: var(--tab-bg, #252525); }
+.file-office-body :deep(th) {
+  border: 1px solid var(--border, #444);
+  padding: 0.35em 0.55em;
+  text-align: left;
+  vertical-align: top;
+}
+.file-office-body :deep(th) {
+  background: var(--tab-bg, #252525);
+}
 
-.file-pdf { flex: 1 1 0; min-height: min(240px, 45vh); width: 100%; border: none; background: #222; }
+.file-pdf {
+  flex: 1 1 0;
+  min-height: min(240px, 45vh);
+  width: 100%;
+  border: none;
+  background: #222;
+}
 
 .file-editor-root {
   flex: 1 1 0;
@@ -375,7 +458,10 @@ video.file-media {
   flex-shrink: 0;
 }
 
-.file-editor-dirty { font-size: 12px; color: var(--color-orange, #d19a66); }
+.file-editor-dirty {
+  font-size: 12px;
+  color: var(--color-orange, #d19a66);
+}
 
 .file-editor-tab {
   border: none;
@@ -387,7 +473,9 @@ video.file-media {
   cursor: pointer;
 }
 
-.file-editor-tab:hover { color: var(--fg, #ccc); }
+.file-editor-tab:hover {
+  color: var(--fg, #ccc);
+}
 
 .file-editor-save {
   margin-left: auto;
@@ -400,7 +488,10 @@ video.file-media {
   cursor: pointer;
 }
 
-.file-editor-save:disabled { opacity: 0.4; cursor: default; }
+.file-editor-save:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 
 .file-editor-preview {
   flex: 1 1 0;
@@ -422,7 +513,13 @@ video.file-media {
 }
 
 .file-md-body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
   font-size: var(--preview-prose-fs, clamp(13px, 2.8vw, 16px));
   line-height: 1.55;
   white-space: normal;
@@ -432,25 +529,98 @@ video.file-media {
 .file-md-body :deep(h1),
 .file-md-body :deep(h2),
 .file-md-body :deep(h3),
-.file-md-body :deep(h4) { margin: 1.1em 0 0.45em; font-weight: 600; line-height: 1.25; color: var(--fg-bright, #e8e8e8); }
-.file-md-body :deep(h1) { font-size: 1.45em; border-bottom: 1px solid var(--border, #333); padding-bottom: 0.25em; }
-.file-md-body :deep(h2) { font-size: 1.25em; }
-.file-md-body :deep(h3) { font-size: 1.08em; }
-.file-md-body :deep(p) { margin: 0.55em 0; }
-.file-md-body :deep(a) { color: var(--accent, #89b4fa); text-decoration: none; }
-.file-md-body :deep(a:hover) { text-decoration: underline; }
+.file-md-body :deep(h4) {
+  margin: 1.1em 0 0.45em;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--fg-bright, #e8e8e8);
+}
+.file-md-body :deep(h1) {
+  font-size: 1.45em;
+  border-bottom: 1px solid var(--border, #333);
+  padding-bottom: 0.25em;
+}
+.file-md-body :deep(h2) {
+  font-size: 1.25em;
+}
+.file-md-body :deep(h3) {
+  font-size: 1.08em;
+}
+.file-md-body :deep(p) {
+  margin: 0.55em 0;
+}
+.file-md-body :deep(a) {
+  color: var(--accent, #89b4fa);
+  text-decoration: none;
+}
+.file-md-body :deep(a:hover) {
+  text-decoration: underline;
+}
 .file-md-body :deep(ul),
-.file-md-body :deep(ol) { margin: 0.5em 0; padding-left: 1.5em; }
-.file-md-body :deep(li) { margin: 0.18em 0; }
-.file-md-body :deep(blockquote) { margin: 0.6em 0; padding: 0.2em 0 0.2em 0.85em; border-left: 3px solid var(--border, #555); color: var(--fg-muted, #aaa); }
-.file-md-body :deep(hr) { border: none; border-top: 1px solid var(--border, #333); margin: 1em 0; }
-.file-md-body :deep(table) { border-collapse: collapse; width: 100%; margin: 0.75em 0; font-size: 0.92em; }
+.file-md-body :deep(ol) {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+.file-md-body :deep(li) {
+  margin: 0.18em 0;
+}
+.file-md-body :deep(blockquote) {
+  margin: 0.6em 0;
+  padding: 0.2em 0 0.2em 0.85em;
+  border-left: 3px solid var(--border, #555);
+  color: var(--fg-muted, #aaa);
+}
+.file-md-body :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--border, #333);
+  margin: 1em 0;
+}
+.file-md-body :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.75em 0;
+  font-size: 0.92em;
+}
 .file-md-body :deep(th),
-.file-md-body :deep(td) { border: 1px solid var(--border, #444); padding: 0.35em 0.55em; text-align: left; }
-.file-md-body :deep(th) { background: var(--tab-bg, #252525); }
-.file-md-body :deep(pre) { margin: 0.65em 0; padding: 10px 12px; overflow: auto; background: var(--bg, #1a1a1a); border: 1px solid var(--border, #333); border-radius: 4px; font-family: var(--font-mono); font-size: var(--preview-code-fs); line-height: 1.45; }
-.file-md-body :deep(pre code) { font-family: inherit; font-size: inherit; background: none; padding: 0; }
-.file-md-body :deep(code:not(pre code)) { font-family: var(--font-mono); font-size: 0.88em; padding: 0.12em 0.38em; background: var(--tab-bg, #252525); border-radius: 3px; }
-.file-md-body :deep(img) { max-width: 100%; height: auto; vertical-align: middle; }
-.file-md-body :deep(input[type='checkbox']) { margin-right: 0.35em; vertical-align: middle; }
+.file-md-body :deep(td) {
+  border: 1px solid var(--border, #444);
+  padding: 0.35em 0.55em;
+  text-align: left;
+}
+.file-md-body :deep(th) {
+  background: var(--tab-bg, #252525);
+}
+.file-md-body :deep(pre) {
+  margin: 0.65em 0;
+  padding: 10px 12px;
+  overflow: auto;
+  background: var(--bg, #1a1a1a);
+  border: 1px solid var(--border, #333);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--preview-code-fs);
+  line-height: 1.45;
+}
+.file-md-body :deep(pre code) {
+  font-family: inherit;
+  font-size: inherit;
+  background: none;
+  padding: 0;
+}
+.file-md-body :deep(code:not(pre code)) {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  padding: 0.12em 0.38em;
+  background: var(--tab-bg, #252525);
+  border-radius: 3px;
+}
+.file-md-body :deep(img) {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+.file-md-body :deep(input[type='checkbox']) {
+  margin-right: 0.35em;
+  vertical-align: middle;
+}
 </style>

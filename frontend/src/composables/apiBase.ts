@@ -31,8 +31,10 @@ export function clearAuthToken(): void {
 }
 
 export function hasAuthToken(): boolean {
-  return !!(localStorage.getItem(STORAGE_KEY) ||
-    document.querySelector('meta[name="auth-token"]')?.getAttribute('content'))
+  return !!(
+    localStorage.getItem(STORAGE_KEY) ||
+    document.querySelector('meta[name="auth-token"]')?.getAttribute('content')
+  )
 }
 
 export async function validateToken(token: string): Promise<boolean> {

@@ -5,7 +5,9 @@ import type { DirEntry } from '../components/workspace/TreeRows'
 
 // --- Tauri native drag-drop support ---
 let tauriFileDropRegistered = false
-let _activeUploadFn: ((files: { file: File; path: string }[], targetDir?: string) => Promise<void>) | null = null
+let _activeUploadFn:
+  | ((files: { file: File; path: string }[], targetDir?: string) => Promise<void>)
+  | null = null
 let _workspaceDropHover = false
 let _hoveredDir: string | undefined = undefined
 
@@ -31,8 +33,12 @@ function fileToBase64(file: File): Promise<string> {
 function isMouseOverWorkspace(): boolean {
   if (!_workspaceElement) return false
   const rect = _workspaceElement.getBoundingClientRect()
-  return _workspaceMouseX >= rect.left && _workspaceMouseX <= rect.right &&
-         _workspaceMouseY >= rect.top && _workspaceMouseY <= rect.bottom
+  return (
+    _workspaceMouseX >= rect.left &&
+    _workspaceMouseX <= rect.right &&
+    _workspaceMouseY >= rect.top &&
+    _workspaceMouseY <= rect.bottom
+  )
 }
 
 function setupTauriFileDrop() {
@@ -54,7 +60,7 @@ function setupTauriFileDrop() {
     const files: { file: File; path: string }[] = []
     for (const p of paths) {
       try {
-        const b64: string = await tauriInvoke('tauri_read_file', { path: p }) as string
+        const b64: string = (await tauriInvoke('tauri_read_file', { path: p })) as string
         const binary = atob(b64)
         const bytes = new Uint8Array(binary.length)
         for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
@@ -68,7 +74,9 @@ function setupTauriFileDrop() {
     if (files.length) await _activeUploadFn!(files, _hoveredDir)
   })
   if (unlistenPromise && typeof unlistenPromise.then === 'function') {
-    unlistenPromise.then((fn: () => void) => { _tauriUnlisten = fn })
+    unlistenPromise.then((fn: () => void) => {
+      _tauriUnlisten = fn
+    })
   }
 }
 
@@ -133,7 +141,10 @@ export function useFileOperations(opts: {
   })
 
   const canDownload = computed(
-    () => !!opts.selectedRel.value && !opts.selectedIsDir.value && opts.meta.value?.kind !== 'unsupported',
+    () =>
+      !!opts.selectedRel.value &&
+      !opts.selectedIsDir.value &&
+      opts.meta.value?.kind !== 'unsupported'
   )
 
   function parentRelPath(rel: string): string {
@@ -146,14 +157,19 @@ export function useFileOperations(opts: {
     return rel ? `${root}/${rel}` : root
   }
 
-  function triggerUpload() { fileInputRef.value?.click() }
+  function triggerUpload() {
+    fileInputRef.value?.click()
+  }
 
   async function uploadFiles(files: { file: File; path: string }[], targetDir?: string) {
     if (!files.length) return
     await getApiBase()
-    const dir = targetDir !== undefined
-      ? targetDir
-      : (opts.selectedIsDir.value && opts.selectedRel.value ? opts.selectedRel.value : '')
+    const dir =
+      targetDir !== undefined
+        ? targetDir
+        : opts.selectedIsDir.value && opts.selectedRel.value
+          ? opts.selectedRel.value
+          : ''
     try {
       if (isTauri()) {
         const token = getAuthToken()
@@ -162,7 +178,7 @@ export function useFileOperations(opts: {
             name: file.name,
             path,
             data: await fileToBase64(file),
-          })),
+          }))
         )
         const resp = (await tauriInvoke('tauri_upload', {
           paneId: opts.paneId(),
@@ -178,7 +194,10 @@ export function useFileOperations(opts: {
           fd.append('path', path)
           fd.append('file', file)
         }
-        const res = await authFetch(apiUrl(`/api/workspace/upload?${q}`), { method: 'POST', body: fd })
+        const res = await authFetch(apiUrl(`/api/workspace/upload?${q}`), {
+          method: 'POST',
+          body: fd,
+        })
         if (!res.ok) console.error('[upload] server error:', res.status)
       }
     } catch (e) {
@@ -187,7 +206,9 @@ export function useFileOperations(opts: {
     const next = { ...opts.childCache.value }
     delete next[dir]
     opts.childCache.value = next
-    try { await opts.ensureChildren(dir) } catch {}
+    try {
+      await opts.ensureChildren(dir)
+    } catch {}
   }
 
   async function onFilePick(ev: Event) {
@@ -200,16 +221,25 @@ export function useFileOperations(opts: {
       files.push({ file: f, path: f.webkitRelativePath || f.name })
     }
     inp.value = ''
-    try { await uploadFiles(files) } catch (e) { console.error('[upload]', e) }
+    try {
+      await uploadFiles(files)
+    } catch (e) {
+      console.error('[upload]', e)
+    }
   }
 
-  async function traverseEntry(entry: FileSystemEntry, basePath: string): Promise<{ file: File; path: string }[]> {
+  async function traverseEntry(
+    entry: FileSystemEntry,
+    basePath: string
+  ): Promise<{ file: File; path: string }[]> {
     if (entry.isFile) {
       const fileEntry = entry as FileSystemFileEntry
       try {
         const file = await new Promise<File>((resolve, reject) => fileEntry.file(resolve, reject))
         return [{ file, path: basePath + entry.name }]
-      } catch { return [] }
+      } catch {
+        return []
+      }
     }
     if (entry.isDirectory) {
       const dirEntry = entry as FileSystemDirectoryEntry
@@ -218,12 +248,18 @@ export function useFileOperations(opts: {
       try {
         let batch: FileSystemEntry[]
         do {
-          batch = await new Promise<FileSystemEntry[]>((resolve, reject) => reader.readEntries(resolve, reject))
+          batch = await new Promise<FileSystemEntry[]>((resolve, reject) =>
+            reader.readEntries(resolve, reject)
+          )
           entries.push(...batch)
         } while (batch.length > 0)
-      } catch { return [] }
+      } catch {
+        return []
+      }
       const results: { file: File; path: string }[] = []
-      const childResults = await Promise.all(entries.map(child => traverseEntry(child, basePath + entry.name + '/')))
+      const childResults = await Promise.all(
+        entries.map((child) => traverseEntry(child, basePath + entry.name + '/'))
+      )
       for (const r of childResults) results.push(...r)
       return results
     }
@@ -237,9 +273,16 @@ export function useFileOperations(opts: {
     const promises: Promise<void>[] = []
     for (let i = 0; i < items.length; i++) {
       const entry = items[i].webkitGetAsEntry?.()
-      if (entry) promises.push(traverseEntry(entry, '').then(files => { allFiles.push(...files) }))
+      if (entry)
+        promises.push(
+          traverseEntry(entry, '').then((files) => {
+            allFiles.push(...files)
+          })
+        )
     }
-    try { await Promise.all(promises) } catch {}
+    try {
+      await Promise.all(promises)
+    } catch {}
     if (!allFiles.length) return
     await uploadFiles(allFiles)
   }
@@ -267,7 +310,7 @@ export function useFileOperations(opts: {
   async function deleteSelected(
     skipConfirm: boolean,
     t: (key: string) => string,
-    resetState: () => void,
+    resetState: () => void
   ): Promise<boolean> {
     const rel = opts.selectedRel.value
     if (!rel) return false
@@ -299,18 +342,28 @@ export function useFileOperations(opts: {
     }
     resetState()
     opts.emit('navigate', absolutePath(parentRel))
-    try { await opts.ensureChildren(parentRel) } catch {}
+    try {
+      await opts.ensureChildren(parentRel)
+    } catch {}
     return true
   }
 
   // --- Tauri native drag-drop wiring ---
   if (isTauri()) setupTauriFileDrop()
 
-  function setActiveWorkspace() { _activeUploadFn = uploadFiles }
-  function clearActiveWorkspace() { if (_activeUploadFn === uploadFiles) _activeUploadFn = null }
+  function setActiveWorkspace() {
+    _activeUploadFn = uploadFiles
+  }
+  function clearActiveWorkspace() {
+    if (_activeUploadFn === uploadFiles) _activeUploadFn = null
+  }
 
-  function setHoveredDir(dir: string | undefined) { _hoveredDir = dir }
-  function clearHoveredDir() { _hoveredDir = undefined }
+  function setHoveredDir(dir: string | undefined) {
+    _hoveredDir = dir
+  }
+  function clearHoveredDir() {
+    _hoveredDir = undefined
+  }
 
   function onWorkspaceDragEnter() {
     dragCounter.value++

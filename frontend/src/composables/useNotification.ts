@@ -23,11 +23,11 @@ interface BuiltinDef {
 }
 
 const BUILTIN_SOUNDS: Record<string, BuiltinDef> = {
-  'ding': { type: 'sine', freqs: [880], duration: 150, gap: 0 },
+  ding: { type: 'sine', freqs: [880], duration: 150, gap: 0 },
   'chime-up': { type: 'sine', freqs: [523, 659, 784], duration: 100, gap: 80 },
   'chime-down': { type: 'sine', freqs: [784, 659, 523], duration: 100, gap: 80 },
   'double-beep': { type: 'square', freqs: [660, 660], duration: 80, gap: 100 },
-  'alarm': { type: 'sawtooth', freqs: [440, 440, 440], duration: 200, gap: 150 },
+  alarm: { type: 'sawtooth', freqs: [440, 440, 440], duration: 200, gap: 150 },
   'soft-ping': { type: 'triangle', freqs: [1200], duration: 100, gap: 0 },
   'task-done': { type: 'sine', freqs: [523, 659, 784, 1047], duration: 80, gap: 60 },
   'error-buzz': { type: 'sawtooth', freqs: [220], duration: 300, gap: 0 },
@@ -103,7 +103,13 @@ function genId(): string {
 }
 
 function severityRank(t: NotificationType): number {
-  const ranks: Record<NotificationType, number> = { info: 0, success: 1, warning: 2, error: 3, urgent: 4 }
+  const ranks: Record<NotificationType, number> = {
+    info: 0,
+    success: 1,
+    warning: 2,
+    error: 3,
+    urgent: 4,
+  }
   return ranks[t] ?? 0
 }
 
@@ -111,7 +117,13 @@ function getNotifConfig() {
   return settings.notification
 }
 
-function handleEvent(event: { type: string; pane_id: string; title?: string | null; body?: string; notification_type?: string }) {
+function handleEvent(event: {
+  type: string
+  pane_id: string
+  title?: string | null
+  body?: string
+  notification_type?: string
+}) {
   const cfg = getNotifConfig()
   if (!cfg || !cfg.enabled) return
 
@@ -181,10 +193,16 @@ function showToast(item: NotificationItem) {
   const children = [
     item.title ? h('strong', { class: 'notif-toast-title' }, item.title) : null,
     h('span', { class: 'notif-toast-body' }, item.body),
-    h('button', {
-      class: 'notif-toast-btn',
-      onClick: () => { panelVisible.value = true },
-    }, t('notification.viewAll')),
+    h(
+      'button',
+      {
+        class: 'notif-toast-btn',
+        onClick: () => {
+          panelVisible.value = true
+        },
+      },
+      t('notification.viewAll')
+    ),
   ].filter(Boolean)
   const content = h('div', { class: 'notif-toast-content' }, children)
   toast(content, {
@@ -192,7 +210,6 @@ function showToast(item: NotificationItem) {
     timeout: item.type === 'urgent' ? 8000 : 5000,
   })
 }
-
 
 function connectWs() {
   if (ws) return

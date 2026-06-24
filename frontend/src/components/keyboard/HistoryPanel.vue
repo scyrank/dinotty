@@ -1,5 +1,9 @@
 <template>
-  <div class="history-panel-overlay" @mousedown.self="$emit('close')" @touchstart.self="$emit('close')">
+  <div
+    class="history-panel-overlay"
+    @mousedown.self="$emit('close')"
+    @touchstart.self="$emit('close')"
+  >
     <div class="history-panel">
       <div class="history-panel-header">
         <input
@@ -11,21 +15,43 @@
           @input="onSearch"
         />
         <button class="history-close-btn" @click="$emit('close')">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
         </button>
       </div>
       <div class="history-list">
-        <div
-          v-for="item in filteredItems"
-          :key="item.command"
-          class="history-item"
-        >
+        <div v-for="item in filteredItems" :key="item.command" class="history-item">
           <button class="history-item-cmd" @click="$emit('select', item.command)">
             <span class="history-item-text">{{ item.command }}</span>
             <span class="history-item-freq">{{ item.frequency }}</span>
           </button>
           <button class="history-item-delete" @click="onDelete(item.command)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <polyline points="3 6 5 6 21 6" />
+              <path
+                d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+              />
+            </svg>
           </button>
         </div>
         <div v-if="filteredItems.length === 0" class="history-empty">No commands found</div>
@@ -57,7 +83,7 @@ const searchRef = ref<HTMLInputElement>()
 const filteredItems = computed(() => {
   const q = searchQuery.value.trim().toLowerCase()
   if (!q) return props.items
-  return props.items.filter(item => item.command.toLowerCase().includes(q))
+  return props.items.filter((item) => item.command.toLowerCase().includes(q))
 })
 
 function onSearch() {

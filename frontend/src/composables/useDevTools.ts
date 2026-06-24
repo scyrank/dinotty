@@ -21,7 +21,11 @@ const MAX_ENTRIES = 500
 
 function originOf(url: string): string | null {
   if (!url) return null
-  try { return new URL(url).origin } catch { return null }
+  try {
+    return new URL(url).origin
+  } catch {
+    return null
+  }
 }
 
 export function useDevTools() {
@@ -40,9 +44,7 @@ export function useDevTools() {
     return allowedOrigins.has(origin)
   }
 
-  const errorCount = computed(() =>
-    consoleEntries.value.filter(e => e.level === 'error').length
-  )
+  const errorCount = computed(() => consoleEntries.value.filter((e) => e.level === 'error').length)
 
   function onMessage(e: MessageEvent) {
     if (!isAllowedOrigin(e.origin)) return
@@ -107,5 +109,13 @@ export function useDevTools() {
     networkEntries.value = []
   }
 
-  return { consoleEntries, networkEntries, errorCount, clearConsole, clearNetwork, allowOrigin, isAllowedOrigin }
+  return {
+    consoleEntries,
+    networkEntries,
+    errorCount,
+    clearConsole,
+    clearNetwork,
+    allowOrigin,
+    isAllowedOrigin,
+  }
 }

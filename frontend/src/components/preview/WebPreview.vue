@@ -82,13 +82,17 @@ function onResize() {
   isLandscape.value = window.innerWidth > window.innerHeight
 }
 
-watch(() => [props.url, props.visible], () => {
-  if (props.visible && props.url) {
-    currentUrl.value = props.url
-    addressValue.value = props.url
-    navCounter.value++
-  }
-}, { immediate: true })
+watch(
+  () => [props.url, props.visible],
+  () => {
+    if (props.visible && props.url) {
+      currentUrl.value = props.url
+      addressValue.value = props.url
+      navCounter.value++
+    }
+  },
+  { immediate: true }
+)
 
 function navigateFromInput() {
   const val = addressValue.value.trim()

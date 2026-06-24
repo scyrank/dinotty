@@ -58,9 +58,7 @@ export interface MonitorData {
   gpu: GpuData[]
 }
 
-export type MonitorMessage =
-  | MonitorData
-  | { type: 'history'; data: MonitorData[] }
+export type MonitorMessage = MonitorData | { type: 'history'; data: MonitorData[] }
 
 export const monitorData = ref<MonitorData | null>(null)
 export const monitorConnected = ref(false)
@@ -154,8 +152,14 @@ export function startMonitor() {
 
 export function stopMonitor() {
   started = false
-  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
-  if (ws) { ws.close(1000); ws = null }
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+  if (ws) {
+    ws.close(1000)
+    ws = null
+  }
   monitorConnected.value = false
 }
 

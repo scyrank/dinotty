@@ -21,10 +21,18 @@ class MockWebSocket {
 // Stub localStorage so persist() can write without throwing
 const localStorageMock = {
   store: {} as Record<string, string>,
-  getItem(key: string) { return this.store[key] ?? null },
-  setItem(key: string, value: string) { this.store[key] = value },
-  removeItem(key: string) { delete this.store[key] },
-  clear() { this.store = {} },
+  getItem(key: string) {
+    return this.store[key] ?? null
+  },
+  setItem(key: string, value: string) {
+    this.store[key] = value
+  },
+  removeItem(key: string) {
+    delete this.store[key]
+  },
+  clear() {
+    this.store = {}
+  },
 }
 ;(global as any).localStorage = localStorageMock
 
@@ -57,7 +65,10 @@ vi.mock('../composables/apiBase', () => ({
   checkTokenConfigured: async () => false,
 }))
 vi.mock('../composables/useTransport', () => ({ isTauri: () => false }))
-vi.mock('../composables/useTerminal', () => ({ isTouchDevice: () => false, setActivePaneId: () => {} }))
+vi.mock('../composables/useTerminal', () => ({
+  isTouchDevice: () => false,
+  setActivePaneId: () => {},
+}))
 // Per-binding key map so Cmd+W can be dispatched without colliding with
 // other keyActions in onGlobalKeydown (the first matching binding wins).
 const BINDING_KEYS: Record<string, string> = {
@@ -165,7 +176,18 @@ import { settings } from '../composables/useSettings'
 // the inline arrow handler runs against the live `tabs` state.
 const SplitContainerStub = defineComponent({
   name: 'SplitContainer',
-  emits: ['close', 'register', 'title-change', 'focus', 'input', 'file-click', 'preview-link', 'link-activate', 'reorder', 'divider-drag-end'],
+  emits: [
+    'close',
+    'register',
+    'title-change',
+    'focus',
+    'input',
+    'file-click',
+    'preview-link',
+    'link-activate',
+    'reorder',
+    'divider-drag-end',
+  ],
   setup(_, { emit }) {
     return () => h('div', { class: 'split-stub' })
   },
@@ -176,11 +198,12 @@ const ConfirmModalStub = defineComponent({
   props: ['visible', 'title', 'message', 'confirmText', 'cancelText'],
   emits: ['confirm', 'cancel'],
   setup(props, { emit }) {
-    return () => h('div', {
-      class: 'confirm-stub',
-      'data-visible': String(props.visible),
-      onClick: () => emit('confirm'),
-    })
+    return () =>
+      h('div', {
+        class: 'confirm-stub',
+        'data-visible': String(props.visible),
+        onClick: () => emit('confirm'),
+      })
   },
 })
 
@@ -348,11 +371,13 @@ describe('App.vue - Cmd+W routes through confirmation gate in split-pane mode', 
 
     // Dispatch Cmd+W (stubbed key 'w' for closeTab binding).
     // App.vue attaches the keydown listener to `document`.
-    document.dispatchEvent(new KeyboardEvent('keydown', {
-      key: 'w',
-      metaKey: true,
-      bubbles: true,
-    }))
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'w',
+        metaKey: true,
+        bubbles: true,
+      })
+    )
     await nextTick()
 
     // closePane must NOT have been called yet — we expect the modal gate
@@ -371,11 +396,13 @@ describe('App.vue - Cmd+W routes through confirmation gate in split-pane mode', 
 
     const wrapper = await mountWithTabs()
 
-    document.dispatchEvent(new KeyboardEvent('keydown', {
-      key: 'w',
-      metaKey: true,
-      bubbles: true,
-    }))
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'w',
+        metaKey: true,
+        bubbles: true,
+      })
+    )
     await nextTick()
 
     const confirmModal = wrapper.findComponent(ConfirmModalStub)
@@ -398,11 +425,13 @@ describe('App.vue - Cmd+W routes through confirmation gate in split-pane mode', 
 
     const wrapper = await mountWithTabs()
 
-    document.dispatchEvent(new KeyboardEvent('keydown', {
-      key: 'w',
-      metaKey: true,
-      bubbles: true,
-    }))
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'w',
+        metaKey: true,
+        bubbles: true,
+      })
+    )
     await nextTick()
 
     expect(mocks.closePane).toHaveBeenCalledWith('pane-1')

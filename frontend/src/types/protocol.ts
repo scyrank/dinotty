@@ -66,7 +66,13 @@ export interface SyncLayoutUpdated {
   active_pane_id: string
 }
 
-export type SyncServerMsg = SyncTabList | SyncTabCreated | SyncTabClosed | SyncTabActivated | SyncPluginChanged | SyncLayoutUpdated
+export type SyncServerMsg =
+  | SyncTabList
+  | SyncTabCreated
+  | SyncTabClosed
+  | SyncTabActivated
+  | SyncPluginChanged
+  | SyncLayoutUpdated
 
 export interface SyncCreateTab {
   type: 'create_tab'
@@ -97,4 +103,9 @@ export interface SyncUpdateLayout {
   active_pane_id: string
 }
 
-export type SyncClientMsg = SyncCreateTab | SyncCloseTab | SyncClosePane | SyncActivateTab | SyncUpdateLayout
+export type SyncClientMsg =
+  | SyncCreateTab
+  | SyncCloseTab
+  | SyncClosePane
+  | SyncActivateTab
+  | SyncUpdateLayout

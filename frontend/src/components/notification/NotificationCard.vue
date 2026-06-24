@@ -57,14 +57,35 @@ const formattedTime = computed(() => {
   border-radius: 6px 0 0 6px;
   flex-shrink: 0;
 }
-.type-info .card-stripe, .type-info .card-dot { background: var(--accent, #8A8A8A); }
-.type-success .card-stripe, .type-success .card-dot { background: var(--color-green, #34d399); }
-.type-warning .card-stripe, .type-warning .card-dot { background: var(--color-yellow, #f59e0b); }
-.type-error .card-stripe, .type-error .card-dot { background: var(--color-red, #ef4444); }
-.type-urgent .card-stripe, .type-urgent .card-dot { background: var(--color-red, #ef4444); animation: pulse 1.5s infinite; }
+.type-info .card-stripe,
+.type-info .card-dot {
+  background: var(--accent, #8a8a8a);
+}
+.type-success .card-stripe,
+.type-success .card-dot {
+  background: var(--color-green, #34d399);
+}
+.type-warning .card-stripe,
+.type-warning .card-dot {
+  background: var(--color-yellow, #f59e0b);
+}
+.type-error .card-stripe,
+.type-error .card-dot {
+  background: var(--color-red, #ef4444);
+}
+.type-urgent .card-stripe,
+.type-urgent .card-dot {
+  background: var(--color-red, #ef4444);
+  animation: pulse 1.5s infinite;
+}
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 .card-content {
   flex: 1;
@@ -102,7 +123,10 @@ const formattedTime = computed(() => {
   align-items: center;
   border-radius: 3px;
 }
-.card-close:hover { color: var(--fg, #ccc); background: rgba(255,255,255,0.05); }
+.card-close:hover {
+  color: var(--fg, #ccc);
+  background: rgba(255, 255, 255, 0.05);
+}
 .card-body {
   margin-top: 4px;
   font-size: 12px;

@@ -11,7 +11,11 @@
       <button type="button" class="selection-toolbar-btn" @click="onCopy">
         {{ t('filePreview.copyText') }}
       </button>
-      <button type="button" class="selection-toolbar-btn selection-toolbar-btn-accent" @click="onInsertToTerminal">
+      <button
+        type="button"
+        class="selection-toolbar-btn selection-toolbar-btn-accent"
+        @click="onInsertToTerminal"
+      >
         {{ t('filePreview.insertToTerminal') }}
       </button>
     </div>
@@ -41,7 +45,8 @@ const toolbarStyle = computed(() => {
   const toolbarWidth = 160
   let x = props.anchorRect.left + props.anchorRect.width / 2
   if (x - toolbarWidth / 2 < margin) x = margin + toolbarWidth / 2
-  if (x + toolbarWidth / 2 > window.innerWidth - margin) x = window.innerWidth - margin - toolbarWidth / 2
+  if (x + toolbarWidth / 2 > window.innerWidth - margin)
+    x = window.innerWidth - margin - toolbarWidth / 2
   const bottom = window.innerHeight - props.anchorRect.top + 4
   return {
     left: `${x}px`,
@@ -57,9 +62,11 @@ function onCopy() {
 
 function onInsertToTerminal() {
   if (props.selectedText) {
-    window.dispatchEvent(new CustomEvent('terminal-insert-text', {
-      detail: { text: props.selectedText },
-    }))
+    window.dispatchEvent(
+      new CustomEvent('terminal-insert-text', {
+        detail: { text: props.selectedText },
+      })
+    )
   }
   emit('dismiss')
 }
@@ -100,8 +107,14 @@ onBeforeUnmount(() => {
 }
 
 @keyframes selection-toolbar-in {
-  from { opacity: 0; transform: translateX(-50%) translateY(4px); }
-  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
 .selection-toolbar-btn {

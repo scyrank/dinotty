@@ -2,13 +2,7 @@
   <Teleport to="body">
     <!-- Context menu -->
     <div v-if="visible" class="tcm-backdrop" @contextmenu.prevent="close" @pointerdown="close">
-      <div
-        class="tcm-menu"
-        :style="menuStyle"
-        role="menu"
-        @contextmenu.prevent
-        @pointerdown.stop
-      >
+      <div class="tcm-menu" :style="menuStyle" role="menu" @contextmenu.prevent @pointerdown.stop>
         <button v-if="linkType === 'file'" class="tcm-item" role="menuitem" @click="onOpenFile">
           <FolderOpen :size="12" class="tcm-icon" />
           <span class="tcm-label">{{ t('terminal.ctxOpenFile') }}</span>
@@ -74,8 +68,14 @@
           </label>
         </div>
         <div class="tcm-dialog-footer">
-          <button class="tcm-btn tcm-btn-ghost" @click="closeBookmarkDialog">{{ t('terminal.cancel') }}</button>
-          <button class="tcm-btn tcm-btn-primary" @click="saveBookmark" :disabled="!bookmarkCommand.trim()">
+          <button class="tcm-btn tcm-btn-ghost" @click="closeBookmarkDialog">
+            {{ t('terminal.cancel') }}
+          </button>
+          <button
+            class="tcm-btn tcm-btn-primary"
+            @click="saveBookmark"
+            :disabled="!bookmarkCommand.trim()"
+          >
             {{ t('terminal.ctxSave') }}
           </button>
         </div>
@@ -86,7 +86,14 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue'
-import { Copy, ClipboardPaste, Bookmark, TextSelect, FolderOpen, ExternalLink } from 'lucide-vue-next'
+import {
+  Copy,
+  ClipboardPaste,
+  Bookmark,
+  TextSelect,
+  FolderOpen,
+  ExternalLink,
+} from 'lucide-vue-next'
 import { useSettings } from '../../composables/useSettings'
 import { useI18n } from '../../composables/useI18n'
 import { copyToClipboard } from '../../utils/clipboard'

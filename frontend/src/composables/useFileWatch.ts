@@ -50,9 +50,9 @@ export function useFileWatch(opts: FileWatchOptions): FileWatch {
       if (key.startsWith(rel + '/')) delete next[key]
     }
     opts.childCache.value = next
-    opts.expanded.value = new Set([...opts.expanded.value].filter(
-      p => p !== rel && !p.startsWith(rel + '/')
-    ))
+    opts.expanded.value = new Set(
+      [...opts.expanded.value].filter((p) => p !== rel && !p.startsWith(rel + '/'))
+    )
   }
 
   function handleWatchEvent(event: { type: string; path?: string; kind?: string }) {
@@ -157,8 +157,12 @@ export function useFileWatch(opts: FileWatchOptions): FileWatch {
         } catch {}
       }
 
-      ws.onclose = () => { socket.value = null }
-      ws.onerror = () => { socket.value = null }
+      ws.onclose = () => {
+        socket.value = null
+      }
+      ws.onerror = () => {
+        socket.value = null
+      }
     } catch {}
   }
 

@@ -7,7 +7,7 @@ export function useWorkspaceBookmarks() {
   const bookmarks = computed(() => settings.workspace_bookmarks)
 
   function isBookmarked(path: string): boolean {
-    return settings.workspace_bookmarks.some(b => b.path === path)
+    return settings.workspace_bookmarks.some((b) => b.path === path)
   }
 
   function addBookmark(name: string, path: string, isDir: boolean, group?: string) {
@@ -23,7 +23,7 @@ export function useWorkspaceBookmarks() {
   }
 
   function removeBookmark(id: string) {
-    const idx = settings.workspace_bookmarks.findIndex(b => b.id === id)
+    const idx = settings.workspace_bookmarks.findIndex((b) => b.id === id)
     if (idx !== -1) {
       settings.workspace_bookmarks.splice(idx, 1)
       saveSettings()
@@ -31,7 +31,7 @@ export function useWorkspaceBookmarks() {
   }
 
   function toggleBookmark(name: string, path: string, isDir: boolean) {
-    const existing = settings.workspace_bookmarks.find(b => b.path === path)
+    const existing = settings.workspace_bookmarks.find((b) => b.path === path)
     if (existing) {
       removeBookmark(existing.id)
     } else {
@@ -40,7 +40,7 @@ export function useWorkspaceBookmarks() {
   }
 
   function renameBookmark(id: string, newName: string) {
-    const bm = settings.workspace_bookmarks.find(b => b.id === id)
+    const bm = settings.workspace_bookmarks.find((b) => b.id === id)
     if (bm) {
       bm.name = newName
       saveSettings()
@@ -55,5 +55,13 @@ export function useWorkspaceBookmarks() {
     saveSettings()
   }
 
-  return { bookmarks, isBookmarked, addBookmark, removeBookmark, toggleBookmark, renameBookmark, reorderBookmarks }
+  return {
+    bookmarks,
+    isBookmarked,
+    addBookmark,
+    removeBookmark,
+    toggleBookmark,
+    renameBookmark,
+    reorderBookmarks,
+  }
 }

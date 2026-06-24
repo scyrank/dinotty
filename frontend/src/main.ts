@@ -1,4 +1,5 @@
 import { createApp } from 'vue'
+import { createPinia } from 'pinia'
 import Toast, { POSITION, type PluginOptions } from 'vue-toastification'
 import 'vue-toastification/dist/index.css'
 import App from './App.vue'
@@ -20,5 +21,6 @@ const toastOptions: PluginOptions = {
 }
 
 const app = createApp(App)
+app.use(createPinia())
 app.use(Toast, toastOptions)
 app.mount('#app')

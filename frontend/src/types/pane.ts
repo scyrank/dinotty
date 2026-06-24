@@ -12,7 +12,7 @@ export interface LeafPane {
 /** 分割容器：水平或垂直排列子节点 */
 export interface SplitPane {
   type: 'split'
-  id: string             // Stable identifier for Vue key (survives reorder)
+  id: string // Stable identifier for Vue key (survives reorder)
   direction: 'horizontal' | 'vertical'
   children: PaneLayout[]
   ratios: number[]
@@ -26,9 +26,9 @@ export type DropPosition = 'left' | 'right' | 'top' | 'bottom'
 /** Terminal tab with split pane layout */
 export interface TerminalTab {
   type: 'terminal'
-  paneId: string           // Tab's stable identifier (not a leaf paneId)
+  paneId: string // Tab's stable identifier (not a leaf paneId)
   layout: PaneLayout
-  activePaneId: string     // Currently focused leaf pane
+  activePaneId: string // Currently focused leaf pane
   broadcastMode: boolean
   broadcastActivity: number // Incremented on each broadcast input to re-trigger banner
   previewVisible: boolean
@@ -53,7 +53,13 @@ export function migrateTab(raw: any): TerminalTab {
     return {
       type: 'terminal',
       paneId: raw.paneId,
-      layout: ensureSplitRoot({ type: 'leaf', paneId: raw.paneId, title: raw.title ?? 'Terminal', ratio: 1, zoomed: false }),
+      layout: ensureSplitRoot({
+        type: 'leaf',
+        paneId: raw.paneId,
+        title: raw.title ?? 'Terminal',
+        ratio: 1,
+        zoomed: false,
+      }),
       activePaneId: raw.paneId,
       broadcastMode: false,
       broadcastActivity: 0,
@@ -95,7 +101,7 @@ export function isSingleChildSplit(node: PaneLayout): boolean {
 /** Get all leaf nodes in order */
 export function getAllLeaves(node: PaneLayout): LeafPane[] {
   if (node.type === 'leaf') return [node]
-  return node.children.flatMap(c => getAllLeaves(c))
+  return node.children.flatMap((c) => getAllLeaves(c))
 }
 
 /** Find the first leaf in the tree */
@@ -120,7 +126,11 @@ export function replaceLeaf(node: PaneLayout, paneId: string, replacement: PaneL
 }
 
 /** Replace a specific node in the tree with another node */
-export function replaceNode(root: PaneLayout, target: PaneLayout, replacement: PaneLayout): boolean {
+export function replaceNode(
+  root: PaneLayout,
+  target: PaneLayout,
+  replacement: PaneLayout
+): boolean {
   if (root.type === 'split') {
     for (let i = 0; i < root.children.length; i++) {
       if (root.children[i] === target) {
@@ -138,7 +148,7 @@ export function redistributeRatios(split: SplitPane) {
   const n = split.children.length
   const ratio = 1 / n
   split.ratios = Array(n).fill(ratio)
-  split.children.forEach(c => {
+  split.children.forEach((c) => {
     if (c.type === 'leaf') c.ratio = ratio
   })
 }
@@ -148,7 +158,7 @@ export function clearAllZoom(node: PaneLayout) {
   if (node.type === 'leaf') {
     node.zoomed = false
   } else {
-    node.children.forEach(c => clearAllZoom(c))
+    node.children.forEach((c) => clearAllZoom(c))
   }
 }
 
@@ -158,7 +168,7 @@ export function equalizeRecursive(node: PaneLayout) {
   const n = node.children.length
   const ratio = 1 / n
   node.ratios = Array(n).fill(ratio)
-  node.children.forEach(c => {
+  node.children.forEach((c) => {
     if (c.type === 'leaf') c.ratio = ratio
     else equalizeRecursive(c)
   })
@@ -177,7 +187,7 @@ export function removeLeaf(root: PaneLayout, paneId: string): LeafPane | null {
     return null
   }
 
-  const idx = parent.children.findIndex(c => c.type === 'leaf' && c.paneId === paneId)
+  const idx = parent.children.findIndex((c) => c.type === 'leaf' && c.paneId === paneId)
   if (idx === -1) return null
 
   const removed = parent.children.splice(idx, 1)[0] as LeafPane

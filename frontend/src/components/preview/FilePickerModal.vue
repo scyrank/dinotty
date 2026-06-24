@@ -28,7 +28,9 @@
           <span class="fp-selection-label">{{ selectedName }}</span>
         </div>
         <div class="fp-footer">
-          <button class="fp-confirm-btn" :disabled="!selectedPath" @click="confirmSelection">Confirm</button>
+          <button class="fp-confirm-btn" :disabled="!selectedPath" @click="confirmSelection">
+            Confirm
+          </button>
           <button class="fp-cancel-btn" @click="close">Cancel</button>
         </div>
       </div>
@@ -41,17 +43,20 @@ import { ref, watch } from 'vue'
 import { TreeRows, absJoinWorkspaceRoot } from '../workspace/TreeRows'
 import type { DirEntry } from '../workspace/TreeRows'
 
-const props = withDefaults(defineProps<{
-  visible: boolean
-  paneId: string
-  root?: string
-}>(), {
-  root: '/'
-})
+const props = withDefaults(
+  defineProps<{
+    visible: boolean
+    paneId: string
+    root?: string
+  }>(),
+  {
+    root: '/',
+  }
+)
 
 const emit = defineEmits<{
   'update:visible': [val: boolean]
-  'select': [path: string]
+  select: [path: string]
 }>()
 
 const cwdLabel = ref('')
@@ -70,7 +75,9 @@ async function fetchList(rel: string) {
       cwdLabel.value = data.cwd || ''
       childCache.value[rel] = data.entries || []
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 function navigateTo(rel: string) {
@@ -112,15 +119,18 @@ function close() {
   emit('update:visible', false)
 }
 
-watch(() => props.visible, (v) => {
-  if (v) {
-    expanded.value = new Set()
-    childCache.value = {}
-    selectedPath.value = ''
-    selectedName.value = ''
-    fetchList('')
+watch(
+  () => props.visible,
+  (v) => {
+    if (v) {
+      expanded.value = new Set()
+      childCache.value = {}
+      selectedPath.value = ''
+      selectedName.value = ''
+      fetchList('')
+    }
   }
-})
+)
 </script>
 
 <style>

@@ -11,10 +11,20 @@
   min-height: 100%;
   font-size: 13px;
   line-height: var(--tree-row-height);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    sans-serif;
 }
 
-.tree-host .tree-rows { user-select: none; }
+.tree-host .tree-rows {
+  user-select: none;
+}
 
 .tree-host .tree-row {
   display: flex;
@@ -28,11 +38,25 @@
   border-radius: 2px;
 }
 
-.tree-host .tree-row:hover { background: var(--tree-row-hover); }
-.tree-host .tree-row.drop-target { background: var(--tree-row-selected); outline: 1px solid var(--focus-border, #007fd4); outline-offset: -1px; }
-.tree-host .tree-row.drop-target-upload { background: rgba(59, 130, 246, 0.15); outline: 2px dashed rgba(59, 130, 246, 0.5); outline-offset: -2px; }
-.tree-host .tree-row:has(.tree-label.sel) { background: var(--tree-row-selected); }
-.tree-host .tree-row:has(.tree-label.sel):hover { background: var(--tree-row-selected); }
+.tree-host .tree-row:hover {
+  background: var(--tree-row-hover);
+}
+.tree-host .tree-row.drop-target {
+  background: var(--tree-row-selected);
+  outline: 1px solid var(--focus-border, #007fd4);
+  outline-offset: -1px;
+}
+.tree-host .tree-row.drop-target-upload {
+  background: rgba(59, 130, 246, 0.15);
+  outline: 2px dashed rgba(59, 130, 246, 0.5);
+  outline-offset: -2px;
+}
+.tree-host .tree-row:has(.tree-label.sel) {
+  background: var(--tree-row-selected);
+}
+.tree-host .tree-row:has(.tree-label.sel):hover {
+  background: var(--tree-row-selected);
+}
 
 .tree-host .tree-twistie {
   border: none;
@@ -52,7 +76,10 @@
   opacity: 0.9;
 }
 
-.tree-host .tree-twistie:focus-visible { outline: 1px solid var(--accent, #007fd4); outline-offset: -1px; }
+.tree-host .tree-twistie:focus-visible {
+  outline: 1px solid var(--accent, #007fd4);
+  outline-offset: -1px;
+}
 
 .tree-host .tree-twistie-placeholder {
   flex-shrink: 0;
@@ -63,7 +90,13 @@
   pointer-events: none;
 }
 
-.tree-host .tree-folder-hit { display: flex; flex: 1 1 0; align-items: center; min-width: 0; cursor: pointer; }
+.tree-host .tree-folder-hit {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  min-width: 0;
+  cursor: pointer;
+}
 
 .tree-host .tree-label {
   cursor: pointer;
@@ -77,27 +110,84 @@
   align-items: center;
 }
 
-.tree-host .tree-label.sel { color: var(--tree-row-selected-fg); }
-.tree-host .tree-row:has(.tree-label.sel) .tree-twistie { color: rgba(255, 255, 255, 0.82); }
-.tree-host .tree-row:has(.tree-label.sel) .tree-kind-icon-folder { color: var(--tree-folder-icon-selected, #e8dcc4); }
-.tree-host .tree-row:has(.tree-label.sel) .tree-kind-icon-file { color: var(--tree-file-icon-selected, #b4e1ff); }
+.tree-host .tree-label.sel {
+  color: var(--tree-row-selected-fg);
+}
+.tree-host .tree-row:has(.tree-label.sel) .tree-twistie {
+  color: rgba(255, 255, 255, 0.82);
+}
+.tree-host .tree-row:has(.tree-label.sel) .tree-kind-icon-folder {
+  color: var(--tree-folder-icon-selected, #e8dcc4);
+}
+.tree-host .tree-row:has(.tree-label.sel) .tree-kind-icon-file {
+  color: var(--tree-file-icon-selected, #b4e1ff);
+}
 
-.tree-host .tree-kind-icon { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: var(--tree-icon-size); height: var(--tree-icon-size); margin-right: 6px; }
-.tree-host .tree-kind-icon-folder { width: var(--tree-icon-size); height: var(--tree-icon-size); color: var(--tree-folder-icon, #dcb67a); }
-.tree-host .tree-kind-icon-file { color: var(--tree-file-icon, #90caf9); }
-.tree-host .tree-svg { width: 100%; height: 100%; max-width: 100%; max-height: 100%; display: block; flex-shrink: 0; }
+.tree-host .tree-kind-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tree-icon-size);
+  height: var(--tree-icon-size);
+  margin-right: 6px;
+}
+.tree-host .tree-kind-icon-folder {
+  width: var(--tree-icon-size);
+  height: var(--tree-icon-size);
+  color: var(--tree-folder-icon, #dcb67a);
+}
+.tree-host .tree-kind-icon-file {
+  color: var(--tree-file-icon, #90caf9);
+}
+.tree-host .tree-svg {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+  flex-shrink: 0;
+}
 
-.tree-host .tree-inline-create { align-items: center; }
+.tree-host .tree-inline-create {
+  align-items: center;
+}
 
-.tree-host .tree-label-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.tree-host .tree-git-badge { margin-left: auto; flex-shrink: 0; font-size: 11px; padding: 0 4px; opacity: 0.85; font-weight: 600; }
-.tree-host .tree-git-badge.git-M { color: #ccb132; }
-.tree-host .tree-git-badge.git-U { color: #73c991; }
-.tree-host .tree-git-badge.git-A { color: #73c991; }
-.tree-host .tree-git-badge.git-D { color: #d32f2f; }
-.tree-host .tree-label.git-modified { color: #ccb132; }
-.tree-host .tree-label.git-untracked { color: #73c991; }
-.tree-host .tree-label.git-deleted { color: #d32f2f; text-decoration: line-through; }
+.tree-host .tree-label-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.tree-host .tree-git-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 0 4px;
+  opacity: 0.85;
+  font-weight: 600;
+}
+.tree-host .tree-git-badge.git-M {
+  color: #ccb132;
+}
+.tree-host .tree-git-badge.git-U {
+  color: #73c991;
+}
+.tree-host .tree-git-badge.git-A {
+  color: #73c991;
+}
+.tree-host .tree-git-badge.git-D {
+  color: #d32f2f;
+}
+.tree-host .tree-label.git-modified {
+  color: #ccb132;
+}
+.tree-host .tree-label.git-untracked {
+  color: #73c991;
+}
+.tree-host .tree-label.git-deleted {
+  color: #d32f2f;
+  text-decoration: line-through;
+}
 .tree-host .tree-inline-input {
   flex: 1;
   min-width: 0;
@@ -112,7 +202,10 @@
 }
 
 /* Swipe-to-reveal */
-.tree-host .tree-row { position: relative; overflow: hidden; }
+.tree-host .tree-row {
+  position: relative;
+  overflow: hidden;
+}
 .tree-host .tree-swipe-actions {
   position: absolute;
   right: 0;
@@ -124,7 +217,10 @@
   pointer-events: none;
   background: var(--bg, #1a1a1a);
 }
-.tree-host .tree-row-swipe .tree-swipe-actions { opacity: 1; pointer-events: auto; }
+.tree-host .tree-row-swipe .tree-swipe-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
 .tree-host .tree-swipe-btn {
   border: none;
   color: #fff;
@@ -137,5 +233,9 @@
   white-space: nowrap;
   background: var(--accent, #89b4fa);
 }
-.tree-host .tree-swipe-btn-accent { background: #4caf50; }
-.tree-host .tree-swipe-btn:active { opacity: 0.85; }
+.tree-host .tree-swipe-btn-accent {
+  background: #4caf50;
+}
+.tree-host .tree-swipe-btn:active {
+  opacity: 0.85;
+}

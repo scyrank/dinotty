@@ -113,7 +113,8 @@ const messages: Record<Locale, Record<string, string>> = {
     'settings.text.fontFamilyCustom': 'Custom...',
     'settings.text.fontFamilyCustomHint': 'Enter font name',
     'settings.accessUrl': 'Access URL',
-    'settings.accessUrlHint': 'Use this URL to access the terminal from other devices on the same network',
+    'settings.accessUrlHint':
+      'Use this URL to access the terminal from other devices on the same network',
     'settings.copyUrl': 'Copy URL',
     'settings.token': 'Access Token',
     'settings.token.show': 'Show',
@@ -127,9 +128,11 @@ const messages: Record<Locale, Record<string, string>> = {
     'settings.token.saved': 'Saved',
     'settings.token.hint': 'Required when accessing from non-whitelisted IPs',
     'settings.token.saveFailed': 'Failed to update token, please try again',
-    'settings.token.confirmRegenerate': 'Regenerate token? All existing sessions will be logged out.',
+    'settings.token.confirmRegenerate':
+      'Regenerate token? All existing sessions will be logged out.',
     'settings.ipWhitelist': 'IP Whitelist',
-    'settings.ipWhitelist.hint': 'IPs in this list bypass token authentication. Supports exact IP (192.168.1.5), wildcard (192.168.0.*), or CIDR (192.168.0.0/24).',
+    'settings.ipWhitelist.hint':
+      'IPs in this list bypass token authentication. Supports exact IP (192.168.1.5), wildcard (192.168.0.*), or CIDR (192.168.0.0/24).',
     'settings.ipWhitelist.add': 'Add IP',
     'settings.ipWhitelist.placeholder': 'e.g. 192.168.0.*',
     'settings.port': 'Port',
@@ -167,7 +170,8 @@ const messages: Record<Locale, Record<string, string>> = {
     'settings.monitor.enabled': 'Enable status bar',
     'settings.virtualKeyboard': 'Virtual Keyboard',
     'settings.virtualKeyboard.show': 'Show floating button',
-    'settings.virtualKeyboard.hint': 'Display a floating keyboard button at bottom-right for quick access to the virtual keyboard',
+    'settings.virtualKeyboard.hint':
+      'Display a floating keyboard button at bottom-right for quick access to the virtual keyboard',
     'settings.monitor.cpu': 'CPU',
     'settings.monitor.memory': 'Memory',
     'settings.monitor.disk': 'Disk',
@@ -183,7 +187,8 @@ const messages: Record<Locale, Record<string, string>> = {
     'settings.keyboard.feedback': 'Key Feedback',
     'settings.keyboard.sound': 'Click sound on key press',
     'settings.keyboard.openApi': 'Open API',
-    'settings.keyboard.openApiHint': 'Allow external devices to send input to the terminal via HTTP API.',
+    'settings.keyboard.openApiHint':
+      'Allow external devices to send input to the terminal via HTTP API.',
     'settings.keyboard.openApiEnabled': 'Enable Open API',
     'settings.keyboard.openApiPaneHint': 'optional, defaults to active pane',
     'settings.keyboard.openApiSend': 'Send Test',
@@ -225,7 +230,8 @@ const messages: Record<Locale, Record<string, string>> = {
     'notification.hookType': 'Type',
     'notification.hookAdd': 'Add Hook',
     'notification.hookAll': 'All',
-    'notification.hookEnvHint': 'Environment variables: DINOTTY_NOTIFICATION_TYPE, DINOTTY_PANE_ID, DINOTTY_TITLE, DINOTTY_BODY',
+    'notification.hookEnvHint':
+      'Environment variables: DINOTTY_NOTIFICATION_TYPE, DINOTTY_PANE_ID, DINOTTY_TITLE, DINOTTY_BODY',
     'settings.tab.plugins': 'Plugins',
     'settings.plugins.install': 'Install Plugin',
     'settings.plugins.installFile': 'Install from File',
@@ -472,7 +478,8 @@ const messages: Record<Locale, Record<string, string>> = {
     'settings.token.saveFailed': '令牌更新失败，请重试',
     'settings.token.confirmRegenerate': '重新生成令牌？所有已登录会话将被退出。',
     'settings.ipWhitelist': 'IP 白名单',
-    'settings.ipWhitelist.hint': '白名单内的 IP 无需令牌即可访问。支持精确 IP（192.168.1.5）、通配符（192.168.0.*）或 CIDR（192.168.0.0/24）。',
+    'settings.ipWhitelist.hint':
+      '白名单内的 IP 无需令牌即可访问。支持精确 IP（192.168.1.5）、通配符（192.168.0.*）或 CIDR（192.168.0.0/24）。',
     'settings.ipWhitelist.add': '添加 IP',
     'settings.ipWhitelist.placeholder': '如 192.168.0.*',
     'settings.port': '端口',
@@ -486,8 +493,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'settings.text.cursor.underline': '下划线',
     'settings.text.cursor.bar': '竖线',
     'settings.actionKeyboard': '快捷键盘',
-    'settings.akHint':
-      '预览与实机一致：右侧拖宽度，点键帽编辑；底部方向键与 ↵ 固定。',
+    'settings.akHint': '预览与实机一致：右侧拖宽度，点键帽编辑；底部方向键与 ↵ 固定。',
     'settings.dragSort': '拖动排序',
     'settings.dragResize': '拖动调宽度',
     'settings.deleteRow': '删除此行',
@@ -568,7 +574,8 @@ const messages: Record<Locale, Record<string, string>> = {
     'notification.hookType': '类型',
     'notification.hookAdd': '添加钩子',
     'notification.hookAll': '全部',
-    'notification.hookEnvHint': '可用环境变量：DINOTTY_NOTIFICATION_TYPE, DINOTTY_PANE_ID, DINOTTY_TITLE, DINOTTY_BODY',
+    'notification.hookEnvHint':
+      '可用环境变量：DINOTTY_NOTIFICATION_TYPE, DINOTTY_PANE_ID, DINOTTY_TITLE, DINOTTY_BODY',
     'settings.tab.plugins': '插件',
     'settings.plugins.install': '安装插件',
     'settings.plugins.installFile': '从文件安装',

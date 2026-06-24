@@ -62,7 +62,7 @@ export function useFileEditor(opts: {
       !!opts.selectedRel.value &&
       !opts.selectedIsDir.value &&
       !opts.meta.value?.truncated &&
-      (opts.meta.value?.kind === 'text' || opts.meta.value?.kind === 'markdown'),
+      (opts.meta.value?.kind === 'text' || opts.meta.value?.kind === 'markdown')
   )
 
   const canSaveEditor = computed(() => canSaveEditorContext.value && editorDirty.value)
@@ -71,14 +71,22 @@ export function useFileEditor(opts: {
   let mdDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
   watch(editorText, (src) => {
-    if (mdDebounceTimer) { clearTimeout(mdDebounceTimer); mdDebounceTimer = null }
-    if (!src) { markdownEditorHtml.value = ''; return }
+    if (mdDebounceTimer) {
+      clearTimeout(mdDebounceTimer)
+      mdDebounceTimer = null
+    }
+    if (!src) {
+      markdownEditorHtml.value = ''
+      return
+    }
     mdDebounceTimer = setTimeout(async () => {
       try {
         const [m, dp] = await Promise.all([getMarked(), getDOMPurify()])
         const html = m.parse(src, { async: false }) as string
         markdownEditorHtml.value = dp.default.sanitize(html)
-      } catch { markdownEditorHtml.value = '' }
+      } catch {
+        markdownEditorHtml.value = ''
+      }
     }, 300)
   })
 
@@ -93,8 +101,16 @@ export function useFileEditor(opts: {
     })
     if (!res.ok) return
     editorBaseline.value = editorText.value
-    if (opts.meta.value && (opts.meta.value.kind === 'text' || opts.meta.value.kind === 'markdown')) {
-      opts.meta.value = { ...opts.meta.value, content: editorText.value, truncated: false, message: undefined }
+    if (
+      opts.meta.value &&
+      (opts.meta.value.kind === 'text' || opts.meta.value.kind === 'markdown')
+    ) {
+      opts.meta.value = {
+        ...opts.meta.value,
+        content: editorText.value,
+        truncated: false,
+        message: undefined,
+      }
     }
   }
 

@@ -18,11 +18,26 @@ export function randomId(): string {
     const h: string[] = []
     for (let i = 0; i < 256; i++) h.push((i + 0x100).toString(16).slice(1))
     return (
-      h[b[0]] + h[b[1]] + h[b[2]] + h[b[3]] + '-' +
-      h[b[4]] + h[b[5]] + '-' +
-      h[b[6]] + h[b[7]] + '-' +
-      h[b[8]] + h[b[9]] + '-' +
-      h[b[10]] + h[b[11]] + h[b[12]] + h[b[13]] + h[b[14]] + h[b[15]]
+      h[b[0]] +
+      h[b[1]] +
+      h[b[2]] +
+      h[b[3]] +
+      '-' +
+      h[b[4]] +
+      h[b[5]] +
+      '-' +
+      h[b[6]] +
+      h[b[7]] +
+      '-' +
+      h[b[8]] +
+      h[b[9]] +
+      '-' +
+      h[b[10]] +
+      h[b[11]] +
+      h[b[12]] +
+      h[b[13]] +
+      h[b[14]] +
+      h[b[15]]
     )
   }
 

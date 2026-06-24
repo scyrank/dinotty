@@ -5,9 +5,17 @@
       <div v-if="metric === 'cpu' && data" class="popover-content">
         <div class="popover-title">CPU</div>
         <div class="popover-chart"><Line :data="cpuChartData" :options="pctChartOptions" /></div>
-        <div class="popover-row"><span>Total Usage</span><span>{{ data.cpu.usage.toFixed(1) }}%</span></div>
-        <div class="popover-row"><span>Cores</span><span>{{ data.cpu.core_count.physical }}P / {{ data.cpu.core_count.logical }}L</span></div>
-        <div class="popover-row"><span>Load Avg</span><span>{{ data.cpu.load_avg.map(v => v.toFixed(2)).join(' / ') }}</span></div>
+        <div class="popover-row">
+          <span>Total Usage</span><span>{{ data.cpu.usage.toFixed(1) }}%</span>
+        </div>
+        <div class="popover-row">
+          <span>Cores</span
+          ><span>{{ data.cpu.core_count.physical }}P / {{ data.cpu.core_count.logical }}L</span>
+        </div>
+        <div class="popover-row">
+          <span>Load Avg</span
+          ><span>{{ data.cpu.load_avg.map((v) => v.toFixed(2)).join(' / ') }}</span>
+        </div>
         <div class="popover-divider" />
         <div class="popover-subtitle">Per Core</div>
         <div v-for="(usage, i) in data.cpu.cores" :key="i" class="popover-row">
@@ -20,14 +28,26 @@
       <div v-if="metric === 'memory' && data" class="popover-content">
         <div class="popover-title">Memory</div>
         <div class="popover-chart"><Line :data="memChartData" :options="pctChartOptions" /></div>
-        <div class="popover-row"><span>Used</span><span>{{ fmtBytes(data.memory.used) }}</span></div>
-        <div class="popover-row"><span>Available</span><span>{{ fmtBytes(data.memory.available) }}</span></div>
-        <div class="popover-row"><span>Total</span><span>{{ fmtBytes(data.memory.total) }}</span></div>
-        <div class="popover-row"><span>Usage</span><span>{{ data.memory.usage.toFixed(1) }}%</span></div>
+        <div class="popover-row">
+          <span>Used</span><span>{{ fmtBytes(data.memory.used) }}</span>
+        </div>
+        <div class="popover-row">
+          <span>Available</span><span>{{ fmtBytes(data.memory.available) }}</span>
+        </div>
+        <div class="popover-row">
+          <span>Total</span><span>{{ fmtBytes(data.memory.total) }}</span>
+        </div>
+        <div class="popover-row">
+          <span>Usage</span><span>{{ data.memory.usage.toFixed(1) }}%</span>
+        </div>
         <div class="popover-divider" />
         <div class="popover-subtitle">Swap</div>
-        <div class="popover-row"><span>Used</span><span>{{ fmtBytes(data.memory.swap_used) }}</span></div>
-        <div class="popover-row"><span>Total</span><span>{{ fmtBytes(data.memory.swap_total) }}</span></div>
+        <div class="popover-row">
+          <span>Used</span><span>{{ fmtBytes(data.memory.swap_used) }}</span>
+        </div>
+        <div class="popover-row">
+          <span>Total</span><span>{{ fmtBytes(data.memory.swap_total) }}</span>
+        </div>
       </div>
 
       <!-- Disk Detail -->
@@ -36,11 +56,21 @@
         <template v-for="(d, i) in data.disk" :key="i">
           <div v-if="i > 0" class="popover-divider" />
           <div class="popover-subtitle">{{ d.mount }}</div>
-          <div class="popover-row"><span>FS</span><span>{{ d.fs_type }}</span></div>
-          <div class="popover-row"><span>Used</span><span>{{ fmtBytes(d.used) }}</span></div>
-          <div class="popover-row"><span>Available</span><span>{{ fmtBytes(d.available) }}</span></div>
-          <div class="popover-row"><span>Total</span><span>{{ fmtBytes(d.total) }}</span></div>
-          <div class="popover-row"><span>Usage</span><span>{{ d.usage.toFixed(1) }}%</span></div>
+          <div class="popover-row">
+            <span>FS</span><span>{{ d.fs_type }}</span>
+          </div>
+          <div class="popover-row">
+            <span>Used</span><span>{{ fmtBytes(d.used) }}</span>
+          </div>
+          <div class="popover-row">
+            <span>Available</span><span>{{ fmtBytes(d.available) }}</span>
+          </div>
+          <div class="popover-row">
+            <span>Total</span><span>{{ fmtBytes(d.total) }}</span>
+          </div>
+          <div class="popover-row">
+            <span>Usage</span><span>{{ d.usage.toFixed(1) }}%</span>
+          </div>
         </template>
       </div>
 
@@ -51,11 +81,21 @@
         <template v-for="(n, i) in data.network" :key="i">
           <div v-if="i > 0" class="popover-divider" />
           <div class="popover-subtitle">{{ n.name }}</div>
-          <div class="popover-row"><span>IP</span><span>{{ n.ip || '—' }}</span></div>
-          <div class="popover-row"><span>↑ Rate</span><span>{{ fmtRate(n.tx_rate) }}</span></div>
-          <div class="popover-row"><span>↓ Rate</span><span>{{ fmtRate(n.rx_rate) }}</span></div>
-          <div class="popover-row"><span>↑ Total</span><span>{{ fmtBytes(n.tx_total) }}</span></div>
-          <div class="popover-row"><span>↓ Total</span><span>{{ fmtBytes(n.rx_total) }}</span></div>
+          <div class="popover-row">
+            <span>IP</span><span>{{ n.ip || '—' }}</span>
+          </div>
+          <div class="popover-row">
+            <span>↑ Rate</span><span>{{ fmtRate(n.tx_rate) }}</span>
+          </div>
+          <div class="popover-row">
+            <span>↓ Rate</span><span>{{ fmtRate(n.rx_rate) }}</span>
+          </div>
+          <div class="popover-row">
+            <span>↑ Total</span><span>{{ fmtBytes(n.tx_total) }}</span>
+          </div>
+          <div class="popover-row">
+            <span>↓ Total</span><span>{{ fmtBytes(n.rx_total) }}</span>
+          </div>
         </template>
       </div>
 
@@ -65,15 +105,30 @@
         <div class="popover-subtitle">Compute</div>
         <div class="popover-chart"><Line :data="gpuChartData" :options="pctChartOptions" /></div>
         <div class="popover-subtitle">VRAM</div>
-        <div class="popover-chart"><Line :data="gpuMemChartData" :options="autoChartOptions" /></div>
+        <div class="popover-chart">
+          <Line :data="gpuMemChartData" :options="autoChartOptions" />
+        </div>
         <div class="popover-divider" />
-        <template v-for="(g, i) in (data.gpu ?? [])" :key="i">
+        <template v-for="(g, i) in data.gpu ?? []" :key="i">
           <div v-if="i > 0" class="popover-divider" />
           <div class="popover-subtitle">GPU {{ i }} · {{ g.name }}</div>
-          <div class="popover-row"><span>Compute</span><span>{{ g.utilization_gpu.toFixed(0) }}%</span></div>
-          <div class="popover-row"><span>VRAM</span><span>{{ fmtBytes(g.memory_used * 1024 * 1024) }} / {{ fmtBytes(g.memory_total * 1024 * 1024) }} ({{ g.memory_usage.toFixed(0) }}%)</span></div>
-          <div class="popover-row"><span>Temp</span><span>{{ g.temperature.toFixed(0) }}°C</span></div>
-          <div class="popover-row"><span>Power</span><span>{{ g.power_draw.toFixed(0) }}W / {{ g.power_limit.toFixed(0) }}W</span></div>
+          <div class="popover-row">
+            <span>Compute</span><span>{{ g.utilization_gpu.toFixed(0) }}%</span>
+          </div>
+          <div class="popover-row">
+            <span>VRAM</span
+            ><span
+              >{{ fmtBytes(g.memory_used * 1024 * 1024) }} /
+              {{ fmtBytes(g.memory_total * 1024 * 1024) }} ({{ g.memory_usage.toFixed(0) }}%)</span
+            >
+          </div>
+          <div class="popover-row">
+            <span>Temp</span><span>{{ g.temperature.toFixed(0) }}°C</span>
+          </div>
+          <div class="popover-row">
+            <span>Power</span
+            ><span>{{ g.power_draw.toFixed(0) }}W / {{ g.power_limit.toFixed(0) }}W</span>
+          </div>
         </template>
       </div>
     </div>
@@ -147,33 +202,58 @@ const labels = computed(() => props.cpuHistory.map(() => ''))
 
 const cpuChartData = computed(() => ({
   labels: labels.value,
-  datasets: [{
-    data: [...props.cpuHistory],
-    borderColor: '#8A8A8A',
-    backgroundColor: 'rgba(77,127,255,0.1)',
-    fill: true,
-  }],
+  datasets: [
+    {
+      data: [...props.cpuHistory],
+      borderColor: '#8A8A8A',
+      backgroundColor: 'rgba(77,127,255,0.1)',
+      fill: true,
+    },
+  ],
 }))
 
 const memChartData = computed(() => ({
   labels: labels.value,
-  datasets: [{
-    data: [...props.memHistory],
-    borderColor: '#34d399',
-    backgroundColor: 'rgba(52,211,153,0.1)',
-    fill: true,
-  }],
+  datasets: [
+    {
+      data: [...props.memHistory],
+      borderColor: '#34d399',
+      backgroundColor: 'rgba(52,211,153,0.1)',
+      fill: true,
+    },
+  ],
 }))
 
 const netChartData = computed(() => ({
   labels: props.netTxHistory.map(() => ''),
   datasets: [
-    { data: [...props.netTxHistory], borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.05)', fill: true },
-    { data: [...props.netRxHistory], borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.05)', fill: true },
+    {
+      data: [...props.netTxHistory],
+      borderColor: '#f59e0b',
+      backgroundColor: 'rgba(245,158,11,0.05)',
+      fill: true,
+    },
+    {
+      data: [...props.netRxHistory],
+      borderColor: '#8b5cf6',
+      backgroundColor: 'rgba(139,92,246,0.05)',
+      fill: true,
+    },
   ],
 }))
 
-const gpuColors = ['#76b900', '#00a8e8', '#e84040', '#f59e0b', '#8b5cf6', '#34d399', '#f472b6', '#fbbf24', '#60a5fa', '#a78bfa']
+const gpuColors = [
+  '#76b900',
+  '#00a8e8',
+  '#e84040',
+  '#f59e0b',
+  '#8b5cf6',
+  '#34d399',
+  '#f472b6',
+  '#fbbf24',
+  '#60a5fa',
+  '#a78bfa',
+]
 
 const gpuChartData = computed(() => {
   const len = props.gpuUtilHistory.reduce((m, a) => Math.max(m, a.length), 0)
@@ -241,13 +321,16 @@ onBeforeUnmount(() => {
   removeClickListener()
 })
 
-watch(() => props.visible, (v) => {
-  if (v) {
-    addClickListener()
-  } else {
-    removeClickListener()
+watch(
+  () => props.visible,
+  (v) => {
+    if (v) {
+      addClickListener()
+    } else {
+      removeClickListener()
+    }
   }
-})
+)
 
 function fmtBytes(b: number): string {
   if (b < 1024) return `${b}B`

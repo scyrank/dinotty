@@ -8,7 +8,11 @@
     @touchcancel="onTouchCancel"
   >
     <div ref="wrapperRef" class="terminal-pane"></div>
-    <SearchBar v-if="searchVisible && terminal" :terminal="terminal" @close="searchVisible = false" />
+    <SearchBar
+      v-if="searchVisible && terminal"
+      :terminal="terminal"
+      @close="searchVisible = false"
+    />
   </div>
   <TerminalContextMenu
     :visible="menuVisible"
@@ -151,7 +155,10 @@ function onTouchStart(e: TouchEvent) {
 function onTouchMove(e: TouchEvent) {
   if (longPressTimer && !longPressFired) {
     const touch = e.touches[0]
-    if (Math.abs(touch.clientX - longPressStartX) > 10 || Math.abs(touch.clientY - longPressStartY) > 10) {
+    if (
+      Math.abs(touch.clientX - longPressStartX) > 10 ||
+      Math.abs(touch.clientY - longPressStartY) > 10
+    ) {
       clearTimeout(longPressTimer)
       longPressTimer = null
     }

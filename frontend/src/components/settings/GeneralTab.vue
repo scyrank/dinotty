@@ -3,7 +3,12 @@
     <section class="settings-section">
       <h3>{{ t('settings.language') }}</h3>
       <div class="settings-row">
-        <select v-model="settings.locale" class="shortcut-input" style="flex:1" @change="saveSettings()">
+        <select
+          v-model="settings.locale"
+          class="shortcut-input"
+          style="flex: 1"
+          @change="saveSettings()"
+        >
           <option value="zh">{{ t('settings.lang.zh') }}</option>
           <option value="en">{{ t('settings.lang.en') }}</option>
         </select>
@@ -13,7 +18,12 @@
     <section class="settings-section">
       <h3>{{ t('settings.panelPosition') }}</h3>
       <div class="settings-row">
-        <select v-model="settings.panel_position" class="shortcut-input" style="flex:1" @change="saveSettings()">
+        <select
+          v-model="settings.panel_position"
+          class="shortcut-input"
+          style="flex: 1"
+          @change="saveSettings()"
+        >
           <option value="auto">{{ t('settings.panelPos.auto') }}</option>
           <option value="left">{{ t('settings.panelPos.left') }}</option>
           <option value="right">{{ t('settings.panelPos.right') }}</option>
@@ -52,15 +62,40 @@
           :placeholder="tokenEditing ? t('settings.token.custom') : ''"
           @input="customToken = ($event.target as HTMLInputElement).value"
         />
-        <button class="icon-btn" @click="tokenVisible = !tokenVisible" :title="tokenVisible ? t('settings.token.hide') : t('settings.token.show')"><EyeOff v-if="tokenVisible" :size="14" /><Eye v-else :size="14" /></button>
+        <button
+          class="icon-btn"
+          @click="tokenVisible = !tokenVisible"
+          :title="tokenVisible ? t('settings.token.hide') : t('settings.token.show')"
+        >
+          <EyeOff v-if="tokenVisible" :size="14" /><Eye v-else :size="14" />
+        </button>
         <template v-if="!tokenEditing">
-          <button class="icon-btn" @click="copyToken" :title="t('settings.token.copy')"><Check v-if="tokenCopied" :size="14" /><Copy v-else :size="14" /></button>
-          <button class="icon-btn" @click="startEditToken" :title="t('settings.token.edit')"><Pencil :size="14" /></button>
-          <button class="icon-btn danger" @click="regenerateToken" :title="t('settings.token.regenerate')"><RefreshCw :size="14" /></button>
+          <button class="icon-btn" @click="copyToken" :title="t('settings.token.copy')">
+            <Check v-if="tokenCopied" :size="14" /><Copy v-else :size="14" />
+          </button>
+          <button class="icon-btn" @click="startEditToken" :title="t('settings.token.edit')">
+            <Pencil :size="14" />
+          </button>
+          <button
+            class="icon-btn danger"
+            @click="regenerateToken"
+            :title="t('settings.token.regenerate')"
+          >
+            <RefreshCw :size="14" />
+          </button>
         </template>
         <template v-else>
-          <button class="icon-btn" @click="saveToken" :disabled="customToken.trim().length < 8 || tokenSaving" :title="t('settings.token.save')"><Save :size="14" /></button>
-          <button class="icon-btn" @click="cancelEditToken" :title="t('settings.token.cancel')"><X :size="14" /></button>
+          <button
+            class="icon-btn"
+            @click="saveToken"
+            :disabled="customToken.trim().length < 8 || tokenSaving"
+            :title="t('settings.token.save')"
+          >
+            <Save :size="14" />
+          </button>
+          <button class="icon-btn" @click="cancelEditToken" :title="t('settings.token.cancel')">
+            <X :size="14" />
+          </button>
         </template>
       </div>
       <p class="settings-hint">{{ t('settings.token.hint') }}</p>
@@ -73,7 +108,7 @@
         <span class="ip-text">{{ ip }}</span>
         <button class="icon-btn danger" @click="removeIp(idx)">✕</button>
       </div>
-      <div class="ip-row" style="margin-top:8px">
+      <div class="ip-row" style="margin-top: 8px">
         <input
           v-model="newIp"
           type="text"
@@ -102,7 +137,11 @@
       <div class="settings-row">
         <label>{{ t('settings.virtualKeyboard.show') }}</label>
         <label class="toggle">
-          <input type="checkbox" v-model="settings.show_virtual_keyboard" @change="saveSettings()" />
+          <input
+            type="checkbox"
+            v-model="settings.show_virtual_keyboard"
+            @change="saveSettings()"
+          />
           <span class="toggle-track"><span class="toggle-thumb"></span></span>
         </label>
       </div>
@@ -127,7 +166,6 @@
         {{ t('settings.confirmBeforeCloseTabHint') }}
       </p>
     </section>
-
   </div>
 </template>
 
@@ -138,7 +176,14 @@ import { Eye, EyeOff, Copy, Check, Pencil, RefreshCw, Save, X } from 'lucide-vue
 import { useSettings } from '../../composables/useSettings'
 import { useI18n } from '../../composables/useI18n'
 import { copyToClipboard } from '../../utils/clipboard'
-import { apiUrl, authFetch, getAuthToken, setAuthToken, getApiBase, fetchServerToken } from '../../composables/apiBase'
+import {
+  apiUrl,
+  authFetch,
+  getAuthToken,
+  setAuthToken,
+  getApiBase,
+  fetchServerToken,
+} from '../../composables/apiBase'
 
 const { settings, saveSettings } = useSettings()
 const { t } = useI18n()
@@ -171,13 +216,15 @@ onMounted(async () => {
     const port = window.location.port
     accessUrl.value = `http://${host}${port ? ':' + port : ''}`
   }
-  currentToken.value = await fetchServerToken() || getAuthToken()
+  currentToken.value = (await fetchServerToken()) || getAuthToken()
 })
 
 async function copyAccessUrl() {
   await copyToClipboard(accessUrl.value)
   copied.value = true
-  setTimeout(() => { copied.value = false }, 2000)
+  setTimeout(() => {
+    copied.value = false
+  }, 2000)
 }
 
 // Token management
@@ -192,7 +239,9 @@ const tokenInputRef = ref<HTMLInputElement | null>(null)
 async function copyToken() {
   await copyToClipboard(currentToken.value)
   tokenCopied.value = true
-  setTimeout(() => { tokenCopied.value = false }, 2000)
+  setTimeout(() => {
+    tokenCopied.value = false
+  }, 2000)
 }
 
 function startEditToken() {
@@ -220,7 +269,9 @@ async function regenerateToken() {
   if (!confirm(t('settings.token.confirmRegenerate'))) return
   const buf = new Uint8Array(32)
   crypto.getRandomValues(buf)
-  const token = Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join('')
+  const token = Array.from(buf)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
   await applyNewToken(token)
 }
 
@@ -273,10 +324,10 @@ function removeIp(idx: number) {
 .token-input {
   flex: 1;
   padding: 6px 10px;
-  border: 1px solid #3C3C3C;
+  border: 1px solid #3c3c3c;
   border-radius: 5px;
-  background: #2A2A2C;
-  color: #E8E8E8;
+  background: #2a2a2c;
+  color: #e8e8e8;
   font-size: 13px;
   font-family: monospace;
   outline: none;
@@ -284,15 +335,15 @@ function removeIp(idx: number) {
 }
 
 .token-input:focus {
-  border-color: #007AFF;
+  border-color: #007aff;
 }
 
 .icon-btn {
   padding: 6px 10px;
-  border: 1px solid #3C3C3C;
+  border: 1px solid #3c3c3c;
   border-radius: 5px;
-  background: #2A2A2C;
-  color: #C8C8C8;
+  background: #2a2a2c;
+  color: #c8c8c8;
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
@@ -300,7 +351,7 @@ function removeIp(idx: number) {
 }
 
 .icon-btn:hover {
-  background: #3A3A3C;
+  background: #3a3a3c;
 }
 
 .icon-btn:disabled {
@@ -309,7 +360,7 @@ function removeIp(idx: number) {
 }
 
 .icon-btn.danger {
-  color: #F44747;
+  color: #f44747;
   border-color: #4a2020;
 }
 
@@ -327,13 +378,13 @@ function removeIp(idx: number) {
 .ip-text {
   flex: 1;
   font-size: 13px;
-  color: #C8C8C8;
+  color: #c8c8c8;
   font-family: monospace;
   padding: 4px 2px;
 }
 
 .token-error {
-  color: #F44747;
+  color: #f44747;
   font-size: 12px;
   margin: 4px 0 0;
 }
@@ -346,7 +397,7 @@ function removeIp(idx: number) {
 
 .qr-code-wrap canvas {
   border-radius: 8px;
-  background: var(--bg-input, #1A1A1A);
+  background: var(--bg-input, #1a1a1a);
   border: 1px solid var(--border, #333);
   padding: 8px;
 }

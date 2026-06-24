@@ -56,7 +56,7 @@ export function useAudioPlayer(): AudioPlayer {
     if (el.paused) {
       void el.play().then(
         () => (audioPlaying.value = true),
-        () => (audioPlaying.value = false),
+        () => (audioPlaying.value = false)
       )
     } else {
       el.pause()
@@ -67,7 +67,10 @@ export function useAudioPlayer(): AudioPlayer {
   function seekAudio(el: HTMLAudioElement | null, deltaSec: number) {
     if (!el) return
     const d = Number.isFinite(el.duration) ? el.duration : audioDuration.value
-    const next = Math.max(0, Math.min(d || Infinity, (Number.isFinite(el.currentTime) ? el.currentTime : 0) + deltaSec))
+    const next = Math.max(
+      0,
+      Math.min(d || Infinity, (Number.isFinite(el.currentTime) ? el.currentTime : 0) + deltaSec)
+    )
     el.currentTime = next
     audioCurrent.value = next
   }
@@ -113,9 +116,20 @@ export function useAudioPlayer(): AudioPlayer {
   }
 
   return {
-    audioPlaying, audioCurrent, audioDuration, audioVolValue,
-    audioSeekValue, audioTimeNow, audioTimeTotal,
-    toggleAudio, seekAudio, onAudioSeekInput, onAudioVolumeInput,
-    onAudioTimeUpdate, onAudioLoadedMetadata, onAudioEnded, resetAudio,
+    audioPlaying,
+    audioCurrent,
+    audioDuration,
+    audioVolValue,
+    audioSeekValue,
+    audioTimeNow,
+    audioTimeTotal,
+    toggleAudio,
+    seekAudio,
+    onAudioSeekInput,
+    onAudioVolumeInput,
+    onAudioTimeUpdate,
+    onAudioLoadedMetadata,
+    onAudioEnded,
+    resetAudio,
   }
 }

@@ -4,8 +4,9 @@ import { authFetch, apiUrl, wsUrlWithToken, getApiBase } from './apiBase'
 
 // Bypass Vite's static analysis of import()
 // eslint-disable-next-line no-new-func
-const dynamicImport: (url: string) => Promise<any> =
-  new Function('url', 'return import(url)') as (url: string) => Promise<any>
+const dynamicImport: (url: string) => Promise<any> = new Function('url', 'return import(url)') as (
+  url: string
+) => Promise<any>
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,8 +49,14 @@ export interface PluginContext {
   h: typeof h
 
   exec: {
-    run(args: string[], options?: { cwd?: string; env?: Record<string, string>; timeout?: number }): Promise<{ code: number; stdout: string; stderr: string }>
-    spawn(args: string[], options?: { cwd?: string; env?: Record<string, string> }): { stdout: ReadableStream<string>; stderr: ReadableStream<string>; kill(): void }
+    run(
+      args: string[],
+      options?: { cwd?: string; env?: Record<string, string>; timeout?: number }
+    ): Promise<{ code: number; stdout: string; stderr: string }>
+    spawn(
+      args: string[],
+      options?: { cwd?: string; env?: Record<string, string> }
+    ): { stdout: ReadableStream<string>; stderr: ReadableStream<string>; kill(): void }
   }
 
   terminal: {
@@ -86,7 +93,10 @@ export interface PluginContext {
   open(): void
 
   process: {
-    start(args: string[], options?: { cwd?: string; env?: Record<string, string> }): Promise<ProcessHandle>
+    start(
+      args: string[],
+      options?: { cwd?: string; env?: Record<string, string> }
+    ): Promise<ProcessHandle>
     list(): Promise<ProcessInfo[]>
     stop(pid: number): Promise<void>
     stopAll(): Promise<void>
@@ -130,7 +140,9 @@ export interface LoadedPlugin {
 
 export const loadedPlugins = reactive(new Map<string, LoadedPlugin>())
 const pluginCommands = reactive(new Map<string, { pluginId: string; handler: () => void }>())
-const pluginQuickPicks = reactive(new Map<string, { pluginId: string; options: QuickPickOptions }>())
+const pluginQuickPicks = reactive(
+  new Map<string, { pluginId: string; options: QuickPickOptions }>()
+)
 
 // ─── Window API Injection Points ──────────────────────────────────────────────
 
@@ -147,7 +159,9 @@ declare global {
 // ─── CSS Management ───────────────────────────────────────────────────────────
 
 function removePluginCSS(id: string) {
-  document.querySelectorAll(`link[data-plugin-id="${id}"], style[data-plugin-id="${id}"]`).forEach(el => el.remove())
+  document
+    .querySelectorAll(`link[data-plugin-id="${id}"], style[data-plugin-id="${id}"]`)
+    .forEach((el) => el.remove())
 }
 
 // ─── Plugin Context Factory (module scope) ───────────────────────────────────
@@ -173,15 +187,27 @@ function createPluginContext(pluginId: string): PluginContext {
       let stderrCtrl: ReadableStreamDefaultController<string>
 
       const stdout = new ReadableStream<string>({
-        start(controller) { stdoutCtrl = controller },
+        start(controller) {
+          stdoutCtrl = controller
+        },
       })
       const stderr = new ReadableStream<string>({
-        start(controller) { stderrCtrl = controller },
+        start(controller) {
+          stderrCtrl = controller
+        },
       })
 
       const closeStreams = () => {
-        try { stdoutCtrl.close() } catch { /* noop */ }
-        try { stderrCtrl.close() } catch { /* noop */ }
+        try {
+          stdoutCtrl.close()
+        } catch {
+          /* noop */
+        }
+        try {
+          stderrCtrl.close()
+        } catch {
+          /* noop */
+        }
       }
 
       ws.onmessage = (e) => {
@@ -232,7 +258,9 @@ function createPluginContext(pluginId: string): PluginContext {
 
   const storage: PluginContext['storage'] = {
     async get(key) {
-      const res = await authFetch(apiUrl(`/api/plugins/${pluginId}/storage/${encodeURIComponent(key)}`))
+      const res = await authFetch(
+        apiUrl(`/api/plugins/${pluginId}/storage/${encodeURIComponent(key)}`)
+      )
       if (res.status === 404) return undefined
       return (await res.json()).value
     },
@@ -266,7 +294,13 @@ function createPluginContext(pluginId: string): PluginContext {
   }
 
   const context: PluginContext = {
-    reactive, ref, computed, watch, onMounted, onUnmounted, h,
+    reactive,
+    ref,
+    computed,
+    watch,
+    onMounted,
+    onUnmounted,
+    h,
     exec,
     process,
     terminal: window.__dinotty_terminal_api ?? {
@@ -286,7 +320,9 @@ function createPluginContext(pluginId: string): PluginContext {
       notify: window.__dinotty_ui_notify ?? (() => {}),
       confirm: window.__dinotty_ui_confirm ?? (async () => false),
     },
-    open() { window.__dinotty_open_plugin?.(pluginId) },
+    open() {
+      window.__dinotty_open_plugin?.(pluginId)
+    },
   }
 
   return context
@@ -345,7 +381,10 @@ async function loadPlugin(id: string): Promise<LoadedPlugin> {
     const result = await Promise.race([
       mod.activate(context),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`activate() timed out after ${ACTIVATE_TIMEOUT_MS}ms`)), ACTIVATE_TIMEOUT_MS)
+        setTimeout(
+          () => reject(new Error(`activate() timed out after ${ACTIVATE_TIMEOUT_MS}ms`)),
+          ACTIVATE_TIMEOUT_MS
+        )
       ),
     ])
     exports = (result as PluginExports) || null
@@ -362,13 +401,23 @@ async function unloadPlugin(id: string) {
   const plugin = loadedPlugins.get(id)
   if (!plugin) return
 
-  try { plugin.module.deactivate?.() } catch { /* noop */ }
-  try { plugin.exports?.dispose?.() } catch { /* noop */ }
+  try {
+    plugin.module.deactivate?.()
+  } catch {
+    /* noop */
+  }
+  try {
+    plugin.exports?.dispose?.()
+  } catch {
+    /* noop */
+  }
 
   // Kill all managed processes for this plugin
   try {
     await authFetch(apiUrl(`/api/plugins/${id}/process`), { method: 'DELETE' })
-  } catch { /* noop */ }
+  } catch {
+    /* noop */
+  }
 
   // Clean up commands
   for (const [cmdId, entry] of pluginCommands) {
@@ -422,7 +471,12 @@ export function usePluginLoader() {
         console.warn('[plugin] GET /api/plugins returned', res.status)
         return
       }
-      const list: Array<{ manifest: PluginManifest; isDevLink?: boolean; state?: string; error?: string }> = await res.json()
+      const list: Array<{
+        manifest: PluginManifest
+        isDevLink?: boolean
+        state?: string
+        error?: string
+      }> = await res.json()
 
       for (const item of list) {
         const id = item.manifest.id
@@ -439,7 +493,11 @@ export function usePluginLoader() {
           loadedPlugins.set(id, {
             id,
             manifest: item.manifest,
-            module: { activate() { return {} } },
+            module: {
+              activate() {
+                return {}
+              },
+            },
             exports: null,
             state: 'error',
             error: e.message,
@@ -479,7 +537,7 @@ export function usePluginLoader() {
   })
 
   const pluginList = computed(() => {
-    return Array.from(loadedPlugins.values()).map(p => ({
+    return Array.from(loadedPlugins.values()).map((p) => ({
       id: p.id,
       name: p.manifest.name,
       description: p.manifest.description,
@@ -489,5 +547,14 @@ export function usePluginLoader() {
     }))
   })
 
-  return { loadedPlugins, loadPlugin, unloadPlugin, loadAll, allCommands, allQuickPicks, getPluginContext, pluginList }
+  return {
+    loadedPlugins,
+    loadPlugin,
+    unloadPlugin,
+    loadAll,
+    allCommands,
+    allQuickPicks,
+    getPluginContext,
+    pluginList,
+  }
 }

@@ -3,7 +3,10 @@ import type { RecentEntry } from './useSettings'
 
 const MAX_RECENT = 50
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
-let _cached: { settings: ReturnType<typeof useSettings>['settings']; saveSettings: ReturnType<typeof useSettings>['saveSettings'] } | null = null
+let _cached: {
+  settings: ReturnType<typeof useSettings>['settings']
+  saveSettings: ReturnType<typeof useSettings>['saveSettings']
+} | null = null
 
 function getCached() {
   if (!_cached) {
@@ -22,7 +25,7 @@ function debouncedSave() {
 
 function recordRecent(list: RecentEntry[], pathOrUrl: string, name: string) {
   const now = Math.floor(Date.now() / 1000)
-  const idx = list.findIndex(e => e.path_or_url === pathOrUrl)
+  const idx = list.findIndex((e) => e.path_or_url === pathOrUrl)
   if (idx !== -1) list.splice(idx, 1)
   list.unshift({ path_or_url: pathOrUrl, name, visited_at: now })
   while (list.length > MAX_RECENT) list.pop()
@@ -42,7 +45,7 @@ export function useRecentFiles() {
   }
 
   function removeFile(path: string) {
-    const idx = settings.recent_files.findIndex(e => e.path_or_url === path)
+    const idx = settings.recent_files.findIndex((e) => e.path_or_url === path)
     if (idx !== -1) {
       settings.recent_files.splice(idx, 1)
       saveSettings()
@@ -76,7 +79,7 @@ export function useRecentUrls() {
   }
 
   function removeUrl(url: string) {
-    const idx = settings.recent_urls.findIndex(e => e.path_or_url === url)
+    const idx = settings.recent_urls.findIndex((e) => e.path_or_url === url)
     if (idx !== -1) {
       settings.recent_urls.splice(idx, 1)
       saveSettings()

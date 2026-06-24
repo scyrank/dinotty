@@ -13,23 +13,83 @@ export interface KeyBindingDef {
 }
 
 const defs: KeyBindingDef[] = [
-  { id: 'togglePalette', defaultBinding: { key: 'k', shift: false }, icon: '⌘K', titleKey: 'keybinding.togglePalette' },
-  { id: 'openBookmarks', defaultBinding: { key: 'b', shift: true }, icon: '★', titleKey: 'keybinding.openBookmarks' },
-  { id: 'newTab', defaultBinding: { key: 't', shift: false }, icon: '＋', titleKey: 'keybinding.newTab' },
-  { id: 'closeTab', defaultBinding: { key: 'w', shift: false }, icon: '✕', titleKey: 'keybinding.closeTab' },
-  { id: 'splitHorizontal', defaultBinding: { key: 'd', shift: false }, icon: '⊞', titleKey: 'keybinding.splitHorizontal' },
-  { id: 'splitVertical', defaultBinding: { key: 'd', shift: true }, icon: '⊟', titleKey: 'keybinding.splitVertical' },
-  { id: 'toggleBroadcast', defaultBinding: { key: 'i', shift: true }, icon: '⬤', titleKey: 'keybinding.toggleBroadcast' },
-  { id: 'toggleZoom', defaultBinding: { key: 'Enter', shift: true }, icon: '⤢', titleKey: 'keybinding.toggleZoom' },
-  { id: 'equalizePanes', defaultBinding: { key: '=', shift: false }, icon: '⊞', titleKey: 'keybinding.equalizePanes' },
-  { id: 'focusNextPane', defaultBinding: { key: ']', shift: false }, icon: '→', titleKey: 'keybinding.focusNextPane' },
-  { id: 'focusPrevPane', defaultBinding: { key: '[', shift: false }, icon: '←', titleKey: 'keybinding.focusPrevPane' },
-  { id: 'searchTerminal', defaultBinding: { key: 'f', shift: false }, icon: '🔍', titleKey: 'keybinding.searchTerminal' },
+  {
+    id: 'togglePalette',
+    defaultBinding: { key: 'k', shift: false },
+    icon: '⌘K',
+    titleKey: 'keybinding.togglePalette',
+  },
+  {
+    id: 'openBookmarks',
+    defaultBinding: { key: 'b', shift: true },
+    icon: '★',
+    titleKey: 'keybinding.openBookmarks',
+  },
+  {
+    id: 'newTab',
+    defaultBinding: { key: 't', shift: false },
+    icon: '＋',
+    titleKey: 'keybinding.newTab',
+  },
+  {
+    id: 'closeTab',
+    defaultBinding: { key: 'w', shift: false },
+    icon: '✕',
+    titleKey: 'keybinding.closeTab',
+  },
+  {
+    id: 'splitHorizontal',
+    defaultBinding: { key: 'd', shift: false },
+    icon: '⊞',
+    titleKey: 'keybinding.splitHorizontal',
+  },
+  {
+    id: 'splitVertical',
+    defaultBinding: { key: 'd', shift: true },
+    icon: '⊟',
+    titleKey: 'keybinding.splitVertical',
+  },
+  {
+    id: 'toggleBroadcast',
+    defaultBinding: { key: 'i', shift: true },
+    icon: '⬤',
+    titleKey: 'keybinding.toggleBroadcast',
+  },
+  {
+    id: 'toggleZoom',
+    defaultBinding: { key: 'Enter', shift: true },
+    icon: '⤢',
+    titleKey: 'keybinding.toggleZoom',
+  },
+  {
+    id: 'equalizePanes',
+    defaultBinding: { key: '=', shift: false },
+    icon: '⊞',
+    titleKey: 'keybinding.equalizePanes',
+  },
+  {
+    id: 'focusNextPane',
+    defaultBinding: { key: ']', shift: false },
+    icon: '→',
+    titleKey: 'keybinding.focusNextPane',
+  },
+  {
+    id: 'focusPrevPane',
+    defaultBinding: { key: '[', shift: false },
+    icon: '←',
+    titleKey: 'keybinding.focusPrevPane',
+  },
+  {
+    id: 'searchTerminal',
+    defaultBinding: { key: 'f', shift: false },
+    icon: '🔍',
+    titleKey: 'keybinding.searchTerminal',
+  },
 ]
 
 export function useKeybindings() {
   function getBinding(id: string): KeyBinding {
-    const def = defs.find(d => d.id === id)
+    const def = defs.find((d) => d.id === id)
     if (!def) return { key: '', shift: false }
     return settings.keybindings[id] ?? def.defaultBinding
   }
@@ -42,7 +102,7 @@ export function useKeybindings() {
   }
 
   function getAllWithDisplay() {
-    return defs.map(def => {
+    return defs.map((def) => {
       const binding = getBinding(def.id)
       return {
         ...def,

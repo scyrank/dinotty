@@ -66,20 +66,31 @@ function load() {
   } catch {}
 
   if (servers.value.length === 0) {
-    servers.value.push({ name: 'Local', host: location.hostname, port: parseInt(location.port) || 8999 })
+    servers.value.push({
+      name: 'Local',
+      host: location.hostname,
+      port: parseInt(location.port) || 8999,
+    })
     save()
   }
 }
 
 function save() {
-  localStorage.setItem('dinotty_servers', JSON.stringify({
-    servers: servers.value,
-    activeIndex: activeIndex.value,
-  }))
+  localStorage.setItem(
+    'dinotty_servers',
+    JSON.stringify({
+      servers: servers.value,
+      activeIndex: activeIndex.value,
+    })
+  )
 }
 
-function open() { visible.value = true }
-function close() { visible.value = false }
+function open() {
+  visible.value = true
+}
+function close() {
+  visible.value = false
+}
 
 function connect(i: number) {
   activeIndex.value = i
@@ -124,7 +135,7 @@ defineExpose({ open, close, getActiveServer })
 .serverlist-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0, 0, 0, 0.5);
   z-index: 930;
   display: flex;
   align-items: center;
@@ -135,7 +146,7 @@ defineExpose({ open, close, getActiveServer })
 .serverlist-panel {
   width: 90vw;
   max-width: 400px;
-  background: var(--bg-surface, #1A1A1A);
+  background: var(--bg-surface, #1a1a1a);
   border: 1px solid var(--border, #333);
   border-radius: 8px;
   overflow: hidden;
@@ -179,8 +190,12 @@ defineExpose({ open, close, getActiveServer })
   cursor: pointer;
   margin-bottom: 4px;
 }
-.server-item:hover { background: rgba(255,255,255,0.05); }
-.server-item.active { background: rgba(77,127,255,0.1); }
+.server-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.server-item.active {
+  background: rgba(77, 127, 255, 0.1);
+}
 
 .server-status {
   width: 8px;
@@ -189,9 +204,14 @@ defineExpose({ open, close, getActiveServer })
   background: var(--fg-muted, #666);
   flex-shrink: 0;
 }
-.server-status.online { background: #00C200; }
+.server-status.online {
+  background: #00c200;
+}
 
-.server-info { flex: 1; min-width: 0; }
+.server-info {
+  flex: 1;
+  min-width: 0;
+}
 .server-name {
   display: block;
   font-size: 13px;
@@ -215,7 +235,9 @@ defineExpose({ open, close, getActiveServer })
   justify-content: center;
   opacity: 0;
 }
-.server-item:hover .server-del { opacity: 1; }
+.server-item:hover .server-del {
+  opacity: 1;
+}
 
 .server-add-form {
   display: flex;
@@ -234,7 +256,9 @@ defineExpose({ open, close, getActiveServer })
   font-size: 12px;
   min-width: 0;
 }
-.server-input.short { max-width: 60px; }
+.server-input.short {
+  max-width: 60px;
+}
 .server-add-btn {
   width: 32px;
   border-radius: 4px;

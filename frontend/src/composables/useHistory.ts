@@ -18,7 +18,9 @@ async function connectWs() {
 
   let url: string
   if (typeof window !== 'undefined' && '__TAURI__' in window) {
-    const origin = String(await (window as any).__TAURI__.core.invoke('embedded_http_origin')).replace(/\/$/, '')
+    const origin = String(
+      await (window as any).__TAURI__.core.invoke('embedded_http_origin')
+    ).replace(/\/$/, '')
     url = `${origin.replace(/^http/, 'ws')}/ws/history`
   } else {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -76,7 +78,7 @@ export function useHistory() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command }),
       })
-      suggestions.value = suggestions.value.filter(s => s.command !== command)
+      suggestions.value = suggestions.value.filter((s) => s.command !== command)
     } catch {
       // ignore
     }
