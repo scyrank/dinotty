@@ -2,13 +2,20 @@
   <div ref="barRef" id="mobile-kb" v-show="visible">
     <!-- Default mode: suggestion bar on top -->
     <div class="mkb-kb-bar" v-show="kbMode === 'default'">
-      <SuggestionBar :suggestions="suggestions" @select="onSuggestionSelect" @edit="onSuggestionEdit" @expand="onExpandHistory" />
+      <SuggestionBar
+        :suggestions="suggestions"
+        @select="onSuggestionSelect"
+        @edit="onSuggestionEdit"
+        @expand="onExpandHistory"
+      />
       <button
         type="button"
         class="mkb-collapse-btn"
         @mousedown.prevent="emit('update:visible', false)"
         @touchstart.prevent="emit('update:visible', false)"
-      >▼</button>
+      >
+        ▼
+      </button>
     </div>
 
     <!-- Action mode: text input on top -->
@@ -32,7 +39,9 @@
         class="mkb-collapse-btn"
         @mousedown.prevent="emit('update:visible', false)"
         @touchstart.prevent="emit('update:visible', false)"
-      >▼</button>
+      >
+        ▼
+      </button>
     </div>
 
     <!-- Toolbar (visible when textarea focused) -->
@@ -51,63 +60,125 @@
     </div>
 
     <!-- Swipeable panels container -->
-    <div
-      ref="swipeContainerRef"
-      class="mkb-swipe-container"
-      v-show="!textInputFocused"
-    >
-    <div class="mkb-swipe-track" :style="swipeTrackStyle">
-
-    <!-- Main keyboard panel -->
-    <div id="mkb-main-panel">
-      <!-- Row 1: ` 1-0 - = ⌫ -->
-      <MkbRow :keys="row1" :state="modState" @key-press="onKeyPress" @special="onSpecial" />
-      <!-- Row 2: tab q-p [ ] \ -->
-      <MkbRow :keys="row2" :state="modState" @key-press="onKeyPress" @special="onSpecial" />
-      <!-- Row 3: ⌨ a-l ; ' ↵ (stagger) -->
-      <MkbRow :keys="row3" :state="modState" @key-press="onKeyPress" @special="onSpecial" stagger="asdf" />
-      <!-- Rows 4-5 with arrow cluster -->
-      <div class="mkb-rows-45">
-        <div class="mkb-rows-45-main">
-          <MkbRow :keys="row4zxcv" :state="modState" @key-press="onKeyPress" @special="onSpecial" />
-          <MkbRow :keys="row5bottom" :state="modState" @key-press="onKeyPress" @special="onSpecial" />
+    <div ref="swipeContainerRef" class="mkb-swipe-container" v-show="!textInputFocused">
+      <div class="mkb-swipe-track" :style="swipeTrackStyle">
+        <!-- Main keyboard panel -->
+        <div id="mkb-main-panel">
+          <!-- Row 1: ` 1-0 - = ⌫ -->
+          <MkbRow :keys="row1" :state="modState" @key-press="onKeyPress" @special="onSpecial" />
+          <!-- Row 2: tab q-p [ ] \ -->
+          <MkbRow :keys="row2" :state="modState" @key-press="onKeyPress" @special="onSpecial" />
+          <!-- Row 3: ⌨ a-l ; ' ↵ (stagger) -->
+          <MkbRow
+            :keys="row3"
+            :state="modState"
+            @key-press="onKeyPress"
+            @special="onSpecial"
+            stagger="asdf"
+          />
+          <!-- Rows 4-5 with arrow cluster -->
+          <div class="mkb-rows-45">
+            <div class="mkb-rows-45-main">
+              <MkbRow
+                :keys="row4zxcv"
+                :state="modState"
+                @key-press="onKeyPress"
+                @special="onSpecial"
+              />
+              <MkbRow
+                :keys="row5bottom"
+                :state="modState"
+                @key-press="onKeyPress"
+                @special="onSpecial"
+              />
+            </div>
+            <div class="mkb-arrow-cluster">
+              <MkbKey :k="arrowUp" :state="modState" @key-press="onKeyPress" @special="onSpecial" />
+              <div class="mkb-arrow-cluster-bot">
+                <MkbKey
+                  :k="arrowLeft"
+                  :state="modState"
+                  @key-press="onKeyPress"
+                  @special="onSpecial"
+                />
+                <MkbKey
+                  :k="arrowDown"
+                  :state="modState"
+                  @key-press="onKeyPress"
+                  @special="onSpecial"
+                />
+                <MkbKey
+                  :k="arrowRight"
+                  :state="modState"
+                  @key-press="onKeyPress"
+                  @special="onSpecial"
+                />
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="mkb-arrow-cluster">
-          <MkbKey :k="arrowUp" :state="modState" @key-press="onKeyPress" @special="onSpecial" />
-          <div class="mkb-arrow-cluster-bot">
-            <MkbKey :k="arrowLeft" :state="modState" @key-press="onKeyPress" @special="onSpecial" />
-            <MkbKey :k="arrowDown" :state="modState" @key-press="onKeyPress" @special="onSpecial" />
-            <MkbKey :k="arrowRight" :state="modState" @key-press="onKeyPress" @special="onSpecial" />
+
+        <!-- Action panel -->
+        <div id="mkb-action-panel">
+          <MkbRow
+            :keys="actionFirstRow"
+            :state="modState"
+            @key-press="onKeyPress"
+            @special="onSpecial"
+          />
+          <MkbRow
+            v-for="(r, i) in actionFollowingRows"
+            :key="i"
+            :keys="r"
+            :state="modState"
+            @key-press="onKeyPress"
+            @special="onSpecial"
+          />
+          <div class="mkb-action-bottom">
+            <div class="mkb-action-grid">
+              <MkbKey
+                :k="actionYes"
+                :state="modState"
+                @key-press="onKeyPress"
+                @special="onSpecial"
+              />
+              <MkbKey
+                :k="actionNo"
+                :state="modState"
+                @key-press="onKeyPress"
+                @special="onSpecial"
+              />
+              <MkbKey
+                :k="actionArrowUp"
+                :state="modState"
+                @key-press="onKeyPress"
+                @special="onSpecial"
+              />
+              <MkbKey
+                :k="actionContinue"
+                :state="modState"
+                @key-press="onKeyPress"
+                @special="onSpecial"
+              />
+              <MkbKey
+                :k="actionArrowBot[0]"
+                :state="modState"
+                @key-press="onKeyPress"
+                @special="onSpecial"
+              />
+            </div>
+            <MkbKey
+              :k="actionEnter"
+              :state="modState"
+              @key-press="onKeyPress"
+              @special="onSpecial"
+            />
           </div>
         </div>
       </div>
+      <!-- /mkb-swipe-track -->
     </div>
-
-    <!-- Action panel -->
-    <div id="mkb-action-panel">
-      <MkbRow :keys="actionFirstRow" :state="modState" @key-press="onKeyPress" @special="onSpecial" />
-      <MkbRow
-        v-for="(r, i) in actionFollowingRows"
-        :key="i"
-        :keys="r"
-        :state="modState"
-        @key-press="onKeyPress"
-        @special="onSpecial"
-      />
-      <div class="mkb-action-bottom">
-        <div class="mkb-action-grid">
-          <MkbKey :k="actionYes" :state="modState" @key-press="onKeyPress" @special="onSpecial" />
-          <MkbKey :k="actionNo" :state="modState" @key-press="onKeyPress" @special="onSpecial" />
-          <MkbKey :k="actionArrowUp" :state="modState" @key-press="onKeyPress" @special="onSpecial" />
-          <MkbKey :k="actionContinue" :state="modState" @key-press="onKeyPress" @special="onSpecial" />
-          <MkbKey :k="actionArrowBot[0]" :state="modState" @key-press="onKeyPress" @special="onSpecial" />
-        </div>
-        <MkbKey :k="actionEnter" :state="modState" @key-press="onKeyPress" @special="onSpecial" />
-      </div>
-    </div>
-
-    </div><!-- /mkb-swipe-track -->
-    </div><!-- /mkb-swipe-container -->
+    <!-- /mkb-swipe-container -->
 
     <!-- Swipe indicator dots (outside overflow-hidden container) -->
     <div
@@ -117,8 +188,16 @@
       @touchmove.passive="onSwipeMove"
       @touchend="onSwipeEnd"
     >
-      <span class="mkb-dot" :class="{ active: kbMode === 'default' }" @click="switchMode('default')"></span>
-      <span class="mkb-dot" :class="{ active: kbMode === 'action' }" @click="switchMode('action')"></span>
+      <span
+        class="mkb-dot"
+        :class="{ active: kbMode === 'default' }"
+        @click="switchMode('default')"
+      ></span>
+      <span
+        class="mkb-dot"
+        :class="{ active: kbMode === 'action' }"
+        @click="switchMode('action')"
+      ></span>
     </div>
 
     <HistoryPanel
@@ -224,7 +303,11 @@ function onSwipeMove(e: TouchEvent) {
 }
 
 function onSwipeEnd() {
-  if (!swiping.value) { swipeDeltaX.value = 0; swiping.value = false; return }
+  if (!swiping.value) {
+    swipeDeltaX.value = 0
+    swiping.value = false
+    return
+  }
   const threshold = (barRef.value?.offsetWidth || 375) * 0.15
   swipeTransition.value = true
   if (swipeDeltaX.value < -threshold && kbMode.value === 'default') {
@@ -254,47 +337,87 @@ const modState = reactive<ModState>({
 
 // Key definitions
 const row1: KeyDef[] = [
-  { l:'`', sl:'~', s:'`' }, { l:'1',sl:'!',s:'1' }, { l:'2',sl:'@',s:'2' },
-  { l:'3',sl:'#',s:'3' }, { l:'4',sl:'$',s:'4' }, { l:'5',sl:'%',s:'5' },
-  { l:'6',sl:'^',s:'6' }, { l:'7',sl:'&',s:'7' }, { l:'8',sl:'*',s:'8' },
-  { l:'9',sl:'(',s:'9' }, { l:'0',sl:')',s:'0' }, { l:'-',sl:'_',s:'-' },
-  { l:'=',sl:'+',s:'=' }, { l:'⌫', s:'\x7f', g:1.5, cls:'mkb-mod', repeat:true },
+  { l: '`', sl: '~', s: '`' },
+  { l: '1', sl: '!', s: '1' },
+  { l: '2', sl: '@', s: '2' },
+  { l: '3', sl: '#', s: '3' },
+  { l: '4', sl: '$', s: '4' },
+  { l: '5', sl: '%', s: '5' },
+  { l: '6', sl: '^', s: '6' },
+  { l: '7', sl: '&', s: '7' },
+  { l: '8', sl: '*', s: '8' },
+  { l: '9', sl: '(', s: '9' },
+  { l: '0', sl: ')', s: '0' },
+  { l: '-', sl: '_', s: '-' },
+  { l: '=', sl: '+', s: '=' },
+  { l: '⌫', s: '\x7f', g: 1.5, cls: 'mkb-mod', repeat: true },
 ]
 
 const row2: KeyDef[] = [
-  { l:'tab', s:'\x09', g:1.5, cls:'mkb-mod' },
-  { l:'q',s:'q' }, { l:'w',s:'w' }, { l:'e',s:'e' }, { l:'r',s:'r' },
-  { l:'t',s:'t' }, { l:'y',s:'y' }, { l:'u',s:'u' }, { l:'i',s:'i' },
-  { l:'o',s:'o' }, { l:'p',s:'p' },
-  { l:'[',sl:'{',s:'[' }, { l:']',sl:'}',s:']' }, { l:'\\',sl:'|',s:'\\', g:1.5, cls:'mkb-mod' },
+  { l: 'tab', s: '\x09', g: 1.5, cls: 'mkb-mod' },
+  { l: 'q', s: 'q' },
+  { l: 'w', s: 'w' },
+  { l: 'e', s: 'e' },
+  { l: 'r', s: 'r' },
+  { l: 't', s: 't' },
+  { l: 'y', s: 'y' },
+  { l: 'u', s: 'u' },
+  { l: 'i', s: 'i' },
+  { l: 'o', s: 'o' },
+  { l: 'p', s: 'p' },
+  { l: '[', sl: '{', s: '[' },
+  { l: ']', sl: '}', s: ']' },
+  { l: '\\', sl: '|', s: '\\', g: 1.5, cls: 'mkb-mod' },
 ]
 
 const row3 = computed<KeyDef[]>(() => [
-  { l:'', icon: kbMode.value === 'default' ? SquareTerminal : Keyboard, sp:'kbswitch', g:1.7, cls:'mkb-mod', id:'mkb-kbswitch' },
-  { l:'a',s:'a' }, { l:'s',s:'s' }, { l:'d',s:'d' }, { l:'f',s:'f' },
-  { l:'g',s:'g' }, { l:'h',s:'h' }, { l:'j',s:'j' }, { l:'k',s:'k' },
-  { l:'l',s:'l' }, { l:';',sl:':',s:';' }, { l:"'",sl:'"',s:"'" },
-  { l:'↵', s:'\r', g:1.5, cls:'mkb-mod mkb-return' },
+  {
+    l: '',
+    icon: kbMode.value === 'default' ? SquareTerminal : Keyboard,
+    sp: 'kbswitch',
+    g: 1.7,
+    cls: 'mkb-mod',
+    id: 'mkb-kbswitch',
+  },
+  { l: 'a', s: 'a' },
+  { l: 's', s: 's' },
+  { l: 'd', s: 'd' },
+  { l: 'f', s: 'f' },
+  { l: 'g', s: 'g' },
+  { l: 'h', s: 'h' },
+  { l: 'j', s: 'j' },
+  { l: 'k', s: 'k' },
+  { l: 'l', s: 'l' },
+  { l: ';', sl: ':', s: ';' },
+  { l: "'", sl: '"', s: "'" },
+  { l: '↵', s: '\r', g: 1.5, cls: 'mkb-mod mkb-return' },
 ])
 
 const row4zxcv: KeyDef[] = [
-  { l:'⇧', sp:'shift', g:2.2, cls:'mkb-mod', id:'mkb-shift' },
-  { l:'z',s:'z' }, { l:'x',s:'x' }, { l:'c',s:'c' }, { l:'v',s:'v' },
-  { l:'b',s:'b' }, { l:'n',s:'n' }, { l:'m',s:'m' },
-  { l:',',sl:'<',s:',',cls:'mkb-alpha' }, { l:'.',sl:'>',s:'.',cls:'mkb-alpha' }, { l:'/',sl:'?',s:'/',cls:'mkb-alpha' },
+  { l: '⇧', sp: 'shift', g: 2.2, cls: 'mkb-mod', id: 'mkb-shift' },
+  { l: 'z', s: 'z' },
+  { l: 'x', s: 'x' },
+  { l: 'c', s: 'c' },
+  { l: 'v', s: 'v' },
+  { l: 'b', s: 'b' },
+  { l: 'n', s: 'n' },
+  { l: 'm', s: 'm' },
+  { l: ',', sl: '<', s: ',', cls: 'mkb-alpha' },
+  { l: '.', sl: '>', s: '.', cls: 'mkb-alpha' },
+  { l: '/', sl: '?', s: '/', cls: 'mkb-alpha' },
 ]
 
-const arrowUp: KeyDef = { l:'↑', s:'\x1b[A', repeat:true, cls:'mkb-arrow' }
-const arrowDown: KeyDef = { l:'↓', s:'\x1b[B', repeat:true, cls:'mkb-arrow' }
-const arrowLeft: KeyDef = { l:'←', s:'\x1b[D', repeat:true, cls:'mkb-arrow' }
-const arrowRight: KeyDef = { l:'→', s:'\x1b[C', repeat:true, cls:'mkb-arrow' }
+const arrowUp: KeyDef = { l: '↑', s: '\x1b[A', repeat: true, cls: 'mkb-arrow' }
+const arrowDown: KeyDef = { l: '↓', s: '\x1b[B', repeat: true, cls: 'mkb-arrow' }
+const arrowLeft: KeyDef = { l: '←', s: '\x1b[D', repeat: true, cls: 'mkb-arrow' }
+const arrowRight: KeyDef = { l: '→', s: '\x1b[C', repeat: true, cls: 'mkb-arrow' }
 
 const row5bottom: KeyDef[] = [
-  { l:'fn', sp:'fn', g:1.05, cls:'mkb-mod' },
-  { l:'ctrl', sp:'ctrl', g:1.05, cls:'mkb-mod', id:'mkb-ctrl' },
-  { l:'opt', sp:'alt', g:1.05, cls:'mkb-mod', id:'mkb-alt' },
-  { l:'⌘', sp:'cmd', g:1.05, cls:'mkb-mod' },
-  { l:'', s:' ', g:8, id:'mkb-space' },
+  { l: 'fn', sp: 'fn', g: 1.05, cls: 'mkb-mod' },
+  { l: 'ctrl', sp: 'ctrl', g: 1.05, cls: 'mkb-mod', id: 'mkb-ctrl' },
+  { l: 'opt', sp: 'alt', g: 1.05, cls: 'mkb-mod', id: 'mkb-alt' },
+  { l: '⌘', sp: 'cmd', g: 1.05, cls: 'mkb-mod' },
+  { l: '', s: ' ', g: 8, id: 'mkb-space' },
 ]
 
 const kbswitchAction = computed<KeyDef>(() => ({
@@ -321,24 +444,30 @@ const actionFollowingRows = computed(() => {
   return tail.map((r, i) => mapActionKeys(r ?? [], i === tail.length - 1))
 })
 
-const actionArrowUp: KeyDef = { l:'↑', s:'\x1b[A', cls:'mkb-mod mkb-action-arrow', repeat:true }
+const actionArrowUp: KeyDef = { l: '↑', s: '\x1b[A', cls: 'mkb-mod mkb-action-arrow', repeat: true }
 
 const actionArrowBot: KeyDef[] = [
-  { l:'↓', s:'\x1b[B', cls:'mkb-mod mkb-action-arrow', repeat:true },
+  { l: '↓', s: '\x1b[B', cls: 'mkb-mod mkb-action-arrow', repeat: true },
 ]
 
-const actionEnter: KeyDef = { l:'↵', s:'\r', cls:'mkb-mod mkb-action-enter mkb-return' }
+const actionEnter: KeyDef = { l: '↵', s: '\r', cls: 'mkb-mod mkb-action-enter mkb-return' }
 
-const actionYes: KeyDef = { l:'yes', s:'yes\r', cls:'mkb-mod mkb-action-btn' }
-const actionNo: KeyDef = { l:'no', s:'no\r', cls:'mkb-mod mkb-action-btn' }
-const actionContinue: KeyDef = { l:'continue', s:'continue\r', cls:'mkb-mod mkb-action-btn mkb-action-continue' }
+const actionYes: KeyDef = { l: 'yes', s: 'yes\r', cls: 'mkb-mod mkb-action-btn' }
+const actionNo: KeyDef = { l: 'no', s: 'no\r', cls: 'mkb-mod mkb-action-btn' }
+const actionContinue: KeyDef = {
+  l: 'continue',
+  s: 'continue\r',
+  cls: 'mkb-mod mkb-action-btn mkb-action-continue',
+}
 
 function onTextInputFocus() {
   textInputFocused.value = true
 }
 
 function onTextInputBlur() {
-  setTimeout(() => { textInputFocused.value = false }, 100)
+  setTimeout(() => {
+    textInputFocused.value = false
+  }, 100)
 }
 
 function sendTextInput() {
@@ -452,7 +581,7 @@ function onHistoryPanelSelect(command: string) {
 }
 
 function onHistoryPanelDelete(command: string) {
-  allSuggestions.value = allSuggestions.value.filter(s => s.command !== command)
+  allSuggestions.value = allSuggestions.value.filter((s) => s.command !== command)
 }
 
 function onFilePickerSelect(path: string) {
@@ -501,7 +630,7 @@ function onViewportChange() {
   const vh = window.visualViewport.height
   if (vh > naturalVH) naturalVH = vh
   const off = window.innerHeight - (window.visualViewport.offsetTop + vh)
-  const sysKbOpen = (naturalVH - vh) > 120
+  const sysKbOpen = naturalVH - vh > 120
   if (barRef.value) {
     if (!props.visible) {
       barRef.value.style.display = 'none'
@@ -519,9 +648,12 @@ function onViewportChange() {
   updateHeight()
 }
 
-watch(() => props.visible, () => {
-  nextTick(applyHeight)
-})
+watch(
+  () => props.visible,
+  () => {
+    nextTick(applyHeight)
+  }
+)
 
 watch(globalSelectedPath, () => {
   if (globalSelectedPath.value && props.visible) {
@@ -537,7 +669,9 @@ onMounted(() => {
     window.visualViewport.addEventListener('resize', onViewportChange)
     window.visualViewport.addEventListener('scroll', onViewportChange)
     window.addEventListener('orientationchange', () => {
-      setTimeout(() => { naturalVH = window.visualViewport!.height }, 300)
+      setTimeout(() => {
+        naturalVH = window.visualViewport!.height
+      }, 300)
     })
   }
 

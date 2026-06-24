@@ -171,7 +171,9 @@ onMounted(() => {
   border-radius: 4px;
   color: var(--fg-muted, #858585);
   cursor: pointer;
-  transition: background-color 0.1s, color 0.1s;
+  transition:
+    background-color 0.1s,
+    color 0.1s;
 }
 
 .search-bar-btn:hover {

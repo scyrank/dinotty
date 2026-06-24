@@ -41,12 +41,14 @@ function startDrag(e: MouseEvent | TouchEvent) {
   const isTouch = 'touches' in e
   const horiz = props.direction === 'horizontal'
 
-  const overlay = isTouch ? null : (() => {
-    const d = document.createElement('div')
-    d.style.cssText = `position:fixed;inset:0;z-index:9999;cursor:${horiz ? 'col-resize' : 'row-resize'};`
-    document.body.appendChild(d)
-    return d
-  })()
+  const overlay = isTouch
+    ? null
+    : (() => {
+        const d = document.createElement('div')
+        d.style.cssText = `position:fixed;inset:0;z-index:9999;cursor:${horiz ? 'col-resize' : 'row-resize'};`
+        document.body.appendChild(d)
+        return d
+      })()
 
   const onMove = (ev: MouseEvent | TouchEvent) => {
     if ('touches' in ev) ev.preventDefault()
@@ -75,7 +77,11 @@ function startDrag(e: MouseEvent | TouchEvent) {
     emit('drag-end')
   }
 
-  window.addEventListener(moveEvent, onMove as EventListener, { passive: !isTouch } as AddEventListenerOptions)
+  window.addEventListener(
+    moveEvent,
+    onMove as EventListener,
+    { passive: !isTouch } as AddEventListenerOptions
+  )
   window.addEventListener(endEvent, onEnd)
 }
 

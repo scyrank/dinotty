@@ -2,76 +2,78 @@
 :root {
   color-scheme: dark;
   /* Background / surface */
-  --bg:           #1E1E1E;
-  --bg-surface:   #252526;
-  --bg-overlay:   #1E1E1E;
-  --bg-input:     #2A2A2C;
+  --bg: #1e1e1e;
+  --bg-surface: #252526;
+  --bg-overlay: #1e1e1e;
+  --bg-input: #2a2a2c;
 
   /* Borders */
-  --border:       #3C3C3C;
-  --border-focus: #8A8A8A;
-  --divider:      #2D2D2D;
+  --border: #3c3c3c;
+  --border-focus: #8a8a8a;
+  --divider: #2d2d2d;
 
   /* Text */
-  --fg:           #CCCCCC;
-  --fg-bright:    #D0D0D0;
-  --fg-muted:     #858585;
+  --fg: #cccccc;
+  --fg-bright: #d0d0d0;
+  --fg-muted: #858585;
 
   /* Accent */
-  --accent:       #8A8A8A;
-  --accent-hover: #9E9E9E;
+  --accent: #8a8a8a;
+  --accent-hover: #9e9e9e;
 
   /* Aliases for plugin compatibility */
-  --text-color:   var(--fg);
+  --text-color: var(--fg);
   --text-primary: var(--fg-bright);
   --text-secondary: var(--fg);
-  --text-muted:   var(--fg-muted);
-  --bg-main:      var(--bg);
-  --bg-hover:     #2A2A2C;
-  --bg-elevated:   var(--bg-surface);
+  --text-muted: var(--fg-muted);
+  --bg-main: var(--bg);
+  --bg-hover: #2a2a2c;
+  --bg-elevated: var(--bg-surface);
   --bg-surface-hover: #333333;
   --border-hover: #555555;
-  --accent-hover: #9E9E9E;
+  --accent-hover: #9e9e9e;
 
   /* Tab bar */
-  --tab-height:   36px;
-  --tab-bg:       #181818;
-  --tab-active-bg:#1E1E1E;
-  --tab-hover-bg: #2A2A2C;
-  --tab-text:     #858585;
-  --tab-active-text: #D0D0D0;
+  --tab-height: 36px;
+  --tab-bg: #181818;
+  --tab-active-bg: #1e1e1e;
+  --tab-hover-bg: #2a2a2c;
+  --tab-text: #858585;
+  --tab-active-text: #d0d0d0;
 
   /* ANSI 16-color palette */
-  --color-black:          #000000;
-  --color-red:            #F44747;
-  --color-green:          #6A9955;
-  --color-yellow:         #D7BA7D;
-  --color-blue:           #569CD6;
-  --color-magenta:        #C586C0;
-  --color-cyan:           #4EC9B0;
-  --color-white:          #D4D4D4;
-  --color-bright-black:   #808080;
-  --color-bright-red:     #F14C4C;
-  --color-bright-green:   #73C991;
-  --color-bright-yellow:  #CCA700;
-  --color-bright-blue:    #6796E6;
-  --color-bright-magenta: #D670D6;
-  --color-bright-cyan:    #23D18B;
-  --color-bright-white:   #FFFFFF;
+  --color-black: #000000;
+  --color-red: #f44747;
+  --color-green: #6a9955;
+  --color-yellow: #d7ba7d;
+  --color-blue: #569cd6;
+  --color-magenta: #c586c0;
+  --color-cyan: #4ec9b0;
+  --color-white: #d4d4d4;
+  --color-bright-black: #808080;
+  --color-bright-red: #f14c4c;
+  --color-bright-green: #73c991;
+  --color-bright-yellow: #cca700;
+  --color-bright-blue: #6796e6;
+  --color-bright-magenta: #d670d6;
+  --color-bright-cyan: #23d18b;
+  --color-bright-white: #ffffff;
 
   /* Palette overlay */
-  --palette-bg:     rgba(30, 30, 30, 0.97);
-  --palette-border: #3C3C3C;
-  --palette-select: #2A2D2E;
-  --palette-text:   #CCCCCC;
+  --palette-bg: rgba(30, 30, 30, 0.97);
+  --palette-border: #3c3c3c;
+  --palette-select: #2a2d2e;
+  --palette-text: #cccccc;
 
   /* Misc */
-  --radius:         4px;
-  --font-ui:        'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono:      'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace;
+  --radius: 4px;
+  --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace;
 }
 
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -80,21 +82,35 @@
 /* Global scrollbar styling (exclude xterm viewport — it manages its own) */
 *:not(.xterm-viewport) {
   scrollbar-width: thin;
-  scrollbar-color: #4A4A4A transparent;
+  scrollbar-color: #4a4a4a transparent;
 }
-*:not(.xterm-viewport)::-webkit-scrollbar { width: 8px; height: 8px; }
-*:not(.xterm-viewport)::-webkit-scrollbar-track { background: transparent; }
-*:not(.xterm-viewport)::-webkit-scrollbar-thumb { background: #4A4A4A; border-radius: 4px; }
-*:not(.xterm-viewport)::-webkit-scrollbar-thumb:hover { background: #5A5A5A; }
+*:not(.xterm-viewport)::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*:not(.xterm-viewport)::-webkit-scrollbar-track {
+  background: transparent;
+}
+*:not(.xterm-viewport)::-webkit-scrollbar-thumb {
+  background: #4a4a4a;
+  border-radius: 4px;
+}
+*:not(.xterm-viewport)::-webkit-scrollbar-thumb:hover {
+  background: #5a5a5a;
+}
 
 /* xterm viewport — hide native scrollbar (scroll via wheel/keyboard/touch) */
 .xterm-viewport {
   overflow-y: hidden !important;
   scrollbar-width: none;
 }
-.xterm-viewport::-webkit-scrollbar { display: none; }
+.xterm-viewport::-webkit-scrollbar {
+  display: none;
+}
 
-html, body, #app {
+html,
+body,
+#app {
   width: 100%;
   height: 100%;
   height: 100dvh;
@@ -138,7 +154,7 @@ input {
   margin-top: 6px;
   align-self: flex-start;
   padding: 3px 10px;
-  border: 1px solid rgba(255,255,255,0.3);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 4px;
   background: transparent;
   color: inherit;
@@ -146,7 +162,7 @@ input {
   cursor: pointer;
 }
 .notif-toast-btn:hover {
-  background: rgba(255,255,255,0.1);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 @media (max-width: 480px) and (orientation: portrait) {

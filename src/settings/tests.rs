@@ -1,0 +1,67 @@
+use super::*;
+
+#[test]
+fn old_config_missing_confirm_before_close_tab_defaults_to_true() {
+    let old_config = r#"{}"#;
+    let settings: Settings = serde_json::from_str(old_config)
+        .expect("old config without confirm_before_close_tab should still parse");
+    assert!(
+        settings.confirm_before_close_tab,
+        "missing field should default to true for backward compatibility"
+    );
+}
+
+#[test]
+fn settings_defaults_locale_to_zh() {
+    let settings: Settings = serde_json::from_str(r#"{}"#).unwrap();
+    assert_eq!(settings.locale, "zh");
+}
+
+#[test]
+fn settings_empty_json_is_valid() {
+    let settings: Settings = serde_json::from_str(r#"{}"#).unwrap();
+    assert!(!settings.keyboard_sound);
+    assert!(!settings.show_virtual_keyboard);
+    assert!(settings.confirm_before_close_tab);
+    assert!(settings.bookmarks.is_empty());
+    assert_eq!(settings.ip_whitelist, vec!["127.0.0.1", "::1"]);
+}
+
+#[test]
+fn settings_with_custom_values() {
+    let json = r#"{
+        "theme": {"name": "dracula"},
+        "locale": "en",
+        "keyboard_sound": true,
+        "confirm_before_close_tab": false
+    }"#;
+    let settings: Settings = serde_json::from_str(json).unwrap();
+    assert_eq!(settings.locale, "en");
+    assert!(settings.keyboard_sound);
+    assert!(!settings.confirm_before_close_tab);
+}
+
+#[test]
+fn settings_auth_token_is_skipped_in_serde() {
+    let json = r#"{"auth_token": "should_be_ignored"}"#;
+    let settings: Settings = serde_json::from_str(json).unwrap();
+    assert!(settings.auth_token.is_empty());
+
+    let mut settings2: Settings = serde_json::from_str(r#"{}"#).unwrap();
+    settings2.auth_token = "my_token".to_string();
+    let serialized = serde_json::to_string(&settings2).unwrap();
+    assert!(!serialized.contains("my_token"));
+}
+
+#[test]
+fn settings_monitor_defaults() {
+    let settings: Settings = serde_json::from_str(r#"{}"#).unwrap();
+    assert!(settings.monitor.enabled);
+    assert!(settings.monitor.cpu);
+}
+
+#[test]
+fn settings_notification_defaults() {
+    let settings: Settings = serde_json::from_str(r#"{}"#).unwrap();
+    assert!(settings.notification.enabled);
+}

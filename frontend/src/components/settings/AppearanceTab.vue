@@ -8,7 +8,10 @@
           :key="th.name"
           class="theme-card"
           :class="{ active: settings.theme.preset === th.name }"
-          @click="settings.theme.preset = th.name; selectTheme()"
+          @click="
+            settings.theme.preset = th.name;
+            selectTheme();
+          "
         >
           <div class="theme-preview" :style="{ background: th.colors['--bg'] }">
             <div class="theme-preview-header">
@@ -78,7 +81,14 @@
       <div class="settings-row">
         <label>{{ t('settings.text.fontSize') }}</label>
         <div class="range-wrap">
-          <input type="range" v-model.number="settings.text.font_size" min="8" max="32" step="1" @input="onTextSettingChange" />
+          <input
+            type="range"
+            v-model.number="settings.text.font_size"
+            min="8"
+            max="32"
+            step="1"
+            @input="onTextSettingChange"
+          />
           <span class="range-val">{{ settings.text.font_size }}px</span>
         </div>
       </div>
@@ -86,11 +96,19 @@
       <div class="settings-row">
         <label>{{ t('settings.text.fontFamily') }}</label>
         <div class="font-dropdown">
-          <div class="font-dropdown-trigger shortcut-input" :style="{ fontFamily: settings.text.font_family || 'inherit' }" @click="toggleFontDropdown">
+          <div
+            class="font-dropdown-trigger shortcut-input"
+            :style="{ fontFamily: settings.text.font_family || 'inherit' }"
+            @click="toggleFontDropdown"
+          >
             <span>{{ currentFontLabel }}</span>
             <span class="font-dropdown-arrow">▾</span>
           </div>
-          <div v-if="fontDropdownOpen" class="font-dropdown-backdrop" @click="closeFontDropdown"></div>
+          <div
+            v-if="fontDropdownOpen"
+            class="font-dropdown-backdrop"
+            @click="closeFontDropdown"
+          ></div>
           <div v-if="fontDropdownOpen" class="font-dropdown-menu">
             <div
               class="font-dropdown-item"
@@ -118,7 +136,11 @@
             >
               <span class="font-item-label">{{ t('settings.text.fontFamilyCustom') }}</span>
             </div>
-            <div v-if="isCustomFont || customFontEditing" class="font-custom-input-wrap" @click.stop>
+            <div
+              v-if="isCustomFont || customFontEditing"
+              class="font-custom-input-wrap"
+              @click.stop
+            >
               <input
                 ref="customFontInput"
                 v-model="customFontName"
@@ -135,7 +157,14 @@
       <div class="settings-row">
         <label>{{ t('settings.text.lineHeight') }}</label>
         <div class="range-wrap">
-          <input type="range" v-model.number="settings.text.line_height" min="0.8" max="2.0" step="0.1" @input="onTextSettingChange" />
+          <input
+            type="range"
+            v-model.number="settings.text.line_height"
+            min="0.8"
+            max="2.0"
+            step="0.1"
+            @input="onTextSettingChange"
+          />
           <span class="range-val">{{ settings.text.line_height.toFixed(1) }}</span>
         </div>
       </div>
@@ -143,14 +172,26 @@
       <div class="settings-row">
         <label>{{ t('settings.text.letterSpacing') }}</label>
         <div class="range-wrap">
-          <input type="range" v-model.number="settings.text.letter_spacing" min="0" max="4" step="0.5" @input="onTextSettingChange" />
+          <input
+            type="range"
+            v-model.number="settings.text.letter_spacing"
+            min="0"
+            max="4"
+            step="0.5"
+            @input="onTextSettingChange"
+          />
           <span class="range-val">{{ settings.text.letter_spacing }}px</span>
         </div>
       </div>
 
       <div class="settings-row">
         <label>{{ t('settings.text.cursorStyle') }}</label>
-        <select v-model="settings.text.cursor_style" class="shortcut-input" style="flex:1" @change="onTextSettingChange">
+        <select
+          v-model="settings.text.cursor_style"
+          class="shortcut-input"
+          style="flex: 1"
+          @change="onTextSettingChange"
+        >
           <option value="block">{{ t('settings.text.cursor.block') }}</option>
           <option value="underline">{{ t('settings.text.cursor.underline') }}</option>
           <option value="bar">{{ t('settings.text.cursor.bar') }}</option>
@@ -160,7 +201,11 @@
       <div class="settings-row">
         <label>{{ t('settings.text.cursorBlink') }}</label>
         <label class="toggle">
-          <input type="checkbox" v-model="settings.text.cursor_blink" @change="onTextSettingChange" />
+          <input
+            type="checkbox"
+            v-model="settings.text.cursor_blink"
+            @change="onTextSettingChange"
+          />
           <span class="toggle-track"><span class="toggle-thumb"></span></span>
         </label>
       </div>
@@ -168,14 +213,23 @@
       <div class="settings-row">
         <label>{{ t('settings.text.scrollback') }}</label>
         <div class="range-wrap">
-          <input type="range" v-model.number="settings.text.scrollback" min="1000" max="100000" step="1000" @input="onTextSettingChange" />
+          <input
+            type="range"
+            v-model.number="settings.text.scrollback"
+            min="1000"
+            max="100000"
+            step="1000"
+            @input="onTextSettingChange"
+          />
           <span class="range-val">{{ settings.text.scrollback.toLocaleString() }}</span>
         </div>
       </div>
     </section>
 
-    <div class="settings-section" style="text-align: right;">
-      <button class="shortcut-add" @click="resetCustomColors">{{ t('settings.color.reset') }}</button>
+    <div class="settings-section" style="text-align: right">
+      <button class="shortcut-add" @click="resetCustomColors">
+        {{ t('settings.color.reset') }}
+      </button>
     </div>
   </div>
 </template>
@@ -196,19 +250,52 @@ function selectTheme() {
   saveSettings()
 }
 
-const ansiNames = ['Black', 'Red', 'Green', 'Yellow', 'Blue', 'Magenta', 'Cyan', 'White',
-  'Bright Black', 'Bright Red', 'Bright Green', 'Bright Yellow', 'Bright Blue', 'Bright Magenta', 'Bright Cyan', 'Bright White']
+const ansiNames = [
+  'Black',
+  'Red',
+  'Green',
+  'Yellow',
+  'Blue',
+  'Magenta',
+  'Cyan',
+  'White',
+  'Bright Black',
+  'Bright Red',
+  'Bright Green',
+  'Bright Yellow',
+  'Bright Blue',
+  'Bright Magenta',
+  'Bright Cyan',
+  'Bright White',
+]
 
 const ansiColorKeys = [
-  '--color-black', '--color-red', '--color-green', '--color-yellow',
-  '--color-blue', '--color-magenta', '--color-cyan', '--color-white',
-  '--color-bright-black', '--color-bright-red', '--color-bright-green', '--color-bright-yellow',
-  '--color-bright-blue', '--color-bright-magenta', '--color-bright-cyan', '--color-bright-white',
+  '--color-black',
+  '--color-red',
+  '--color-green',
+  '--color-yellow',
+  '--color-blue',
+  '--color-magenta',
+  '--color-cyan',
+  '--color-white',
+  '--color-bright-black',
+  '--color-bright-red',
+  '--color-bright-green',
+  '--color-bright-yellow',
+  '--color-bright-blue',
+  '--color-bright-magenta',
+  '--color-bright-cyan',
+  '--color-bright-white',
 ]
 
 function ensureCustom() {
   if (!settings.theme.custom) {
-    settings.theme.custom = { foreground: undefined, background: undefined, cursor: undefined, ansi: undefined }
+    settings.theme.custom = {
+      foreground: undefined,
+      background: undefined,
+      cursor: undefined,
+      ansi: undefined,
+    }
   }
   return settings.theme.custom!
 }
@@ -289,13 +376,13 @@ const customFontInput = ref<HTMLInputElement | null>(null)
 const isCustomFont = computed(() => {
   const current = settings.text.font_family
   if (!current) return false
-  return !fontFamilies.some(f => f.value === current)
+  return !fontFamilies.some((f) => f.value === current)
 })
 
 const currentFontLabel = computed(() => {
   const current = settings.text.font_family
   if (!current) return t('settings.text.fontFamilyDefault')
-  const found = fontFamilies.find(f => f.value === current)
+  const found = fontFamilies.find((f) => f.value === current)
   if (found) return found.label
   return customFontName.value || current.replace(/, monospace$/, '')
 })

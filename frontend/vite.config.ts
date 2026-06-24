@@ -29,9 +29,14 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          'xterm': ['@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-unicode11', '@xterm/addon-webgl'],
-          'chart': ['chart.js', 'vue-chartjs'],
-          'marked': ['marked', 'dompurify'],
+          xterm: [
+            '@xterm/xterm',
+            '@xterm/addon-fit',
+            '@xterm/addon-unicode11',
+            '@xterm/addon-webgl',
+          ],
+          chart: ['chart.js', 'vue-chartjs'],
+          marked: ['marked', 'dompurify'],
         },
       },
     },

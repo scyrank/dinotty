@@ -16,18 +16,12 @@ interface SyntaxCheckResponse {
 
 let timer: ReturnType<typeof setTimeout> | null = null
 
-export function useSyntaxCheck(
-  editor: monaco.editor.IStandaloneCodeEditor | null,
-) {
+export function useSyntaxCheck(editor: monaco.editor.IStandaloneCodeEditor | null) {
   function clearDiagnostics(model: monaco.editor.ITextModel) {
     monaco.editor.setModelMarkers(model, 'syntax-check', [])
   }
 
-  async function runSyntaxCheck(
-    paneId: string,
-    filePath: string,
-    language: string,
-  ) {
+  async function runSyntaxCheck(paneId: string, filePath: string, language: string) {
     if (!editor) return
     const model = editor.getModel()
     if (!model) return
@@ -53,9 +47,7 @@ export function useSyntaxCheck(
       const data: SyntaxCheckResponse = await resp.json()
       const markers: monaco.editor.IMarkerData[] = data.diagnostics.map((d) => ({
         severity:
-          d.severity === 'warning'
-            ? monaco.MarkerSeverity.Warning
-            : monaco.MarkerSeverity.Error,
+          d.severity === 'warning' ? monaco.MarkerSeverity.Warning : monaco.MarkerSeverity.Error,
         message: d.message,
         startLineNumber: d.start_line,
         startColumn: d.start_col,
@@ -71,7 +63,7 @@ export function useSyntaxCheck(
   function scheduleCheck(
     paneId: string | undefined,
     filePath: string | undefined,
-    language: string,
+    language: string
   ) {
     if (timer) clearTimeout(timer)
     if (!paneId || !filePath) return

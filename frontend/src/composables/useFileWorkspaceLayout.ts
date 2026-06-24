@@ -27,7 +27,9 @@ function loadTreePaneWidth(): number {
 }
 
 function persistTreePaneWidth(w: number) {
-  try { localStorage.setItem(TREE_WIDTH_STORAGE, String(w)) } catch {}
+  try {
+    localStorage.setItem(TREE_WIDTH_STORAGE, String(w))
+  } catch {}
 }
 
 export function useFileWorkspaceLayout(): FileWorkspaceLayout {
@@ -36,7 +38,9 @@ export function useFileWorkspaceLayout(): FileWorkspaceLayout {
   const drawerOpen = ref(isNarrowViewport())
   const treePaneWidth = ref(loadTreePaneWidth())
 
-  const direction = computed(() => (isLandscape.value ? 'horizontal' : 'vertical') as 'horizontal' | 'vertical')
+  const direction = computed(
+    () => (isLandscape.value ? 'horizontal' : 'vertical') as 'horizontal' | 'vertical'
+  )
 
   const treeWrapStyle = computed((): Record<string, string> => {
     if (narrow.value) return { width: `${treePaneWidth.value}px` }
@@ -109,9 +113,17 @@ export function useFileWorkspaceLayout(): FileWorkspaceLayout {
   }
 
   return {
-    narrow, isLandscape, drawerOpen, treePaneWidth,
-    direction, treeWrapStyle,
-    startTreeWidthDrag, startTreeWidthDragTouch, clampTreePaneWidth,
-    onResize, toggleDrawer, openDrawer,
+    narrow,
+    isLandscape,
+    drawerOpen,
+    treePaneWidth,
+    direction,
+    treeWrapStyle,
+    startTreeWidthDrag,
+    startTreeWidthDragTouch,
+    clampTreePaneWidth,
+    onResize,
+    toggleDrawer,
+    openDrawer,
   }
 }

@@ -13,7 +13,11 @@
             />
           </div>
           <div class="bookmarks-header-actions">
-            <button class="bookmarks-add-toggle" @click="toggleAddMode" :class="{ active: addMode }">
+            <button
+              class="bookmarks-add-toggle"
+              @click="toggleAddMode"
+              :class="{ active: addMode }"
+            >
               <Plus :size="14" />
             </button>
             <button class="bookmarks-close" @click="close">
@@ -40,7 +44,11 @@
               @keydown.meta.enter="addBookmark"
               @keydown.ctrl.enter="addBookmark"
             />
-            <input v-model="newGroup" :placeholder="t('bookmarks.group')" class="bookmark-input short" />
+            <input
+              v-model="newGroup"
+              :placeholder="t('bookmarks.group')"
+              class="bookmark-input short"
+            />
             <button class="bookmark-add-btn" @click="addBookmark" :disabled="!newCommand.trim()">
               <Check :size="14" />
             </button>
@@ -54,7 +62,9 @@
               class="group-tag"
               :class="{ active: activeGroup === g }"
               @click="activeGroup = g"
-            >{{ g }}</button>
+            >
+              {{ g }}
+            </button>
           </div>
 
           <div v-if="filteredBookmarks.length === 0 && !addMode" class="bookmarks-empty">
@@ -65,7 +75,11 @@
             v-for="(bm, i) in filteredBookmarks"
             :key="bm.id"
             class="bookmark-item"
-            :class="{ 'drag-over-top': dropTarget === bm.id && dropPos === 'top', 'drag-over-bottom': dropTarget === bm.id && dropPos === 'bottom', dragging: dragId === bm.id }"
+            :class="{
+              'drag-over-top': dropTarget === bm.id && dropPos === 'top',
+              'drag-over-bottom': dropTarget === bm.id && dropPos === 'bottom',
+              dragging: dragId === bm.id,
+            }"
             :draggable="editId !== bm.id"
             @dragstart="onDragStart($event, bm.id)"
             @dragover.prevent="onDragOver($event, bm.id)"
@@ -112,7 +126,11 @@
                 <span class="bookmark-name">{{ bm.name || bm.command }}</span>
                 <span class="bookmark-cmd">{{ bm.command }}</span>
               </div>
-              <button class="bookmark-edit" @click.stop="startEdit(bm)" :title="t('bookmarks.edit')">
+              <button
+                class="bookmark-edit"
+                @click.stop="startEdit(bm)"
+                :title="t('bookmarks.edit')"
+              >
                 <Pencil :size="12" />
               </button>
               <button class="bookmark-del" @click="removeBookmark(bm.id)">
@@ -180,8 +198,8 @@ const filteredBookmarks = computed(() => {
   }
   const q = searchQuery.value.trim().toLowerCase()
   if (q) {
-    list = list.filter((b) =>
-      b.name.toLowerCase().includes(q) || b.command.toLowerCase().includes(q)
+    list = list.filter(
+      (b) => b.name.toLowerCase().includes(q) || b.command.toLowerCase().includes(q)
     )
   }
   return list
@@ -211,7 +229,7 @@ async function sendBookmark(bm: { command: string }) {
   if (!send && props.createTab) {
     await props.createTab()
     // Wait for terminal component to mount and register its ref
-    await new Promise(r => setTimeout(r, 100))
+    await new Promise((r) => setTimeout(r, 100))
     send = props.getSendFn()
   }
   if (send) {
@@ -320,7 +338,7 @@ defineExpose({ open, close })
 .bookmarks-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0, 0, 0, 0.5);
   z-index: 940;
   display: flex;
   align-items: center;
@@ -332,7 +350,7 @@ defineExpose({ open, close })
   width: 90vw;
   max-width: 500px;
   max-height: 70vh;
-  background: var(--bg-surface, #1A1A1A);
+  background: var(--bg-surface, #1a1a1a);
   border: 1px solid var(--border, #333);
   border-radius: 8px;
   display: flex;
@@ -384,9 +402,11 @@ defineExpose({ open, close })
   cursor: pointer;
 }
 .bookmarks-add-toggle:hover,
-.bookmarks-close:hover { background: rgba(255,255,255,0.1); }
+.bookmarks-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
 .bookmarks-add-toggle.active {
-  background: var(--accent, #8A8A8A);
+  background: var(--accent, #8a8a8a);
   color: #fff;
 }
 
@@ -407,12 +427,12 @@ defineExpose({ open, close })
   padding: 3px 10px;
   border-radius: 12px;
   font-size: 11px;
-  background: var(--bg-input, #1A1A1A);
+  background: var(--bg-input, #1a1a1a);
   border: 1px solid var(--border, #333);
   color: var(--fg-muted);
 }
 .group-tag.active {
-  background: var(--accent, #8A8A8A);
+  background: var(--accent, #8a8a8a);
   border-color: var(--accent);
   color: #fff;
 }
@@ -436,7 +456,7 @@ defineExpose({ open, close })
   transition: border-color 0.1s;
 }
 .bookmark-item:hover {
-  background: rgba(255,255,255,0.05);
+  background: rgba(255, 255, 255, 0.05);
 }
 .bookmark-item.dragging {
   opacity: 0.4;
@@ -494,8 +514,13 @@ defineExpose({ open, close })
   opacity: 0;
   cursor: pointer;
 }
-.bookmark-item:hover .bookmark-del { opacity: 1; }
-.bookmark-del:hover { background: rgba(255,100,100,0.2); color: #ff6b6b; }
+.bookmark-item:hover .bookmark-del {
+  opacity: 1;
+}
+.bookmark-del:hover {
+  background: rgba(255, 100, 100, 0.2);
+  color: #ff6b6b;
+}
 
 .bookmark-edit {
   width: 22px;
@@ -510,8 +535,13 @@ defineExpose({ open, close })
   opacity: 0;
   cursor: pointer;
 }
-.bookmark-item:hover .bookmark-edit { opacity: 1; }
-.bookmark-edit:hover { background: rgba(100,150,255,0.2); color: #6b9fff; }
+.bookmark-item:hover .bookmark-edit {
+  opacity: 1;
+}
+.bookmark-edit:hover {
+  background: rgba(100, 150, 255, 0.2);
+  color: #6b9fff;
+}
 
 .bookmark-edit-form {
   display: flex;
@@ -531,7 +561,10 @@ defineExpose({ open, close })
   justify-content: center;
   cursor: pointer;
 }
-.bookmark-edit-cancel:hover { background: rgba(255,100,100,0.2); color: #ff6b6b; }
+.bookmark-edit-cancel:hover {
+  background: rgba(255, 100, 100, 0.2);
+  color: #ff6b6b;
+}
 
 .bookmark-add-form {
   display: flex;
@@ -554,8 +587,12 @@ defineExpose({ open, close })
 .bookmark-input:focus {
   border-color: var(--accent, #007acc);
 }
-.bookmark-input.wide { flex: 2; }
-.bookmark-input.short { flex: 0.7; }
+.bookmark-input.wide {
+  flex: 2;
+}
+.bookmark-input.short {
+  flex: 0.7;
+}
 .bookmark-add-btn {
   width: 32px;
   height: 30px;

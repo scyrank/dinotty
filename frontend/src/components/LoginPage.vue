@@ -61,8 +61,9 @@ async function onSubmit() {
   justify-content: center;
   width: 100%;
   height: 100dvh;
-  background: #1E1E1E;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  background: #1e1e1e;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
 }
 
 .login-card {
@@ -84,9 +85,13 @@ async function onSubmit() {
 .login-title {
   font-size: 24px;
   font-weight: 700;
-  color: #E8E8E8;
+  color: #e8e8e8;
   margin: 0;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family:
+    'Inter',
+    system-ui,
+    -apple-system,
+    sans-serif;
 }
 
 .login-subtitle {
@@ -99,10 +104,10 @@ async function onSubmit() {
 .login-input {
   width: 100%;
   padding: 10px 14px;
-  border: 1px solid #3C3C3C;
+  border: 1px solid #3c3c3c;
   border-radius: 6px;
-  background: #2A2A2C;
-  color: #E8E8E8;
+  background: #2a2a2c;
+  color: #e8e8e8;
   font-size: 14px;
   font-family: 'Inter', system-ui, sans-serif;
   outline: none;
@@ -110,7 +115,7 @@ async function onSubmit() {
   margin-top: 8px;
 }
 .login-input:focus {
-  border-color: #007AFF;
+  border-color: #007aff;
 }
 .login-input::placeholder {
   color: #666;
@@ -121,7 +126,7 @@ async function onSubmit() {
   padding: 10px 14px;
   border: none;
   border-radius: 6px;
-  background: #007AFF;
+  background: #007aff;
   color: #fff;
   font-size: 14px;
   font-weight: 600;
@@ -131,7 +136,7 @@ async function onSubmit() {
   transition: background 0.15s;
 }
 .login-btn:hover {
-  background: #3395FF;
+  background: #3395ff;
 }
 .login-btn:disabled {
   opacity: 0.5;
@@ -139,7 +144,7 @@ async function onSubmit() {
 }
 
 .login-error {
-  color: #F44747;
+  color: #f44747;
   font-size: 12px;
   margin: 4px 0 0;
 }

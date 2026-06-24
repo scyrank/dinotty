@@ -7,16 +7,20 @@ function officeNodeToHtml(node: any): string {
   const type = String(node.type || '')
   if (type === 'table') {
     const rows = Array.isArray(node.children) ? node.children : []
-    const tr = rows.map((r: any) => {
-      const cells = Array.isArray(r.children) ? r.children : []
-      const tds = cells.map((c: any) => `<td>${esc(String(c.text ?? ''))}</td>`).join('')
-      return `<tr>${tds}</tr>`
-    }).join('')
+    const tr = rows
+      .map((r: any) => {
+        const cells = Array.isArray(r.children) ? r.children : []
+        const tds = cells.map((c: any) => `<td>${esc(String(c.text ?? ''))}</td>`).join('')
+        return `<tr>${tds}</tr>`
+      })
+      .join('')
     return `<table>${tr}</table>`
   }
   if (type === 'list') {
     const items = Array.isArray(node.children) ? node.children : []
-    const li = items.map((it: any) => `<li>${officeNodeToHtml(it) || esc(String(it.text ?? ''))}</li>`).join('')
+    const li = items
+      .map((it: any) => `<li>${officeNodeToHtml(it) || esc(String(it.text ?? ''))}</li>`)
+      .join('')
     return `<ul>${li}</ul>`
   }
   if (type === 'heading') {
@@ -52,7 +56,8 @@ export function useOfficePreview(opts: { paneId: () => string }) {
       const [officeMod, dp] = await Promise.all([import('officeparser'), getDOMPurify()])
       const ast: any = await (officeMod.default as any).parseOffice(buf)
       const nodes = Array.isArray(ast?.content) ? ast.content : []
-      const html = nodes.map(officeNodeToHtml).join('') || `<pre>${esc(ast?.toText?.() || '')}</pre>`
+      const html =
+        nodes.map(officeNodeToHtml).join('') || `<pre>${esc(ast?.toText?.() || '')}</pre>`
       officeHtml.value = dp.default.sanitize(html)
     } catch {
       officeErr.value = 'unsupported'

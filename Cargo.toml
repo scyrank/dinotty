@@ -3,7 +3,7 @@ members = ["src-tauri"]
 
 [package]
 name = "dinotty-server"
-version = "0.11.2"
+version = "0.12.3"
 edition = "2021"
 license = "MIT"
 build = "build.rs"
@@ -65,5 +65,11 @@ conf-files = ["/etc/dinotty/env.example"]
 [package.metadata.deb.systemd-units]
 enable = true
 start = true
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
 
 [dev-dependencies]

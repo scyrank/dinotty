@@ -57,8 +57,8 @@ function onDragLeave() {
 function onDrop(e: DragEvent, id: string) {
   e.preventDefault()
   if (!dragId.value || dragId.value === id) return
-  const fromIdx = bookmarks.value.findIndex(b => b.id === dragId.value)
-  const toIdx = bookmarks.value.findIndex(b => b.id === id)
+  const fromIdx = bookmarks.value.findIndex((b) => b.id === dragId.value)
+  const toIdx = bookmarks.value.findIndex((b) => b.id === id)
   if (fromIdx === -1 || toIdx === -1) return
   const insertIdx = dropPos.value === 'bottom' ? toIdx + 1 : toIdx
   reorderBookmarks(fromIdx, fromIdx < toIdx ? insertIdx - 1 : insertIdx)
@@ -161,13 +161,19 @@ function fileName(path: string): string {
         <template v-else>
           <span class="bookmark-icon" v-if="bm.is_dir">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M1.5 3A1.5 1.5 0 0 1 3 1.5h3.146a.5.5 0 0 1 .354.146L7.854 3H13A1.5 1.5 0 0 1 14.5 4.5v7A1.5 1.5 0 0 1 13 13H3A1.5 1.5 0 0 1 1.5 11.5v-8.5Z"/>
+              <path
+                d="M1.5 3A1.5 1.5 0 0 1 3 1.5h3.146a.5.5 0 0 1 .354.146L7.854 3H13A1.5 1.5 0 0 1 14.5 4.5v7A1.5 1.5 0 0 1 13 13H3A1.5 1.5 0 0 1 1.5 11.5v-8.5Z"
+              />
             </svg>
           </span>
           <span class="bookmark-icon" v-else>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1Z"/>
-              <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3Zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3Z"/>
+              <path
+                d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1Z"
+              />
+              <path
+                d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3Zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3Z"
+              />
             </svg>
           </span>
           <span class="bookmark-name">{{ bm.name }}</span>
@@ -184,10 +190,7 @@ function fileName(path: string): string {
       @click="closeCtxMenu"
       @contextmenu.prevent="closeCtxMenu"
     >
-      <div
-        class="bookmark-ctx-menu"
-        :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
-      >
+      <div class="bookmark-ctx-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }">
         <button class="tree-ctx-item" @click="ctxRename">
           <span class="tree-ctx-label">{{ t('fileBookmark.rename') }}</span>
         </button>
@@ -222,7 +225,7 @@ function fileName(path: string): string {
   user-select: none;
 }
 .bookmark-section-header:hover {
-  background: var(--tree-row-hover, rgba(255,255,255,0.06));
+  background: var(--tree-row-hover, rgba(255, 255, 255, 0.06));
 }
 
 .bookmark-twistie {
@@ -264,7 +267,7 @@ function fileName(path: string): string {
   border-bottom: 1px solid transparent;
 }
 .bookmark-item:hover {
-  background: var(--tree-row-hover, rgba(255,255,255,0.06));
+  background: var(--tree-row-hover, rgba(255, 255, 255, 0.06));
 }
 .bookmark-item.drag-over-top {
   border-top-color: var(--accent, #89b4fa);
@@ -333,7 +336,7 @@ function fileName(path: string): string {
   background: #252526;
   border: 1px solid #3c3c3c;
   border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   padding: 4px 0;
   z-index: 100001;
 }

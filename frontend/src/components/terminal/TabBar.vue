@@ -13,33 +13,66 @@
         @touchend.prevent="onTabTouchEnd($event, tab.paneId)"
       >
         <span class="tab-title">{{ tab.title }}</span>
-        <span v-if="indicators[tab.paneId]" class="tab-notif-dot" :class="'dot-' + indicators[tab.paneId]"></span>
-        <button class="tab-close" @click.stop="$emit('close', tab.paneId)" @touchend.stop.prevent="$emit('close', tab.paneId)"><X :size="10" /></button>
+        <span
+          v-if="indicators[tab.paneId]"
+          class="tab-notif-dot"
+          :class="'dot-' + indicators[tab.paneId]"
+        ></span>
+        <button
+          class="tab-close"
+          @click.stop="$emit('close', tab.paneId)"
+          @touchend.stop.prevent="$emit('close', tab.paneId)"
+        >
+          <X :size="10" />
+        </button>
       </div>
     </div>
     <slot name="left" />
     <div class="new-tab-split" ref="newMenuWrapRef">
-      <button id="tab-new-btn" title="New Tab (⌘T)" @click="newMenuOpen = !newMenuOpen" @touchend.prevent="newMenuOpen = !newMenuOpen"><Terminal :size="16" /></button>
+      <button
+        id="tab-new-btn"
+        title="New Tab (⌘T)"
+        @click="newMenuOpen = !newMenuOpen"
+        @touchend.prevent="newMenuOpen = !newMenuOpen"
+      >
+        <Terminal :size="16" />
+      </button>
       <div v-if="newMenuOpen" class="new-menu-dropdown" @mouseleave="newMenuOpen = false">
-        <div class="new-menu-item" @click="emitAction('new-tab')" @touchend.prevent="emitAction('new-tab')">
+        <div
+          class="new-menu-item"
+          @click="emitAction('new-tab')"
+          @touchend.prevent="emitAction('new-tab')"
+        >
           <Terminal :size="14" class="new-menu-icon" />
           <span class="new-menu-label">{{ t('keybinding.newTab') }}</span>
           <kbd class="new-menu-kbd">{{ kbdNewTab }}</kbd>
         </div>
         <div class="new-menu-sep" />
-        <div class="new-menu-item" @click="emitAction('split-h')" @touchend.prevent="emitAction('split-h')">
+        <div
+          class="new-menu-item"
+          @click="emitAction('split-h')"
+          @touchend.prevent="emitAction('split-h')"
+        >
           <Columns2 :size="14" class="new-menu-icon" />
           <span class="new-menu-label">{{ t('keybinding.splitHorizontal') }}</span>
           <kbd class="new-menu-kbd">{{ kbdSplitH }}</kbd>
         </div>
-        <div class="new-menu-item" @click="emitAction('split-v')" @touchend.prevent="emitAction('split-v')">
+        <div
+          class="new-menu-item"
+          @click="emitAction('split-v')"
+          @touchend.prevent="emitAction('split-v')"
+        >
           <Rows2 :size="14" class="new-menu-icon" />
           <span class="new-menu-label">{{ t('keybinding.splitVertical') }}</span>
           <kbd class="new-menu-kbd">{{ kbdSplitV }}</kbd>
         </div>
         <template v-if="canBroadcast">
           <div class="new-menu-sep" />
-          <div class="new-menu-item" @click="emitAction('broadcast')" @touchend.prevent="emitAction('broadcast')">
+          <div
+            class="new-menu-item"
+            @click="emitAction('broadcast')"
+            @touchend.prevent="emitAction('broadcast')"
+          >
             <Radio :size="14" class="new-menu-icon" />
             <span class="new-menu-label">{{ t('split.toggleBroadcast') }}</span>
             <kbd class="new-menu-kbd">{{ kbdBroadcast }}</kbd>
@@ -49,14 +82,28 @@
       </div>
     </div>
     <div v-if="plugins.length > 0" class="tab-bar-plugin-wrap" ref="pluginWrapRef">
-      <button type="button" class="tab-bar-icon-btn" title="Plugins" @click="pluginMenuOpen = !pluginMenuOpen" @touchend.prevent="pluginMenuOpen = !pluginMenuOpen"><Blocks :size="16" /></button>
+      <button
+        type="button"
+        class="tab-bar-icon-btn"
+        title="Plugins"
+        @click="pluginMenuOpen = !pluginMenuOpen"
+        @touchend.prevent="pluginMenuOpen = !pluginMenuOpen"
+      >
+        <Blocks :size="16" />
+      </button>
       <div v-if="pluginMenuOpen" class="plugin-dropdown" @mouseleave="pluginMenuOpen = false">
         <div
           v-for="p in plugins"
           :key="p.id"
           class="plugin-dropdown-item"
-          @click="$emit('open-plugin', p.id); pluginMenuOpen = false"
-          @touchend.prevent="$emit('open-plugin', p.id); pluginMenuOpen = false"
+          @click="
+            $emit('open-plugin', p.id);
+            pluginMenuOpen = false;
+          "
+          @touchend.prevent="
+            $emit('open-plugin', p.id);
+            pluginMenuOpen = false;
+          "
         >
           <span class="plugin-dropdown-name">{{ p.name }}</span>
           <span v-if="p.description" class="plugin-dropdown-desc">{{ p.description }}</span>
@@ -93,19 +140,22 @@ export interface PluginInfo {
   state: string
 }
 
-withDefaults(defineProps<{
-  tabs: TabInfo[]
-  activePaneId: string | null
-  indicators?: Record<string, string>
-  plugins?: PluginInfo[]
-  canBroadcast?: boolean
-  broadcastActive?: boolean
-}>(), {
-  indicators: () => ({}),
-  plugins: () => ([]),
-  canBroadcast: false,
-  broadcastActive: false,
-})
+withDefaults(
+  defineProps<{
+    tabs: TabInfo[]
+    activePaneId: string | null
+    indicators?: Record<string, string>
+    plugins?: PluginInfo[]
+    canBroadcast?: boolean
+    broadcastActive?: boolean
+  }>(),
+  {
+    indicators: () => ({}),
+    plugins: () => [],
+    canBroadcast: false,
+    broadcastActive: false,
+  }
+)
 
 const emit = defineEmits<{
   activate: [paneId: string]
@@ -201,14 +251,21 @@ function startDrag(e: MouseEvent | TouchEvent, paneId: string, isTouch: boolean)
   const moveEvent = isTouch ? 'touchmove' : 'mousemove'
   const endEvent = isTouch ? 'touchend' : 'mouseup'
 
-  window.addEventListener(moveEvent, onPointerMove as EventListener, { passive: !isTouch } as AddEventListenerOptions)
+  window.addEventListener(
+    moveEvent,
+    onPointerMove as EventListener,
+    { passive: !isTouch } as AddEventListenerOptions
+  )
   window.addEventListener(endEvent, onPointerEnd)
 }
 
 function onPointerMove(e: MouseEvent | TouchEvent) {
   const pos = getPointerPos(e)
   if (!dragStarted) {
-    if (Math.abs(pos.clientX - startX) < DRAG_THRESHOLD && Math.abs(pos.clientY - startY) < DRAG_THRESHOLD) {
+    if (
+      Math.abs(pos.clientX - startX) < DRAG_THRESHOLD &&
+      Math.abs(pos.clientY - startY) < DRAG_THRESHOLD
+    ) {
       return
     }
     dragStarted = true
@@ -270,7 +327,7 @@ onBeforeUnmount(() => {
   cursor: grabbing;
 }
 .tab.drag-over {
-  border-left: 2px solid var(--accent, #8A8A8A);
+  border-left: 2px solid var(--accent, #8a8a8a);
 }
 .tab-notif-dot {
   width: 7px;
@@ -279,14 +336,30 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   margin-left: 4px;
 }
-.dot-info { background: var(--accent, #8A8A8A); }
-.dot-success { background: var(--color-green, #34d399); }
-.dot-warning { background: var(--color-yellow, #f59e0b); }
-.dot-error { background: var(--color-red, #ef4444); }
-.dot-urgent { background: var(--color-red, #ef4444); animation: pulse-dot 1.5s infinite; }
+.dot-info {
+  background: var(--accent, #8a8a8a);
+}
+.dot-success {
+  background: var(--color-green, #34d399);
+}
+.dot-warning {
+  background: var(--color-yellow, #f59e0b);
+}
+.dot-error {
+  background: var(--color-red, #ef4444);
+}
+.dot-urgent {
+  background: var(--color-red, #ef4444);
+  animation: pulse-dot 1.5s infinite;
+}
 @keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 .tab-bar-plugin-wrap {
   position: relative;
@@ -301,7 +374,7 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   padding: 4px 0;
   z-index: 500;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 .plugin-dropdown-item {
   padding: 6px 12px;
@@ -338,7 +411,7 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   padding: 4px 0;
   z-index: 500;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 .new-menu-item {
   display: flex;
@@ -375,7 +448,7 @@ onBeforeUnmount(() => {
 }
 .new-menu-status {
   font-size: 11px;
-  color: var(--accent, #8A8A8A);
+  color: var(--accent, #8a8a8a);
   padding: 2px 12px 6px;
 }
 </style>

@@ -9,7 +9,11 @@
     @touchcancel.prevent="onUp"
     @mouseup="onUp"
     @mouseleave="onUp"
-  ><component v-if="k.icon" :is="k.icon" :size="20" /><template v-else>{{ displayLabel }}</template></button>
+  >
+    <component v-if="k.icon" :is="k.icon" :size="20" /><template v-else>{{
+      displayLabel
+    }}</template>
+  </button>
 </template>
 
 <script setup lang="ts">
@@ -49,14 +53,18 @@ const emit = defineEmits<{
 
 const isModActive = computed(() => {
   const sp = props.k.sp
-  return sp === 'ctrl' || sp === 'alt' || sp === 'shift'
-    ? props.state[sp]
-    : false
+  return sp === 'ctrl' || sp === 'alt' || sp === 'shift' ? props.state[sp] : false
 })
 
 const displayLabel = computed(() => {
   if (props.k.sl && props.state.shift) return props.k.sl
-  if (props.k.s && props.k.s.length === 1 && props.k.s >= 'a' && props.k.s <= 'z' && props.state.shift) {
+  if (
+    props.k.s &&
+    props.k.s.length === 1 &&
+    props.k.s >= 'a' &&
+    props.k.s <= 'z' &&
+    props.state.shift
+  ) {
     return props.k.l.toUpperCase()
   }
   return props.k.l
@@ -81,7 +89,10 @@ function fire() {
   emit('key-press', ch)
 }
 
-function fireWithFeedback() { feedback(); fire() }
+function fireWithFeedback() {
+  feedback()
+  fire()
+}
 
 function onTouchDown() {
   touchActive = true
@@ -104,10 +115,18 @@ function onMouseDown() {
 }
 
 function onUp(e: Event) {
-  if (repeatTimer) { clearTimeout(repeatTimer); repeatTimer = null }
-  if (repeatInterval) { clearInterval(repeatInterval); repeatInterval = null }
+  if (repeatTimer) {
+    clearTimeout(repeatTimer)
+    repeatTimer = null
+  }
+  if (repeatInterval) {
+    clearInterval(repeatInterval)
+    repeatInterval = null
+  }
   if (e.type === 'touchend' || e.type === 'touchcancel') {
-    setTimeout(() => { touchActive = false }, 300)
+    setTimeout(() => {
+      touchActive = false
+    }, 300)
   } else {
     touchActive = false
   }

@@ -31,7 +31,10 @@ export class WebSocketTransport implements Transport {
   private _reconnectAttempts = 0
   private _reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
-  constructor(private paneId: string, private host?: string) {
+  constructor(
+    private paneId: string,
+    private host?: string
+  ) {
     this._connect()
   }
 
@@ -127,7 +130,7 @@ export class TauriIpcTransport implements Transport {
         if (e.payload.pane_id === this.paneId) {
           this._messageHandler?.({ type: 'output', data: e.payload.data })
         }
-      }),
+      })
     )
     this._unlistenFns.push(
       await listen('pty-reconnected', (e: any) => {
@@ -135,18 +138,18 @@ export class TauriIpcTransport implements Transport {
         if (p.pane_id === this.paneId) {
           this._messageHandler?.({ type: 'reconnected', cols: p.cols, rows: p.rows })
         }
-      }),
+      })
     )
     this._unlistenFns.push(
       await listen('pty-exit', (e: any) => {
         if (e.payload.pane_id === this.paneId) {
           this._disconnectHandler?.()
         }
-      }),
+      })
     )
 
     try {
-      const shellType: string = await this._invoke('pty_spawn') as string
+      const shellType: string = (await this._invoke('pty_spawn')) as string
       this._connectHandler?.()
       this._messageHandler?.({ type: 'shell_info', shell_type: shellType })
     } catch (e) {

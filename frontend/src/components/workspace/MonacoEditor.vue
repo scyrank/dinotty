@@ -29,7 +29,7 @@ const props = withDefaults(
     filePath?: string
     paneId?: string
   }>(),
-  { language: 'plaintext', readonly: false },
+  { language: 'plaintext', readonly: false }
 )
 
 const emit = defineEmits<{
@@ -44,7 +44,11 @@ let ignoreChange = false
 let gitDecorationIds: string[] = []
 let gitDiffData: GitDiffData | null = null
 let activeDiffWidget: { dispose: () => void } | null = null
-let scheduleCheck: (paneId: string | undefined, filePath: string | undefined, language: string) => void = () => {}
+let scheduleCheck: (
+  paneId: string | undefined,
+  filePath: string | undefined,
+  language: string
+) => void = () => {}
 let disposeSyntaxCheck: () => void = () => {}
 let lastSelectionText = ''
 
@@ -102,7 +106,7 @@ onMounted(() => {
   editor.onMouseDown((e) => {
     if (
       (e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN ||
-       e.target.type === monaco.editor.MouseTargetType.GUTTER_LINE_DECORATIONS) &&
+        e.target.type === monaco.editor.MouseTargetType.GUTTER_LINE_DECORATIONS) &&
       gitDiffData?.changes.length &&
       e.target.position
     ) {
@@ -116,23 +120,44 @@ onMounted(() => {
     const sel = e.selection
     if (!sel.isEmpty()) {
       const model = editor!.getModel()
-      if (!model) { if (lastSelectionText) { lastSelectionText = ''; emit('selection-change', { text: '', rect: null }) } return }
+      if (!model) {
+        if (lastSelectionText) {
+          lastSelectionText = ''
+          emit('selection-change', { text: '', rect: null })
+        }
+        return
+      }
       const text = model.getValueInRange(sel)
-      if (!text) { if (lastSelectionText) { lastSelectionText = ''; emit('selection-change', { text: '', rect: null }) } return }
+      if (!text) {
+        if (lastSelectionText) {
+          lastSelectionText = ''
+          emit('selection-change', { text: '', rect: null })
+        }
+        return
+      }
       if (text === lastSelectionText) return
       lastSelectionText = text
       const endLine = sel.endLineNumber
       const endCol = sel.endColumn
       const visiblePos = editor!.getScrolledVisiblePosition({ lineNumber: endLine, column: endCol })
-      if (!visiblePos) { emit('selection-change', { text, rect: null }); return }
+      if (!visiblePos) {
+        emit('selection-change', { text, rect: null })
+        return
+      }
       const editorDom = editor!.getDomNode()
-      if (!editorDom) { emit('selection-change', { text, rect: null }); return }
+      if (!editorDom) {
+        emit('selection-change', { text, rect: null })
+        return
+      }
       const editorRect = editorDom.getBoundingClientRect()
       const x = editorRect.left + visiblePos.left
       const y = editorRect.top + visiblePos.top + visiblePos.height
       emit('selection-change', { text, rect: new DOMRect(x, y, 0, 0) })
     } else {
-      if (lastSelectionText) { lastSelectionText = ''; emit('selection-change', { text: '', rect: null }) }
+      if (lastSelectionText) {
+        lastSelectionText = ''
+        emit('selection-change', { text: '', rect: null })
+      }
     }
   })
 
@@ -186,7 +211,13 @@ function openDiffWidget(change: GitChange) {
         const start = (c.originalStart ?? 1) - 1
         const end = c.originalEnd ?? start
         const lines = origLines.slice(start, end).join('\n')
-        const ok = await revertLines(props.paneId, props.filePath, c.modifiedStart, c.modifiedEnd, lines)
+        const ok = await revertLines(
+          props.paneId,
+          props.filePath,
+          c.modifiedStart,
+          c.modifiedEnd,
+          lines
+        )
         if (ok) {
           closeDiffWidget()
           emit('save')
@@ -194,7 +225,7 @@ function openDiffWidget(change: GitChange) {
       },
       onClose: closeDiffWidget,
       onNavigate: (c) => openDiffWidget(c),
-    },
+    }
   )
 }
 
@@ -206,32 +237,44 @@ onBeforeUnmount(() => {
   editor = null
 })
 
-watch(() => props.modelValue, (val) => {
-  if (!editor) return
-  if (editor.getValue() === val) return
-  ignoreChange = true
-  editor.setValue(val)
-  ignoreChange = false
-  scheduleCheck(props.paneId, props.filePath, props.language)
-})
+watch(
+  () => props.modelValue,
+  (val) => {
+    if (!editor) return
+    if (editor.getValue() === val) return
+    ignoreChange = true
+    editor.setValue(val)
+    ignoreChange = false
+    scheduleCheck(props.paneId, props.filePath, props.language)
+  }
+)
 
-watch(() => props.language, (lang) => {
-  if (!editor) return
-  registerLanguageCompletions(lang)
-  const model = editor.getModel()
-  if (model) monaco.editor.setModelLanguage(model, lang)
-  scheduleCheck(props.paneId, props.filePath, lang)
-})
+watch(
+  () => props.language,
+  (lang) => {
+    if (!editor) return
+    registerLanguageCompletions(lang)
+    const model = editor.getModel()
+    if (model) monaco.editor.setModelLanguage(model, lang)
+    scheduleCheck(props.paneId, props.filePath, lang)
+  }
+)
 
-watch(() => props.readonly, (ro) => {
-  editor?.updateOptions({ readOnly: ro })
-})
+watch(
+  () => props.readonly,
+  (ro) => {
+    editor?.updateOptions({ readOnly: ro })
+  }
+)
 
-watch(() => props.filePath, () => {
-  closeDiffWidget()
-  loadGitDecorations()
-  scheduleCheck(props.paneId, props.filePath, props.language)
-})
+watch(
+  () => props.filePath,
+  () => {
+    closeDiffWidget()
+    loadGitDecorations()
+    scheduleCheck(props.paneId, props.filePath, props.language)
+  }
+)
 
 defineExpose({ refreshGitDecorations: loadGitDecorations })
 </script>

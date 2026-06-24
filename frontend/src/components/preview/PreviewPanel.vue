@@ -8,12 +8,30 @@
     <div class="preview-panel-inner">
       <div class="preview-toolbar">
         <div class="preview-mode-switch">
-          <button type="button" :class="{ active: kind === 'web' }" @click="switchToWeb" :title="t('previewPanel.switchWeb')"><Globe :size="14" /></button>
-          <button type="button" :class="{ active: kind === 'files' }" @click="switchToFiles" :title="t('previewPanel.switchFiles')"><FolderOpen :size="14" /></button>
+          <button
+            type="button"
+            :class="{ active: kind === 'web' }"
+            @click="switchToWeb"
+            :title="t('previewPanel.switchWeb')"
+          >
+            <Globe :size="14" />
+          </button>
+          <button
+            type="button"
+            :class="{ active: kind === 'files' }"
+            @click="switchToFiles"
+            :title="t('previewPanel.switchFiles')"
+          >
+            <FolderOpen :size="14" />
+          </button>
         </div>
         <div class="preview-toolbar-sep"></div>
-        <button type="button" :disabled="!canGoBack" @click="goBack" title="Back"><ChevronLeft :size="14" /></button>
-        <button type="button" :disabled="!canGoForward" @click="goForward" title="Forward"><ChevronRight :size="14" /></button>
+        <button type="button" :disabled="!canGoBack" @click="goBack" title="Back">
+          <ChevronLeft :size="14" />
+        </button>
+        <button type="button" :disabled="!canGoForward" @click="goForward" title="Forward">
+          <ChevronRight :size="14" />
+        </button>
         <button type="button" @click="refresh" title="Refresh"><RotateCw :size="14" /></button>
         <div class="preview-address-wrap">
           <form class="preview-address" @submit.prevent="go">
@@ -37,8 +55,34 @@
             @close="addressDropdownVisible = false"
           />
         </div>
-        <button v-if="kind === 'web' && webUrl" type="button" @click="openInBrowser" :title="t('previewPanel.openInBrowser')"><ExternalLink :size="14" /></button>
-        <button v-if="kind === 'web' && webUrl" type="button" :class="{ 'star-active': isWebBookmarked }" @click="onToggleWebBookmark" :title="isWebBookmarked ? t('webBookmark.removeFrom') : t('webBookmark.addTo')"><Star :size="14" :fill="isWebBookmarked ? 'currentColor' : 'none'" /></button>
+        <button
+          v-if="kind === 'web' && webUrl"
+          type="button"
+          @click="openInBrowser"
+          :title="t('previewPanel.openInBrowser')"
+        >
+          <ExternalLink :size="14" />
+        </button>
+        <button
+          v-if="kind === 'web' && webUrl"
+          type="button"
+          :class="{ 'star-active': isWebBookmarked }"
+          @click="onToggleWebBookmark"
+          :title="isWebBookmarked ? t('webBookmark.removeFrom') : t('webBookmark.addTo')"
+        >
+          <Star :size="14" :fill="isWebBookmarked ? 'currentColor' : 'none'" />
+        </button>
+        <button
+          v-if="kind === 'web'"
+          type="button"
+          :class="{ 'devtools-active': devtoolsVisible }"
+          @click="devtoolsVisible = !devtoolsVisible"
+          :title="t('devtools.toggleDevtools')"
+        >
+          <Bug :size="14" /><span v-if="errorCount > 0" class="devtools-btn-badge">{{
+            errorCount
+          }}</span>
+        </button>
         <button type="button" @click="close" title="Close"><X :size="14" /></button>
       </div>
       <div class="preview-body">
@@ -60,6 +104,15 @@
           @update:can-go-forward="filesCanGoForward = $event"
         />
       </div>
+      <DevToolsPanel
+        v-model:visible="devtoolsVisible"
+        :console-entries="consoleEntries"
+        :network-entries="networkEntries"
+        :error-count="errorCount"
+        @clear-console="clearConsole"
+        @clear-network="clearNetwork"
+        @eval="evalInIframe"
+      />
     </div>
   </div>
 </template>
@@ -67,12 +120,25 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import FileWorkspacePreview from './FileWorkspacePreview.vue'
+import DevToolsPanel from './DevToolsPanel.vue'
 import { isWebPreviewInput, normalizeWebUrl, urlToPreviewSrc } from '../../utils/previewRouting'
 import { getApiBase, getAuthToken } from '../../composables/apiBase'
 import { useI18n } from '../../composables/useI18n'
-import { ChevronLeft, ChevronRight, RotateCw, ArrowRight, ExternalLink, X, Globe, FolderOpen, Star } from 'lucide-vue-next'
+import {
+  ChevronLeft,
+  ChevronRight,
+  RotateCw,
+  ArrowRight,
+  ExternalLink,
+  X,
+  Globe,
+  FolderOpen,
+  Star,
+  Bug,
+} from 'lucide-vue-next'
 import { usePaneResize } from '../../composables/usePaneResize'
 import { useWebBookmarks } from '../../composables/useWebBookmarks'
+import { useDevTools } from '../../composables/useDevTools'
 import { useRecentUrls } from '../../composables/useRecentAccess'
 import { settings } from '../../composables/useSettings'
 import AddressDropdown from './AddressDropdown.vue'
@@ -103,6 +169,43 @@ const localAddress = ref('')
 const navCounter = ref(0)
 const webBookmarks = useWebBookmarks()
 const recentUrlsComposable = useRecentUrls()
+const {
+  consoleEntries,
+  networkEntries,
+  errorCount,
+  clearConsole,
+  clearNetwork,
+  allowOrigin,
+  isAllowedOrigin,
+} = useDevTools()
+const devtoolsVisible = ref(false)
+
+function evalInIframe(code: string) {
+  const iframe = document.querySelector('.preview-web iframe') as HTMLIFrameElement
+  if (!iframe?.contentWindow) return
+  try {
+    const result = (iframe.contentWindow as any).eval(code)
+    const display =
+      result === undefined
+        ? 'undefined'
+        : typeof result === 'object'
+          ? JSON.stringify(result, null, 2)
+          : String(result)
+    consoleEntries.value.push({
+      id: Date.now(),
+      level: 'log',
+      args: ['> ' + code, display],
+      ts: Date.now(),
+    })
+  } catch (err: any) {
+    consoleEntries.value.push({
+      id: Date.now(),
+      level: 'error',
+      args: ['> ' + code, err.message],
+      ts: Date.now(),
+    })
+  }
+}
 const addressDropdownVisible = ref(false)
 
 const isWebBookmarked = computed(() => {
@@ -122,7 +225,9 @@ function onAddressFocus() {
 }
 
 function onAddressBlur() {
-  setTimeout(() => { addressDropdownVisible.value = false }, 200)
+  setTimeout(() => {
+    addressDropdownVisible.value = false
+  }, 200)
 }
 
 function onDropdownSelect(url: string) {
@@ -146,7 +251,10 @@ const canGoForward = computed(() => {
 const navFromHistory = ref(false)
 
 function pushHistory(url: string) {
-  if (navFromHistory.value) { navFromHistory.value = false; return }
+  if (navFromHistory.value) {
+    navFromHistory.value = false
+    return
+  }
   if (navHistory.value[navIndex.value] === url) return
   navHistory.value = navHistory.value.slice(0, navIndex.value + 1)
   navHistory.value.push(url)
@@ -154,7 +262,10 @@ function pushHistory(url: string) {
 }
 
 function goBack() {
-  if (props.kind === 'files') { filesRef.value?.goBack(); return }
+  if (props.kind === 'files') {
+    filesRef.value?.goBack()
+    return
+  }
   if (!canGoBack.value) return
   navFromHistory.value = true
   navIndex.value--
@@ -166,7 +277,10 @@ function goBack() {
 }
 
 function goForward() {
-  if (props.kind === 'files') { filesRef.value?.goForward(); return }
+  if (props.kind === 'files') {
+    filesRef.value?.goForward()
+    return
+  }
   if (!canGoForward.value) return
   navFromHistory.value = true
   navIndex.value++
@@ -178,8 +292,7 @@ function goForward() {
 }
 
 const direction = computed(() =>
-  props.panelPosition === 'left' || props.panelPosition === 'right'
-    ? 'horizontal' : 'vertical'
+  props.panelPosition === 'left' || props.panelPosition === 'right' ? 'horizontal' : 'vertical'
 )
 
 const resolvedIframeSrc = computed(() => {
@@ -203,7 +316,7 @@ watch(
   () => {
     if (props.visible) localAddress.value = props.address
   },
-  { immediate: true },
+  { immediate: true }
 )
 
 watch(
@@ -214,7 +327,7 @@ watch(
       recentUrlsComposable.recordUrl(props.webUrl)
     }
   },
-  { immediate: true },
+  { immediate: true }
 )
 
 watch(
@@ -224,7 +337,7 @@ watch(
       treeCollapsed.value = false
       await restoreFilesPreview()
     }
-  },
+  }
 )
 
 async function restoreFilesPreview() {
@@ -319,7 +432,7 @@ const reversed = computed(() => props.panelPosition === 'left' || props.panelPos
 const { startDrag } = usePaneResize('.preview-panel', direction, reversed)
 
 function onProxyMessage(e: MessageEvent) {
-  if (e.origin !== window.location.origin) return
+  if (!isAllowedOrigin(e.origin)) return
   if (e.data?.type === 'proxy-navigate' && e.data.url && props.kind === 'web') {
     localAddress.value = e.data.url
     emit('update:address', e.data.url)
@@ -330,6 +443,7 @@ function onProxyMessage(e: MessageEvent) {
 onMounted(async () => {
   window.addEventListener('message', onProxyMessage)
   previewHttpBase.value = await getApiBase()
+  allowOrigin(previewHttpBase.value)
   if (props.visible && props.kind === 'files' && props.address) {
     treeCollapsed.value = false
     // Wait for FileWorkspacePreview to mount and PTY session to be ready
@@ -551,5 +665,29 @@ onBeforeUnmount(() => {
 }
 .preview-address-wrap .preview-address {
   flex: 1;
+}
+
+.devtools-active {
+  color: var(--accent, #89b4fa) !important;
+}
+
+.devtools-btn-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background: #e74c3c;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 0 4px;
+  border-radius: 7px;
+  min-width: 12px;
+  height: 12px;
+  line-height: 12px;
+  text-align: center;
+}
+
+.preview-toolbar button {
+  position: relative;
 }
 </style>

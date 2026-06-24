@@ -17,7 +17,7 @@ export function treeFolderIcon(expanded: boolean): VNode {
     h(
       'svg',
       { viewBox: '0 0 16 16', class: 'tree-svg', fill: 'currentColor', 'aria-hidden': 'true' },
-      [h('path', { d })],
+      [h('path', { d })]
     ),
   ])
 }
@@ -31,7 +31,7 @@ export function treeFileIcon(): VNode {
         h('path', {
           d: 'M4 2h5.2L13 5.8V14H4V2zm1 1v10h7V6.5H8.5L9 6 8 5H5zm5.2 0L12 5.8h-2V3h-.8z',
         }),
-      ],
+      ]
     ),
   ])
 }
@@ -46,16 +46,51 @@ export function absJoinWorkspaceRoot(root: string, rel: string): string {
   return r + '/' + parts.join('/')
 }
 
+let lastDragX = 0
+let lastDragY = 0
+
+if (typeof document !== 'undefined') {
+  document.addEventListener(
+    'dragover',
+    (e: DragEvent) => {
+      if (e.clientX !== 0 || e.clientY !== 0) {
+        lastDragX = e.clientX
+        lastDragY = e.clientY
+      }
+    },
+    true
+  )
+}
+
 function dispatchDropToTerminal(ev: DragEvent, path: string) {
   if (!isTauri()) return
-  if (ev.dataTransfer?.dropEffect === 'none' && ev.clientX === 0 && ev.clientY === 0) return
-  const el = document.elementFromPoint(ev.clientX, ev.clientY)
-  const termPane = el?.closest('.terminal-pane')
+
+  const cx = ev.clientX || lastDragX
+  const cy = ev.clientY || lastDragY
+  if (!cx && !cy) return
+
+  // Try elementFromPoint first
+  const el = document.elementFromPoint(cx, cy)
+  let termPane = el?.closest('.terminal-pane') as HTMLElement | null
+
+  // Fallback: check all terminal panes by bounding rect
+  if (!termPane) {
+    for (const pane of document.querySelectorAll('.terminal-pane')) {
+      const rect = (pane as HTMLElement).getBoundingClientRect()
+      if (cx >= rect.left && cx <= rect.right && cy >= rect.top && cy <= rect.bottom) {
+        termPane = pane as HTMLElement
+        break
+      }
+    }
+  }
+
   if (termPane) {
-    termPane.dispatchEvent(new CustomEvent('terminal-drop-path', {
-      detail: { path },
-      bubbles: false,
-    }))
+    termPane.dispatchEvent(
+      new CustomEvent('terminal-drop-path', {
+        detail: { path },
+        bubbles: false,
+      })
+    )
   }
 }
 
@@ -112,7 +147,20 @@ export const TreeRows = defineComponent({
     onDirDragEnter: { type: Function, default: undefined },
     onDirDragLeave: { type: Function, default: undefined },
   },
-  emits: ['toggle', 'select-file', 'select-dir', 'inline-create-commit', 'inline-create-cancel', 'inline-rename-commit', 'inline-rename-cancel', 'context-menu', 'long-press', 'move-entry', 'swipe-action', 'upload-to-dir'],
+  emits: [
+    'toggle',
+    'select-file',
+    'select-dir',
+    'inline-create-commit',
+    'inline-create-cancel',
+    'inline-rename-commit',
+    'inline-rename-cancel',
+    'context-menu',
+    'long-press',
+    'move-entry',
+    'swipe-action',
+    'upload-to-dir',
+  ],
   setup(p, { emit }) {
     const { t } = useI18n()
     const swipedRel = ref<string | null>(null)
@@ -124,11 +172,18 @@ export const TreeRows = defineComponent({
         const status = gs[rel]
         if (!status) return null
         switch (status) {
-          case 'modified': case 'staged_modified': return { badge: 'M', cls: 'git-modified' }
-          case 'untracked': return { badge: 'U', cls: 'git-untracked' }
-          case 'staged_new': return { badge: 'A', cls: 'git-untracked' }
-          case 'deleted': case 'staged_deleted': return { badge: 'D', cls: 'git-deleted' }
-          default: return { badge: 'M', cls: 'git-modified' }
+          case 'modified':
+          case 'staged_modified':
+            return { badge: 'M', cls: 'git-modified' }
+          case 'untracked':
+            return { badge: 'U', cls: 'git-untracked' }
+          case 'staged_new':
+            return { badge: 'A', cls: 'git-untracked' }
+          case 'deleted':
+          case 'staged_deleted':
+            return { badge: 'D', cls: 'git-deleted' }
+          default:
+            return { badge: 'M', cls: 'git-modified' }
         }
       }
       const prefix = rel ? rel + '/' : ''
@@ -205,7 +260,9 @@ export const TreeRows = defineComponent({
           if (swiping) e.preventDefault()
           swiping = false
         },
-        onTouchcancel: () => { swiping = false },
+        onTouchcancel: () => {
+          swiping = false
+        },
       }
     }
 
@@ -219,18 +276,14 @@ export const TreeRows = defineComponent({
       const ic = p.inlineCreate as { parentRel: string; kind: 'file' | 'dir' } | null
       if (ic && ic.parentRel === p.relPath) {
         rows.push(
-          h(
-            'div',
-            { class: 'tree-row tree-inline-create', key: '__ic__', style: rowPad },
-            [
-              h('span', { class: 'tree-twistie-placeholder' }),
-              h(TreeInlineInput, {
-                placeholder: p.inlinePlaceholder as string,
-                onCommit: (name: string) => emit('inline-create-commit', name),
-                onCancel: () => emit('inline-create-cancel'),
-              }),
-            ],
-          ),
+          h('div', { class: 'tree-row tree-inline-create', key: '__ic__', style: rowPad }, [
+            h('span', { class: 'tree-twistie-placeholder' }),
+            h(TreeInlineInput, {
+              placeholder: p.inlinePlaceholder as string,
+              onCommit: (name: string) => emit('inline-create-commit', name),
+              onCancel: () => emit('inline-create-cancel'),
+            }),
+          ])
         )
       }
       const ir = p.inlineRename as { rel: string; isDir: boolean } | undefined
@@ -249,13 +302,17 @@ export const TreeRows = defineComponent({
             : h(
                 'span',
                 { class: ['tree-label', gitInfo?.cls, { sel: p.selectedRel === rel }] },
-                e.name,
+                e.name
               )
           rows.push(
             h(
               'div',
               {
-                class: ['tree-row', 'dir', { 'tree-row-swipe': !isRenaming && swipedRel.value === rel }],
+                class: [
+                  'tree-row',
+                  'dir',
+                  { 'tree-row-swipe': !isRenaming && swipedRel.value === rel },
+                ],
                 key: rel,
                 style: rowPad,
                 draggable: true,
@@ -291,13 +348,19 @@ export const TreeRows = defineComponent({
                   }
                 },
                 onDragleave: (ev: DragEvent) => {
-                  ;(ev.currentTarget as HTMLElement).classList.remove('drop-target', 'drop-target-upload')
+                  ;(ev.currentTarget as HTMLElement).classList.remove(
+                    'drop-target',
+                    'drop-target-upload'
+                  )
                   if (p.onDirDragLeave) p.onDirDragLeave()
                 },
                 onDrop: (ev: DragEvent) => {
                   ev.preventDefault()
                   ev.stopPropagation()
-                  ;(ev.currentTarget as HTMLElement).classList.remove('drop-target', 'drop-target-upload')
+                  ;(ev.currentTarget as HTMLElement).classList.remove(
+                    'drop-target',
+                    'drop-target-upload'
+                  )
                   const srcRel = ev.dataTransfer?.getData('application/x-tree-move')
                   if (srcRel !== undefined && srcRel !== rel && !rel.startsWith(srcRel + '/')) {
                     emit('move-entry', { src: srcRel, destDir: rel })
@@ -315,7 +378,7 @@ export const TreeRows = defineComponent({
                     class: ['tree-twistie', { open: isExp }],
                     onClick: () => emit('toggle', rel),
                   },
-                  isExp ? '▼' : '▶',
+                  isExp ? '▼' : '▶'
                 ),
                 h(
                   'span',
@@ -326,17 +389,38 @@ export const TreeRows = defineComponent({
                       emit('select-dir', rel)
                     },
                   },
-                  [
-                    treeFolderIcon(isExp),
-                    labelContent,
-                  ],
+                  [treeFolderIcon(isExp), labelContent]
                 ),
-                !isRenaming ? h('div', { class: 'tree-swipe-actions' }, [
-                  h('button', { type: 'button', class: 'tree-swipe-btn', onClick: (ev: Event) => { ev.stopPropagation(); emit('swipe-action', { rel, action: 'copy-path' }) } }, t('filePreview.copyPath')),
-                  h('button', { type: 'button', class: 'tree-swipe-btn tree-swipe-btn-accent', onClick: (ev: Event) => { ev.stopPropagation(); emit('swipe-action', { rel, action: 'insert-to-terminal' }) } }, t('filePreview.insertToTerminal')),
-                ]) : null,
-              ],
-            ),
+                !isRenaming
+                  ? h('div', { class: 'tree-swipe-actions' }, [
+                      h(
+                        'button',
+                        {
+                          type: 'button',
+                          class: 'tree-swipe-btn',
+                          onClick: (ev: Event) => {
+                            ev.stopPropagation()
+                            emit('swipe-action', { rel, action: 'copy-path' })
+                          },
+                        },
+                        t('filePreview.copyPath')
+                      ),
+                      h(
+                        'button',
+                        {
+                          type: 'button',
+                          class: 'tree-swipe-btn tree-swipe-btn-accent',
+                          onClick: (ev: Event) => {
+                            ev.stopPropagation()
+                            emit('swipe-action', { rel, action: 'insert-to-terminal' })
+                          },
+                        },
+                        t('filePreview.insertToTerminal')
+                      ),
+                    ])
+                  : null,
+              ]
+            )
           )
           if (isExp) {
             rows.push(
@@ -361,15 +445,17 @@ export const TreeRows = defineComponent({
                 onInlineRenameCancel: () => emit('inline-rename-cancel'),
                 onContextMenu: (payload: { ev: MouseEvent; rel: string; isDir: boolean }) =>
                   emit('context-menu', payload),
-                onLongPress: (pos: { clientX: number; clientY: number }, rel: string, isDir: boolean) =>
-                  emit('long-press', pos, rel, isDir),
+                onLongPress: (
+                  pos: { clientX: number; clientY: number },
+                  rel: string,
+                  isDir: boolean
+                ) => emit('long-press', pos, rel, isDir),
                 onMoveEntry: (payload: { src: string; destDir: string }) =>
                   emit('move-entry', payload),
                 onSwipeAction: (payload: { rel: string; action: string }) =>
                   emit('swipe-action', payload),
-                onUploadToDir: (dir: string, ev: DragEvent) =>
-                  emit('upload-to-dir', dir, ev),
-              }),
+                onUploadToDir: (dir: string, ev: DragEvent) => emit('upload-to-dir', dir, ev),
+              })
             )
           }
         } else {
@@ -390,13 +476,17 @@ export const TreeRows = defineComponent({
                   gitInfo?.badge
                     ? h('span', { class: `tree-git-badge git-${gitInfo.badge}` }, gitInfo.badge)
                     : null,
-                ],
+                ]
               )
           rows.push(
             h(
               'div',
               {
-                class: ['tree-row', 'file', { 'tree-row-swipe': !isRenaming && swipedRel.value === rel }],
+                class: [
+                  'tree-row',
+                  'file',
+                  { 'tree-row-swipe': !isRenaming && swipedRel.value === rel },
+                ],
                 key: rel,
                 style: rowPad,
                 draggable: true,
@@ -426,12 +516,36 @@ export const TreeRows = defineComponent({
                 }),
                 treeFileIcon(),
                 fileLabelContent,
-                !isRenaming ? h('div', { class: 'tree-swipe-actions' }, [
-                  h('button', { type: 'button', class: 'tree-swipe-btn', onClick: (ev: Event) => { ev.stopPropagation(); emit('swipe-action', { rel, action: 'copy-path' }) } }, t('filePreview.copyPath')),
-                  h('button', { type: 'button', class: 'tree-swipe-btn tree-swipe-btn-accent', onClick: (ev: Event) => { ev.stopPropagation(); emit('swipe-action', { rel, action: 'insert-to-terminal' }) } }, t('filePreview.insertToTerminal')),
-                ]) : null,
-              ],
-            ),
+                !isRenaming
+                  ? h('div', { class: 'tree-swipe-actions' }, [
+                      h(
+                        'button',
+                        {
+                          type: 'button',
+                          class: 'tree-swipe-btn',
+                          onClick: (ev: Event) => {
+                            ev.stopPropagation()
+                            emit('swipe-action', { rel, action: 'copy-path' })
+                          },
+                        },
+                        t('filePreview.copyPath')
+                      ),
+                      h(
+                        'button',
+                        {
+                          type: 'button',
+                          class: 'tree-swipe-btn tree-swipe-btn-accent',
+                          onClick: (ev: Event) => {
+                            ev.stopPropagation()
+                            emit('swipe-action', { rel, action: 'insert-to-terminal' })
+                          },
+                        },
+                        t('filePreview.insertToTerminal')
+                      ),
+                    ])
+                  : null,
+              ]
+            )
           )
         }
       }
@@ -440,63 +554,70 @@ export const TreeRows = defineComponent({
       let bgStartX = 0
       let bgStartY = 0
 
-      return h('div', {
-        class: 'tree-rows',
-        onDragover: (ev: DragEvent) => {
-          const types = ev.dataTransfer?.types
-          if (types?.includes('application/x-tree-move')) {
+      return h(
+        'div',
+        {
+          class: 'tree-rows',
+          onDragover: (ev: DragEvent) => {
+            const types = ev.dataTransfer?.types
+            if (types?.includes('application/x-tree-move')) {
+              ev.preventDefault()
+              ev.dataTransfer!.dropEffect = 'move'
+            } else if (types?.includes('Files')) {
+              ev.preventDefault()
+              ev.dataTransfer!.dropEffect = 'copy'
+            }
+          },
+          onDrop: (ev: DragEvent) => {
             ev.preventDefault()
-            ev.dataTransfer!.dropEffect = 'move'
-          } else if (types?.includes('Files')) {
-            ev.preventDefault()
-            ev.dataTransfer!.dropEffect = 'copy'
-          }
-        },
-        onDrop: (ev: DragEvent) => {
-          ev.preventDefault()
-          const srcRel = ev.dataTransfer?.getData('application/x-tree-move')
-          if (srcRel !== undefined && srcRel.includes('/')) {
-            emit('move-entry', { src: srcRel, destDir: '' })
-          } else if (ev.dataTransfer?.types.includes('Files')) {
-            emit('upload-to-dir', '', ev)
-          }
-        },
-        onContextmenu: (ev: MouseEvent) => {
-          if (ev.target === ev.currentTarget) {
-            ev.preventDefault()
-            ev.stopPropagation()
-            emit('context-menu', { ev, rel: '', isDir: true })
-          }
-        },
-        onTouchstart: (e: TouchEvent) => {
-          if (e.target !== e.currentTarget || e.touches.length !== 1) return
-          const touch = e.touches[0]
-          bgStartX = touch.clientX
-          bgStartY = touch.clientY
-          bgLongPressFired = false
-          bgLongPressTimer = setTimeout(() => {
-            bgLongPressFired = true
-            emit('long-press', { clientX: bgStartX, clientY: bgStartY }, '', true)
-          }, 500)
-        },
-        onTouchmove: (e: TouchEvent) => {
-          if (!bgLongPressTimer) return
-          const touch = e.touches[0]
-          if (Math.abs(touch.clientX - bgStartX) > 10 || Math.abs(touch.clientY - bgStartY) > 10) {
-            clearTimeout(bgLongPressTimer)
+            const srcRel = ev.dataTransfer?.getData('application/x-tree-move')
+            if (srcRel !== undefined && srcRel.includes('/')) {
+              emit('move-entry', { src: srcRel, destDir: '' })
+            } else if (ev.dataTransfer?.types.includes('Files')) {
+              emit('upload-to-dir', '', ev)
+            }
+          },
+          onContextmenu: (ev: MouseEvent) => {
+            if (ev.target === ev.currentTarget) {
+              ev.preventDefault()
+              ev.stopPropagation()
+              emit('context-menu', { ev, rel: '', isDir: true })
+            }
+          },
+          onTouchstart: (e: TouchEvent) => {
+            if (e.target !== e.currentTarget || e.touches.length !== 1) return
+            const touch = e.touches[0]
+            bgStartX = touch.clientX
+            bgStartY = touch.clientY
+            bgLongPressFired = false
+            bgLongPressTimer = setTimeout(() => {
+              bgLongPressFired = true
+              emit('long-press', { clientX: bgStartX, clientY: bgStartY }, '', true)
+            }, 500)
+          },
+          onTouchmove: (e: TouchEvent) => {
+            if (!bgLongPressTimer) return
+            const touch = e.touches[0]
+            if (
+              Math.abs(touch.clientX - bgStartX) > 10 ||
+              Math.abs(touch.clientY - bgStartY) > 10
+            ) {
+              clearTimeout(bgLongPressTimer)
+              bgLongPressTimer = null
+            }
+          },
+          onTouchend: (e: TouchEvent) => {
+            if (bgLongPressTimer) clearTimeout(bgLongPressTimer)
             bgLongPressTimer = null
-          }
+            if (bgLongPressFired) e.preventDefault()
+          },
+          onTouchcancel: () => {
+            if (bgLongPressTimer) clearTimeout(bgLongPressTimer)
+            bgLongPressTimer = null
+          },
         },
-        onTouchend: (e: TouchEvent) => {
-          if (bgLongPressTimer) clearTimeout(bgLongPressTimer)
-          bgLongPressTimer = null
-          if (bgLongPressFired) e.preventDefault()
-        },
-        onTouchcancel: () => {
-          if (bgLongPressTimer) clearTimeout(bgLongPressTimer)
-          bgLongPressTimer = null
-        },
-      }, rows)
+        rows
+      )
     }
   },
 })

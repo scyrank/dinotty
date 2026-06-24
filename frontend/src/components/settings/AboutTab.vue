@@ -12,7 +12,12 @@
       </div>
       <div class="settings-row">
         <label>{{ t('settings.about.repository') }}</label>
-        <a href="https://github.com/xichan96/dinotty" target="_blank" rel="noopener" class="about-link">
+        <a
+          href="https://github.com/xichan96/dinotty"
+          target="_blank"
+          rel="noopener"
+          class="about-link"
+        >
           https://github.com/xichan96/dinotty
         </a>
       </div>
@@ -67,7 +72,7 @@ onMounted(loadInfo)
 .about-name {
   font-size: 18px;
   font-weight: 600;
-  color: var(--fg-bright, #F0F6FC);
+  color: var(--fg-bright, #f0f6fc);
 }
 .about-val {
   font-size: 13px;
@@ -75,7 +80,7 @@ onMounted(loadInfo)
 }
 .about-link {
   font-size: 13px;
-  color: var(--accent, #8A8A8A);
+  color: var(--accent, #8a8a8a);
   text-decoration: none;
   word-break: break-all;
 }

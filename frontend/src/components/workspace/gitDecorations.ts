@@ -107,7 +107,7 @@ function injectDecorationStyles() {
 
 export function applyGitDecorations(
   editor: monaco.editor.IStandaloneCodeEditor,
-  changes: GitChange[],
+  changes: GitChange[]
 ): string[] {
   injectDecorationStyles()
   const decorations: monaco.editor.IModelDeltaDecoration[] = []
@@ -148,18 +148,12 @@ export function applyGitDecorations(
   return model.deltaDecorations([], decorations)
 }
 
-export function clearGitDecorations(
-  editor: monaco.editor.IStandaloneCodeEditor,
-  ids: string[],
-) {
+export function clearGitDecorations(editor: monaco.editor.IStandaloneCodeEditor, ids: string[]) {
   const model = editor.getModel()
   if (model && ids.length) model.deltaDecorations(ids, [])
 }
 
-export async function fetchGitDiff(
-  paneId: string,
-  filePath: string,
-): Promise<GitDiffData | null> {
+export async function fetchGitDiff(paneId: string, filePath: string): Promise<GitDiffData | null> {
   try {
     await getApiBase()
     const q = new URLSearchParams({ pane_id: paneId, path: filePath })
@@ -186,7 +180,7 @@ export async function stageLines(
   paneId: string,
   filePath: string,
   startLine: number,
-  endLine: number,
+  endLine: number
 ): Promise<boolean> {
   try {
     await getApiBase()
@@ -207,7 +201,7 @@ export async function revertLines(
   filePath: string,
   startLine: number,
   endLine: number,
-  originalLines: string,
+  originalLines: string
 ): Promise<boolean> {
   try {
     await getApiBase()
@@ -234,12 +228,20 @@ interface DiffWidgetCallbacks {
   onNavigate: (change: GitChange) => void
 }
 
-function iconBtn(svgPath: string, title: string, onClick: () => void, disabled = false): HTMLButtonElement {
+function iconBtn(
+  svgPath: string,
+  title: string,
+  onClick: () => void,
+  disabled = false
+): HTMLButtonElement {
   const btn = document.createElement('button')
   btn.title = title
   btn.disabled = disabled
   btn.innerHTML = `<svg viewBox="0 0 16 16"><path d="${svgPath}"/></svg>`
-  btn.onclick = (e) => { e.stopPropagation(); onClick() }
+  btn.onclick = (e) => {
+    e.stopPropagation()
+    onClick()
+  }
   return btn
 }
 
@@ -248,15 +250,21 @@ export function createDiffWidget(
   hunk: GitChange,
   originalContent: string,
   allChanges: GitChange[],
-  callbacks: DiffWidgetCallbacks,
+  callbacks: DiffWidgetCallbacks
 ): { dispose: () => void } {
   injectDecorationStyles()
 
   const container = document.createElement('div')
   container.className = 'git-diff-widget-container'
-  container.addEventListener('mousedown', (e) => { e.stopPropagation() })
-  container.addEventListener('mouseup', (e) => { e.stopPropagation() })
-  container.addEventListener('click', (e) => { e.stopPropagation() })
+  container.addEventListener('mousedown', (e) => {
+    e.stopPropagation()
+  })
+  container.addEventListener('mouseup', (e) => {
+    e.stopPropagation()
+  })
+  container.addEventListener('click', (e) => {
+    e.stopPropagation()
+  })
 
   const toolbar = document.createElement('div')
   toolbar.className = 'git-diff-widget-toolbar'
@@ -273,14 +281,18 @@ export function createDiffWidget(
   const prevBtn = iconBtn(
     'M8 3.5L3.5 8 8 12.5V9h4.5V7H8V3.5z',
     'Previous Change (Shift+Alt+F5)',
-    () => { if (hunkIdx > 0) callbacks.onNavigate(allChanges[hunkIdx - 1]) },
-    hunkIdx <= 0,
+    () => {
+      if (hunkIdx > 0) callbacks.onNavigate(allChanges[hunkIdx - 1])
+    },
+    hunkIdx <= 0
   )
   const nextBtn = iconBtn(
     'M8 12.5L12.5 8 8 3.5V7H3.5v2H8v3.5z',
     'Next Change (Alt+F5)',
-    () => { if (hunkIdx < allChanges.length - 1) callbacks.onNavigate(allChanges[hunkIdx + 1]) },
-    hunkIdx >= allChanges.length - 1,
+    () => {
+      if (hunkIdx < allChanges.length - 1) callbacks.onNavigate(allChanges[hunkIdx + 1])
+    },
+    hunkIdx >= allChanges.length - 1
   )
 
   const sep1 = document.createElement('span')
@@ -290,17 +302,15 @@ export function createDiffWidget(
   const revertBtn = iconBtn(
     'M3.5 2v4.5H8L5.3 3.8C6.3 3 7.6 2.5 9 2.5c3 0 5.5 2.5 5.5 5.5S12 13.5 9 13.5 3.5 11 3.5 8H2c0 3.9 3.1 7 7 7s7-3.1 7-7-3.1-7-7-7c-1.7 0-3.3.6-4.5 1.7V2H3.5z',
     'Revert Change',
-    () => callbacks.onRevert(hunk),
+    () => callbacks.onRevert(hunk)
   )
 
   const sep2 = document.createElement('span')
   sep2.className = 'diff-separator'
 
   // stage: codicon-add
-  const stageBtn = iconBtn(
-    'M14 7v1H8v6H7V8H1V7h6V1h1v6h6z',
-    'Stage Change',
-    () => callbacks.onStage(hunk),
+  const stageBtn = iconBtn('M14 7v1H8v6H7V8H1V7h6V1h1v6h6z', 'Stage Change', () =>
+    callbacks.onStage(hunk)
   )
 
   const sep3 = document.createElement('span')
@@ -310,7 +320,7 @@ export function createDiffWidget(
   const closeBtn = iconBtn(
     'M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.707.708L7.293 8l-3.646 3.646.707.708L8 8.707z',
     'Close',
-    () => callbacks.onClose(),
+    () => callbacks.onClose()
   )
 
   actions.append(prevBtn, nextBtn, sep1, revertBtn, sep2, stageBtn, sep3, closeBtn)
@@ -385,11 +395,6 @@ export function createDiffWidget(
   }
 }
 
-export function findChangeAtLine(
-  changes: GitChange[],
-  line: number,
-): GitChange | undefined {
-  return changes.find(
-    (c) => line >= c.modifiedStart && line <= c.modifiedEnd,
-  )
+export function findChangeAtLine(changes: GitChange[], line: number): GitChange | undefined {
+  return changes.find((c) => line >= c.modifiedStart && line <= c.modifiedEnd)
 }

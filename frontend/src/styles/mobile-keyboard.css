@@ -2,7 +2,9 @@
   display: flex;
   flex-direction: column;
   position: fixed;
-  left: 0; right: 0; bottom: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   z-index: 500;
   background: var(--bg-surface);
   border-top: 1px solid var(--border);
@@ -29,7 +31,9 @@
 }
 
 /* Row stagger: offsets relative to row 1 (no stagger) */
-.mkb-stagger-asdf .mkb-row { padding-left: 0; }
+.mkb-stagger-asdf .mkb-row {
+  padding-left: 0;
+}
 
 /* ── Right nav column (68-key style) ─────────────────────── */
 
@@ -56,7 +60,10 @@
   flex-basis: 0;
   flex-grow: 1;
   min-width: 0;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
   font-size: 16px;
   font-weight: 400;
   color: var(--fg-bright);
@@ -102,7 +109,9 @@
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
 }
 
-.mkb-return { color: var(--color-green); }
+.mkb-return {
+  color: var(--color-green);
+}
 
 #mkb-space {
   background: var(--mkb-key-bg);
@@ -183,7 +192,9 @@
   padding-left: calc(33.333% + 2px);
 }
 
-:root { --mkb-height: 0px; }
+:root {
+  --mkb-height: 0px;
+}
 
 /* Action panel */
 #mkb-main-panel,
@@ -229,7 +240,9 @@
   border-radius: 50%;
   background: var(--fg-muted);
   opacity: 0.3;
-  transition: opacity 0.2s, transform 0.2s;
+  transition:
+    opacity 0.2s,
+    transform 0.2s;
 }
 .mkb-dot.active {
   opacity: 0.9;
@@ -326,7 +339,7 @@
   align-items: center;
   justify-content: center;
   cursor: grab;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -336,7 +349,8 @@
 }
 
 /* ── Keyboard top bar (collapse) ───────────────────────────── */
-#mkb-kb-bar, .mkb-kb-bar {
+#mkb-kb-bar,
+.mkb-kb-bar {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -351,7 +365,10 @@
   height: 30px;
   padding: 6px 10px;
   font-size: 14px;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
   color: var(--fg-bright);
   background: var(--bg);
   border: none;
@@ -393,7 +410,10 @@
   padding: 4px 12px;
   font-size: 14px;
   min-width: 36px;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
   color: var(--fg);
   background: var(--bg-input);
   border: 1px solid var(--border);
@@ -414,12 +434,24 @@
     padding: 3px 2px 4px;
     gap: 3px;
   }
-  .mkb-row-wrap { gap: 3px; }
-  .mkb-row { gap: 3px; }
-  .mkb-rows-45 { gap: 3px; }
-  .mkb-rows-45-main { gap: 3px; }
-  .mkb-arrow-cluster { gap: 3px; }
-  .mkb-arrow-cluster-bot { gap: 3px; }
+  .mkb-row-wrap {
+    gap: 3px;
+  }
+  .mkb-row {
+    gap: 3px;
+  }
+  .mkb-rows-45 {
+    gap: 3px;
+  }
+  .mkb-rows-45-main {
+    gap: 3px;
+  }
+  .mkb-arrow-cluster {
+    gap: 3px;
+  }
+  .mkb-arrow-cluster-bot {
+    gap: 3px;
+  }
 
   .mkb-btn {
     height: 38px;
@@ -427,10 +459,19 @@
     border-radius: 5px;
     padding: 0 1px;
   }
-  .mkb-mod { font-size: 11px; }
-  .mkb-arrow { height: 38px; min-height: 34px; }
-  .mkb-arrow-cluster { flex-basis: calc((100% - 3px) * 3 / 14); }
-  .mkb-arrow-cluster > .mkb-btn { width: calc((100% - 6px) / 3); }
+  .mkb-mod {
+    font-size: 11px;
+  }
+  .mkb-arrow {
+    height: 38px;
+    min-height: 34px;
+  }
+  .mkb-arrow-cluster {
+    flex-basis: calc((100% - 3px) * 3 / 14);
+  }
+  .mkb-arrow-cluster > .mkb-btn {
+    width: calc((100% - 6px) / 3);
+  }
 }
 
 /* Toolbar */

@@ -76,7 +76,9 @@ const filtered = computed(() => {
     })
 })
 
-watch(query, () => { selected.value = 0 })
+watch(query, () => {
+  selected.value = 0
+})
 
 function open() {
   isOpen.value = true
@@ -101,7 +103,10 @@ function openWithItems(items: Command[]) {
 }
 
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape') { close(); return }
+  if (e.key === 'Escape') {
+    close()
+    return
+  }
   // Don't execute during IME composition (Chinese/Japanese/Korean input)
   if (e.isComposing) return
   if (e.key === 'ArrowDown') {
@@ -121,16 +126,23 @@ function execute(i: number) {
   if (!cmd || typeof cmd.action !== 'function') return
   close()
   setTimeout(() => {
-    try { cmd.action() } catch (e) { console.error('[palette] command action error:', e) }
+    try {
+      cmd.action()
+    } catch (e) {
+      console.error('[palette] command action error:', e)
+    }
   }, 10)
 }
 
 function fuzzyMatch(str: string, q: string): number | null {
   const s = str.toLowerCase()
-  let si = 0, qi = 0, score = 0, lastMatch = -1
+  let si = 0,
+    qi = 0,
+    score = 0,
+    lastMatch = -1
   while (si < s.length && qi < q.length) {
     if (s[si] === q[qi]) {
-      score += (si - lastMatch - 1)
+      score += si - lastMatch - 1
       lastMatch = si
       qi++
     }
@@ -148,15 +160,19 @@ function highlightTitle(title: string) {
   if (!q) return escHtml(title)
   const s = title.toLowerCase()
   const positions = new Set<number>()
-  let si = 0, qi = 0
+  let si = 0,
+    qi = 0
   while (si < s.length && qi < q.length) {
-    if (s[si] === q[qi]) { positions.add(si); qi++ }
+    if (s[si] === q[qi]) {
+      positions.add(si)
+      qi++
+    }
     si++
   }
   if (qi < q.length) return escHtml(title)
-  return [...title].map((c, i) =>
-    positions.has(i) ? `<mark>${escHtml(c)}</mark>` : escHtml(c)
-  ).join('')
+  return [...title]
+    .map((c, i) => (positions.has(i) ? `<mark>${escHtml(c)}</mark>` : escHtml(c)))
+    .join('')
 }
 
 defineExpose({ open, close, toggle, openWithItems })

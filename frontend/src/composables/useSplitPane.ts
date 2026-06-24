@@ -1,14 +1,25 @@
 import { type Ref, nextTick } from 'vue'
 import type { Tab, TerminalTab, PaneLayout, LeafPane, SplitPane, DropPosition } from '../types/pane'
 import {
-  findLeaf, findParentSplit, getAllLeaves, findFirstLeaf,
-  replaceLeaf, replaceNode, redistributeRatios, clearAllZoom, equalizeRecursive,
-  removeLeaf, genSplitId, ensureSplitRoot,
+  findLeaf,
+  findParentSplit,
+  getAllLeaves,
+  findFirstLeaf,
+  replaceLeaf,
+  replaceNode,
+  redistributeRatios,
+  clearAllZoom,
+  equalizeRecursive,
+  removeLeaf,
+  genSplitId,
+  ensureSplitRoot,
 } from '../types/pane'
 import type TerminalPane from '../components/terminal/TerminalPane.vue'
 import type { SyncClientMsg } from '../types/protocol'
 import { apiSplitPane, apiClosePane } from './useTabApi'
 import { setActivePaneId } from './useTerminal'
+import { useI18n } from './useI18n'
+import { usePaneWarning } from './usePaneWarning'
 
 export function useSplitPane(opts: {
   tabs: Ref<Tab[]>
@@ -27,13 +38,13 @@ export function useSplitPane(opts: {
   }
 
   function getActiveTerminal(): TerminalTab | null {
-    const tab = tabs.value.find(t => t.paneId === activePaneId.value)
+    const tab = tabs.value.find((t) => t.paneId === activePaneId.value)
     if (!tab || tab.type !== 'terminal') return null
     return tab
   }
 
   function findTabByPaneId(paneId: string): TerminalTab | null {
-    const tab = tabs.value.find(t => {
+    const tab = tabs.value.find((t) => {
       if (t.type !== 'terminal') return false
       return !!findLeaf(t.layout, paneId)
     })
@@ -44,7 +55,10 @@ export function useSplitPane(opts: {
   async function splitPane(direction: 'horizontal' | 'vertical') {
     const tab = getActiveTerminal()
     if (!tab) return
-    if (getAllLeaves(tab.layout).length >= 6) return
+    if (getAllLeaves(tab.layout).length >= 6) {
+      const { t } = useI18n()
+      usePaneWarning().show(t('split.tooManyPanes'))
+    }
 
     try {
       const result = await apiSplitPane(tab.paneId, tab.activePaneId, direction)
@@ -100,7 +114,7 @@ export function useSplitPane(opts: {
       persist()
       syncTabLayout(tab)
       nextTick(() => {
-        getAllLeaves(tab.layout).forEach(l => termRefs[l.paneId]?.fit())
+        getAllLeaves(tab.layout).forEach((l) => termRefs[l.paneId]?.fit())
         // Blur all other panes first to prevent duplicate input in Tauri WKWebView
         for (const leaf of getAllLeaves(tab.layout)) {
           if (leaf.paneId !== tab.activePaneId) {
@@ -145,17 +159,25 @@ export function useSplitPane(opts: {
   }
 
   /** Check if rectB is in the given direction from rectA */
-  function isDirection(rectA: DOMRect, rectB: DOMRect, direction: 'left' | 'right' | 'up' | 'down'): boolean {
+  function isDirection(
+    rectA: DOMRect,
+    rectB: DOMRect,
+    direction: 'left' | 'right' | 'up' | 'down'
+  ): boolean {
     const cx = rectA.left + rectA.width / 2
     const cy = rectA.top + rectA.height / 2
     const tx = rectB.left + rectB.width / 2
     const ty = rectB.top + rectB.height / 2
 
     switch (direction) {
-      case 'left': return tx < cx
-      case 'right': return tx > cx
-      case 'up': return ty < cy
-      case 'down': return ty > cy
+      case 'left':
+        return tx < cx
+      case 'right':
+        return tx > cx
+      case 'up':
+        return ty < cy
+      case 'down':
+        return ty > cy
     }
   }
 
@@ -178,14 +200,17 @@ export function useSplitPane(opts: {
 
     const leaves = getAllLeaves(tab.layout)
     const candidates = leaves
-      .filter(l => l.paneId !== tab.activePaneId)
-      .map(l => ({ pane: l, rect: getPaneRect(l.paneId) }))
-      .filter((c): c is { pane: LeafPane; rect: DOMRect } => c.rect !== null && isDirection(currentRect, c.rect, direction))
+      .filter((l) => l.paneId !== tab.activePaneId)
+      .map((l) => ({ pane: l, rect: getPaneRect(l.paneId) }))
+      .filter(
+        (c): c is { pane: LeafPane; rect: DOMRect } =>
+          c.rect !== null && isDirection(currentRect, c.rect, direction)
+      )
 
     if (candidates.length === 0) return
 
     const nearest = candidates.reduce((best, c) =>
-      centerDistance(currentRect, c.rect) < centerDistance(currentRect, best.rect) ? c : best,
+      centerDistance(currentRect, c.rect) < centerDistance(currentRect, best.rect) ? c : best
     )
     focusPane(nearest.pane.paneId)
   }
@@ -195,7 +220,7 @@ export function useSplitPane(opts: {
     const tab = getActiveTerminal()
     if (!tab) return
     const leaves = getAllLeaves(tab.layout)
-    const idx = leaves.findIndex(l => l.paneId === tab.activePaneId)
+    const idx = leaves.findIndex((l) => l.paneId === tab.activePaneId)
     const next = leaves[(idx + 1) % leaves.length]
     focusPane(next.paneId)
   }
@@ -205,7 +230,7 @@ export function useSplitPane(opts: {
     const tab = getActiveTerminal()
     if (!tab) return
     const leaves = getAllLeaves(tab.layout)
-    const idx = leaves.findIndex(l => l.paneId === tab.activePaneId)
+    const idx = leaves.findIndex((l) => l.paneId === tab.activePaneId)
     const prev = leaves[(idx - 1 + leaves.length) % leaves.length]
     focusPane(prev.paneId)
   }
@@ -230,7 +255,7 @@ export function useSplitPane(opts: {
     persist()
     syncTabLayout(tab)
     nextTick(() => {
-      getAllLeaves(tab.layout).forEach(l => termRefs[l.paneId]?.fit())
+      getAllLeaves(tab.layout).forEach((l) => termRefs[l.paneId]?.fit())
     })
   }
 
@@ -250,9 +275,7 @@ export function useSplitPane(opts: {
     const parent = findParentSplit(tab.layout, tab.activePaneId)
     if (!parent) return
 
-    const idx = parent.children.findIndex(c =>
-      c.type === 'leaf' && c.paneId === tab.activePaneId,
-    )
+    const idx = parent.children.findIndex((c) => c.type === 'leaf' && c.paneId === tab.activePaneId)
     if (idx === -1) return
 
     const step = 0.05
@@ -282,7 +305,7 @@ export function useSplitPane(opts: {
     persist()
     syncTabLayout(tab)
     nextTick(() => {
-      getAllLeaves(tab.layout).forEach(l => termRefs[l.paneId]?.fit())
+      getAllLeaves(tab.layout).forEach((l) => termRefs[l.paneId]?.fit())
     })
   }
 
@@ -311,7 +334,8 @@ export function useSplitPane(opts: {
     const sourceLeaf = findLeaf(tab.layout, sourcePaneId)
     if (!sourceLeaf) return
 
-    const direction: 'horizontal' | 'vertical' = (position === 'left' || position === 'right') ? 'horizontal' : 'vertical'
+    const direction: 'horizontal' | 'vertical' =
+      position === 'left' || position === 'right' ? 'horizontal' : 'vertical'
     const before = position === 'left' || position === 'top'
 
     const sourceParent = findParentSplit(tab.layout, sourcePaneId)
@@ -324,8 +348,12 @@ export function useSplitPane(opts: {
 
     // Special case: same split, same direction → simple reorder
     if (sameParent && sourceParent.direction === direction) {
-      const sourceIdx = sourceParent.children.findIndex(c => c.type === 'leaf' && c.paneId === sourcePaneId)
-      const targetIdx = sourceParent.children.findIndex(c => c.type === 'leaf' && c.paneId === targetPaneId)
+      const sourceIdx = sourceParent.children.findIndex(
+        (c) => c.type === 'leaf' && c.paneId === sourcePaneId
+      )
+      const targetIdx = sourceParent.children.findIndex(
+        (c) => c.type === 'leaf' && c.paneId === targetPaneId
+      )
       if (sourceIdx === -1 || targetIdx === -1) return
 
       const [moved] = sourceParent.children.splice(sourceIdx, 1)
@@ -337,7 +365,7 @@ export function useSplitPane(opts: {
       persist()
       syncTabLayout(tab)
       nextTick(() => {
-        getAllLeaves(tab.layout).forEach(l => termRefs[l.paneId]?.fit())
+        getAllLeaves(tab.layout).forEach((l) => termRefs[l.paneId]?.fit())
       })
       return
     }
@@ -349,8 +377,14 @@ export function useSplitPane(opts: {
         id: genSplitId(),
         direction,
         children: before
-          ? [sourceParent.children.find(c => c.type === 'leaf' && c.paneId === sourcePaneId)!, sourceParent.children.find(c => c.type === 'leaf' && c.paneId === targetPaneId)!]
-          : [sourceParent.children.find(c => c.type === 'leaf' && c.paneId === targetPaneId)!, sourceParent.children.find(c => c.type === 'leaf' && c.paneId === sourcePaneId)!],
+          ? [
+              sourceParent.children.find((c) => c.type === 'leaf' && c.paneId === sourcePaneId)!,
+              sourceParent.children.find((c) => c.type === 'leaf' && c.paneId === targetPaneId)!,
+            ]
+          : [
+              sourceParent.children.find((c) => c.type === 'leaf' && c.paneId === targetPaneId)!,
+              sourceParent.children.find((c) => c.type === 'leaf' && c.paneId === sourcePaneId)!,
+            ],
         ratios: [0.5, 0.5],
       }
       if (sourceParent === tab.layout) {
@@ -362,7 +396,7 @@ export function useSplitPane(opts: {
       persist()
       syncTabLayout(tab)
       nextTick(() => {
-        getAllLeaves(tab.layout).forEach(l => termRefs[l.paneId]?.fit())
+        getAllLeaves(tab.layout).forEach((l) => termRefs[l.paneId]?.fit())
       })
       return
     }
@@ -384,7 +418,7 @@ export function useSplitPane(opts: {
       persist()
       syncTabLayout(tab)
       nextTick(() => {
-        getAllLeaves(tab.layout).forEach(l => termRefs[l.paneId]?.fit())
+        getAllLeaves(tab.layout).forEach((l) => termRefs[l.paneId]?.fit())
       })
       return
     }
@@ -393,8 +427,8 @@ export function useSplitPane(opts: {
     const effectiveTargetParent = findParentSplit(tab.layout, targetPaneId)
     if (!effectiveTargetParent) return
 
-    const targetIdx = effectiveTargetParent.children.findIndex(c =>
-      c.type === 'leaf' && c.paneId === targetPaneId,
+    const targetIdx = effectiveTargetParent.children.findIndex(
+      (c) => c.type === 'leaf' && c.paneId === targetPaneId
     )
 
     if (targetIdx !== -1) {
@@ -410,14 +444,16 @@ export function useSplitPane(opts: {
           type: 'split',
           id: genSplitId(),
           direction,
-          children: before ? [removed, effectiveTargetParent.children[targetIdx]] : [effectiveTargetParent.children[targetIdx], removed],
+          children: before
+            ? [removed, effectiveTargetParent.children[targetIdx]]
+            : [effectiveTargetParent.children[targetIdx], removed],
           ratios: [0.5, 0.5],
         }
         effectiveTargetParent.children[targetIdx] = newSplit
       }
     } else {
       // Target might be a split node — find it as a child
-      const targetAsChildIdx = effectiveTargetParent.children.findIndex(c => {
+      const targetAsChildIdx = effectiveTargetParent.children.findIndex((c) => {
         if (c.type !== 'split') return false
         return !!findLeaf(c, targetPaneId)
       })
@@ -445,7 +481,7 @@ export function useSplitPane(opts: {
     persist()
     syncTabLayout(tab)
     nextTick(() => {
-      getAllLeaves(tab.layout).forEach(l => termRefs[l.paneId]?.fit())
+      getAllLeaves(tab.layout).forEach((l) => termRefs[l.paneId]?.fit())
     })
   }
 
@@ -466,7 +502,7 @@ export function useSplitPane(opts: {
     const tab = getActiveTerminal()
     if (!tab) return
     nextTick(() => {
-      getAllLeaves(tab.layout).forEach(l => termRefs[l.paneId]?.fit())
+      getAllLeaves(tab.layout).forEach((l) => termRefs[l.paneId]?.fit())
     })
   }
 

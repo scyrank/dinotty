@@ -293,14 +293,18 @@ const themeChangeListeners = new Set<(xtermTheme: ReturnType<typeof getXtermThem
 
 export function onThemeChange(fn: (xtermTheme: ReturnType<typeof getXtermTheme>) => void) {
   themeChangeListeners.add(fn)
-  return () => { themeChangeListeners.delete(fn) }
+  return () => {
+    themeChangeListeners.delete(fn)
+  }
 }
 
 const textChangeListeners = new Set<(text: TextConfig) => void>()
 
 export function onTextChange(fn: (text: TextConfig) => void) {
   textChangeListeners.add(fn)
-  return () => { textChangeListeners.delete(fn) }
+  return () => {
+    textChangeListeners.delete(fn)
+  }
 }
 
 export function notifyTextChange() {
@@ -325,10 +329,22 @@ export function applyCurrentTheme() {
     }
     if (custom.ansi) {
       const keys = [
-        '--color-black', '--color-red', '--color-green', '--color-yellow',
-        '--color-blue', '--color-magenta', '--color-cyan', '--color-white',
-        '--color-bright-black', '--color-bright-red', '--color-bright-green', '--color-bright-yellow',
-        '--color-bright-blue', '--color-bright-magenta', '--color-bright-cyan', '--color-bright-white',
+        '--color-black',
+        '--color-red',
+        '--color-green',
+        '--color-yellow',
+        '--color-blue',
+        '--color-magenta',
+        '--color-cyan',
+        '--color-white',
+        '--color-bright-black',
+        '--color-bright-red',
+        '--color-bright-green',
+        '--color-bright-yellow',
+        '--color-bright-blue',
+        '--color-bright-magenta',
+        '--color-bright-cyan',
+        '--color-bright-white',
       ]
       custom.ansi.forEach((c, i) => {
         if (c) document.documentElement.style.setProperty(keys[i], c)
@@ -366,8 +382,24 @@ export function getCurrentXtermTheme() {
     if (custom.background) xtermTheme.background = custom.background
     if (custom.cursor) xtermTheme.cursor = custom.cursor
     if (custom.ansi) {
-      const keys = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
-        'brightBlack', 'brightRed', 'brightGreen', 'brightYellow', 'brightBlue', 'brightMagenta', 'brightCyan', 'brightWhite'] as const
+      const keys = [
+        'black',
+        'red',
+        'green',
+        'yellow',
+        'blue',
+        'magenta',
+        'cyan',
+        'white',
+        'brightBlack',
+        'brightRed',
+        'brightGreen',
+        'brightYellow',
+        'brightBlue',
+        'brightMagenta',
+        'brightCyan',
+        'brightWhite',
+      ] as const
       custom.ansi.forEach((c, i) => {
         if (c) (xtermTheme as any)[keys[i]] = c
       })

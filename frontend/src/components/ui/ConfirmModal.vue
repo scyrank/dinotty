@@ -129,7 +129,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKey, true))
   border: none;
   color: var(--fg-muted);
   background: none;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .confirm-btn.cancel {
@@ -138,7 +140,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey, true))
 }
 
 .confirm-btn.cancel:hover {
-  background: rgba(255,255,255,0.06);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--fg);
 }
 
@@ -148,7 +150,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey, true))
 }
 
 .confirm-btn.primary:hover {
-  background: rgba(239,68,68,0.08);
+  background: rgba(239, 68, 68, 0.08);
   color: var(--color-red, #ef4444);
 }
 </style>

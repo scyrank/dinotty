@@ -100,11 +100,7 @@ describe('useI18n - confirm-before-close-tab strings', () => {
   // and the resulting sentence must read naturally in each locale.
   describe('exact values (positive assertions)', () => {
     it.each([
-      [
-        'en',
-        'settings.confirmBeforeCloseTab',
-        'Confirm before closing terminal tab',
-      ],
+      ['en', 'settings.confirmBeforeCloseTab', 'Confirm before closing terminal tab'],
       [
         'en',
         'settings.confirmBeforeCloseTabHint',
@@ -126,13 +122,10 @@ describe('useI18n - confirm-before-close-tab strings', () => {
       ['zh', 'confirm.closeTabMessage', '关闭此会话将终止所有正在运行的进程。仍要关闭'],
       ['zh', 'confirm.closeTabConfirm', '关闭'],
       ['zh', 'confirm.closeTabCancel', '取消'],
-    ] as const)(
-      't(%j) in %s locale returns the exact expected value',
-      (locale, key, expected) => {
-        settings.locale = locale
-        const { t } = useI18n()
-        expect(t(key)).toBe(expected)
-      },
-    )
+    ] as const)('t(%j) in %s locale returns the exact expected value', (locale, key, expected) => {
+      settings.locale = locale
+      const { t } = useI18n()
+      expect(t(key)).toBe(expected)
+    })
   })
 })

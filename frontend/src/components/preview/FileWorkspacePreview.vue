@@ -1,20 +1,30 @@
 <template>
   <div v-if="visible && embedded" class="file-workspace-embedded">
     <input ref="ops.fileInputRef" type="file" multiple class="sr-only" @change="ops.onFilePick" />
-    <div ref="fileWorkspaceBodyRef" class="file-workspace-body" :class="{ embedded }"
+    <div
+      ref="fileWorkspaceBodyRef"
+      class="file-workspace-body"
+      :class="{ embedded }"
       @dragover.prevent
       @dragenter.prevent="ops.onWorkspaceDragEnter()"
       @dragleave="ops.onWorkspaceDragLeave()"
       @drop.prevent="ops.onWorkspaceDrop($event)"
     >
-      <div v-if="ops.dragging.value" class="file-workspace-drop-overlay">{{ t('filePreview.dropHint') }}</div>
+      <div v-if="ops.dragging.value" class="file-workspace-drop-overlay">
+        {{ t('filePreview.dropHint') }}
+      </div>
       <div
         v-if="!treeCollapsed"
         class="file-workspace-tree-wrap"
         :class="{ narrow: layout.narrow.value }"
         :style="layout.treeWrapStyle.value"
       >
-        <div class="file-workspace-tree tree-host" @click.stop @pointerdown.capture="bumpTreePointerTs" @contextmenu.prevent="ctxMenu.onTreeBgContextMenu">
+        <div
+          class="file-workspace-tree tree-host"
+          @click.stop
+          @pointerdown.capture="bumpTreePointerTs"
+          @contextmenu.prevent="ctxMenu.onTreeBgContextMenu"
+        >
           <TreeRows
             :pane-id="paneId"
             :depth="0"
@@ -110,12 +120,30 @@
     ></div>
     <div class="file-workspace-panel">
       <div class="file-workspace-toolbar">
-        <button type="button" :disabled="!nav.canGoBack.value" @click="doGoBack" title="Back">←</button>
-        <button type="button" :disabled="!nav.canGoForward.value" @click="doGoForward" title="Forward">→</button>
+        <button type="button" :disabled="!nav.canGoBack.value" @click="doGoBack" title="Back">
+          ←
+        </button>
+        <button
+          type="button"
+          :disabled="!nav.canGoForward.value"
+          @click="doGoForward"
+          title="Forward"
+        >
+          →
+        </button>
         <button type="button" @click="reloadAll" title="Refresh">↻</button>
         <div class="file-workspace-cwd-wrap">
-          <span class="file-workspace-cwd" :title="cwdLabel" @click="recentDropdownOpen = !recentDropdownOpen">{{ cwdShort }}</span>
-          <div v-if="recentDropdownOpen" class="file-workspace-cwd-backdrop" @click="recentDropdownOpen = false"></div>
+          <span
+            class="file-workspace-cwd"
+            :title="cwdLabel"
+            @click="recentDropdownOpen = !recentDropdownOpen"
+            >{{ cwdShort }}</span
+          >
+          <div
+            v-if="recentDropdownOpen"
+            class="file-workspace-cwd-backdrop"
+            @click="recentDropdownOpen = false"
+          ></div>
           <FileRecentDropdown
             :visible="recentDropdownOpen"
             @select="onRecentSelect"
@@ -132,30 +160,65 @@
           <Star :size="14" :fill="isSelectedBookmarked ? 'currentColor' : 'none'" />
         </button>
         <div class="file-workspace-add-menu">
-          <button type="button" @click="ctxMenu.addMenuOpen.value = !ctxMenu.addMenuOpen.value" title="New">+</button>
-          <div v-if="ctxMenu.addMenuOpen.value" class="file-workspace-add-backdrop" @click="ctxMenu.addMenuOpen.value = false"></div>
+          <button
+            type="button"
+            @click="ctxMenu.addMenuOpen.value = !ctxMenu.addMenuOpen.value"
+            title="New"
+          >
+            +
+          </button>
+          <div
+            v-if="ctxMenu.addMenuOpen.value"
+            class="file-workspace-add-backdrop"
+            @click="ctxMenu.addMenuOpen.value = false"
+          ></div>
           <div v-if="ctxMenu.addMenuOpen.value" class="file-workspace-add-dropdown">
-            <button type="button" @click="ctxMenu.addMenuOpen.value = false; startNewFile()">{{ t('filePreview.ctxNewFile') }}</button>
-            <button type="button" @click="ctxMenu.addMenuOpen.value = false; startNewFolder()">{{ t('filePreview.ctxNewFolder') }}</button>
+            <button
+              type="button"
+              @click="
+                ctxMenu.addMenuOpen.value = false;
+                startNewFile();
+              "
+            >
+              {{ t('filePreview.ctxNewFile') }}
+            </button>
+            <button
+              type="button"
+              @click="
+                ctxMenu.addMenuOpen.value = false;
+                startNewFolder();
+              "
+            >
+              {{ t('filePreview.ctxNewFolder') }}
+            </button>
           </div>
         </div>
         <button type="button" @click="close" title="Close">✕</button>
       </div>
       <input ref="ops.fileInputRef" type="file" multiple class="sr-only" @change="ops.onFilePick" />
-      <div ref="fileWorkspaceBodyRef" class="file-workspace-body"
+      <div
+        ref="fileWorkspaceBodyRef"
+        class="file-workspace-body"
         @dragover.prevent
-        @dragenter.prevent="ops.dragCounter.value++"
-        @dragleave="ops.dragCounter.value = Math.max(0, ops.dragCounter.value - 1)"
-        @drop.prevent="ops.dragCounter.value = 0; ops.onDrop($event)"
+        @dragenter.prevent="ops.onWorkspaceDragEnter()"
+        @dragleave="ops.onWorkspaceDragLeave()"
+        @drop.prevent="ops.onWorkspaceDrop($event)"
       >
-        <div v-if="ops.dragging.value" class="file-workspace-drop-overlay">{{ t('filePreview.dropHint') }}</div>
+        <div v-if="ops.dragging.value" class="file-workspace-drop-overlay">
+          {{ t('filePreview.dropHint') }}
+        </div>
         <div
           v-if="!treeCollapsed"
           class="file-workspace-tree-wrap"
           :class="{ narrow: layout.narrow.value }"
           :style="layout.treeWrapStyle.value"
         >
-          <div class="file-workspace-tree tree-host" @click.stop @pointerdown.capture="bumpTreePointerTs" @contextmenu.prevent="ctxMenu.onTreeBgContextMenu">
+          <div
+            class="file-workspace-tree tree-host"
+            @click.stop
+            @pointerdown.capture="bumpTreePointerTs"
+            @contextmenu.prevent="ctxMenu.onTreeBgContextMenu"
+          >
             <TreeRows
               :pane-id="paneId"
               :depth="0"
@@ -188,56 +251,56 @@
           @mousedown.prevent="(e) => layout.startTreeWidthDrag(e, fileWorkspaceBodyRef)"
           @touchstart.prevent="(e) => layout.startTreeWidthDragTouch(e, fileWorkspaceBodyRef)"
         ></div>
-          <div class="file-workspace-preview-wrap">
-            <button
-              type="button"
-              class="tree-collapse-btn"
-              :title="treeCollapsed ? t('previewPanel.expandTree') : t('previewPanel.collapseTree')"
-              @click="treeCollapsed = !treeCollapsed"
-            >
-              <component :is="treeCollapsed ? PanelLeftOpen : PanelLeftClose" :size="12" />
-            </button>
-            <FilePreviewContent
-              ref="previewContentRef2"
-              :pane-id="paneId"
-              :file-path="selectedRel ?? undefined"
-              :preview-loading="previewLoading"
-              :preview-err="previewErr"
-              :selected-rel="selectedRel"
-              :selected-is-dir="selectedIsDir"
-              :meta="meta"
-              :raw-url="ops.rawUrl.value"
-              :show-save="true"
-              :audio-title="audioTitle"
-              :audio-sub="audioSub"
-              :audio-time-now="audio.audioTimeNow.value"
-              :audio-time-total="audio.audioTimeTotal.value"
-              :audio-seek-value="audio.audioSeekValue.value"
-              :audio-vol-value="audio.audioVolValue.value"
-              :audio-playing="audio.audioPlaying.value"
-              :editor-dirty="editor.editorDirty.value"
-              :editor-text="editor.editorText.value"
-              :can-save-editor="editor.canSaveEditor.value"
-              :md-show-preview="editor.mdShowPreview.value"
-              :html-show-preview="editor.htmlShowPreview.value"
-              :markdown-editor-html="editor.markdownEditorHtml.value"
-              :office-loading="office.officeLoading.value"
-              :office-err="office.officeErr.value"
-              :office-html="office.officeHtml.value"
-              @audio-time-update="audio.onAudioTimeUpdate(audioRef)"
-              @audio-loaded-metadata="audio.onAudioLoadedMetadata(audioRef)"
-              @audio-ended="audio.onAudioEnded()"
-              @audio-seek-input="(ev) => audio.onAudioSeekInput(audioRef, ev)"
-              @seek-audio="(d) => audio.seekAudio(audioRef, d)"
-              @toggle-audio="audio.toggleAudio(audioRef)"
-              @audio-volume-input="(ev) => audio.onAudioVolumeInput(audioRef, ev)"
-              @update:md-show-preview="editor.mdShowPreview.value = $event"
-              @update:html-show-preview="editor.htmlShowPreview.value = $event"
-              @save-editor="editor.saveEditor"
-              @update:editor-text="editor.editorText.value = $event"
-              @selection-change="editor.onEditorSelectionChange"
-            />
-          </div>
+        <div class="file-workspace-preview-wrap">
+          <button
+            type="button"
+            class="tree-collapse-btn"
+            :title="treeCollapsed ? t('previewPanel.expandTree') : t('previewPanel.collapseTree')"
+            @click="treeCollapsed = !treeCollapsed"
+          >
+            <component :is="treeCollapsed ? PanelLeftOpen : PanelLeftClose" :size="12" />
+          </button>
+          <FilePreviewContent
+            ref="previewContentRef2"
+            :pane-id="paneId"
+            :file-path="selectedRel ?? undefined"
+            :preview-loading="previewLoading"
+            :preview-err="previewErr"
+            :selected-rel="selectedRel"
+            :selected-is-dir="selectedIsDir"
+            :meta="meta"
+            :raw-url="ops.rawUrl.value"
+            :show-save="true"
+            :audio-title="audioTitle"
+            :audio-sub="audioSub"
+            :audio-time-now="audio.audioTimeNow.value"
+            :audio-time-total="audio.audioTimeTotal.value"
+            :audio-seek-value="audio.audioSeekValue.value"
+            :audio-vol-value="audio.audioVolValue.value"
+            :audio-playing="audio.audioPlaying.value"
+            :editor-dirty="editor.editorDirty.value"
+            :editor-text="editor.editorText.value"
+            :can-save-editor="editor.canSaveEditor.value"
+            :md-show-preview="editor.mdShowPreview.value"
+            :html-show-preview="editor.htmlShowPreview.value"
+            :markdown-editor-html="editor.markdownEditorHtml.value"
+            :office-loading="office.officeLoading.value"
+            :office-err="office.officeErr.value"
+            :office-html="office.officeHtml.value"
+            @audio-time-update="audio.onAudioTimeUpdate(audioRef)"
+            @audio-loaded-metadata="audio.onAudioLoadedMetadata(audioRef)"
+            @audio-ended="audio.onAudioEnded()"
+            @audio-seek-input="(ev) => audio.onAudioSeekInput(audioRef, ev)"
+            @seek-audio="(d) => audio.seekAudio(audioRef, d)"
+            @toggle-audio="audio.toggleAudio(audioRef)"
+            @audio-volume-input="(ev) => audio.onAudioVolumeInput(audioRef, ev)"
+            @update:md-show-preview="editor.mdShowPreview.value = $event"
+            @update:html-show-preview="editor.htmlShowPreview.value = $event"
+            @save-editor="editor.saveEditor"
+            @update:editor-text="editor.editorText.value = $event"
+            @selection-change="editor.onEditorSelectionChange"
+          />
+        </div>
       </div>
     </div>
   </div>
@@ -276,12 +339,7 @@
           <span class="tree-ctx-kbd">F2</span>
         </button>
         <div class="tree-ctx-sep" />
-        <button
-          type="button"
-          class="tree-ctx-item"
-          role="menuitem"
-          @click="ctxMenu.ctxCopyPath"
-        >
+        <button type="button" class="tree-ctx-item" role="menuitem" @click="ctxMenu.ctxCopyPath">
           <span class="tree-ctx-label">{{ t('filePreview.ctxCopyPath') }}</span>
         </button>
         <button
@@ -292,12 +350,7 @@
         >
           <span class="tree-ctx-label">{{ t('filePreview.ctxInsertToTerminal') }}</span>
         </button>
-        <button
-          type="button"
-          class="tree-ctx-item"
-          role="menuitem"
-          @click="ctxMenu.ctxUpload"
-        >
+        <button type="button" class="tree-ctx-item" role="menuitem" @click="ctxMenu.ctxUpload">
           <span class="tree-ctx-label">{{ t('filePreview.ctxUpload') }}</span>
         </button>
         <button
@@ -309,13 +362,10 @@
         >
           <span class="tree-ctx-label">{{ t('filePreview.ctxDownload') }}</span>
         </button>
-        <button
-          type="button"
-          class="tree-ctx-item"
-          role="menuitem"
-          @click="ctxToggleBookmark"
-        >
-          <span class="tree-ctx-label">{{ ctxIsBookmarked ? t('fileBookmark.removeFrom') : t('fileBookmark.addTo') }}</span>
+        <button type="button" class="tree-ctx-item" role="menuitem" @click="ctxToggleBookmark">
+          <span class="tree-ctx-label">{{
+            ctxIsBookmarked ? t('fileBookmark.removeFrom') : t('fileBookmark.addTo')
+          }}</span>
         </button>
         <div class="tree-ctx-sep" />
         <button
@@ -335,7 +385,11 @@
     :visible="!!ctxMenu.moveConfirm.value"
     :title="t('filePreview.moveTitle')"
     :message="t('filePreview.moveConfirmMsg')"
-    :target="ctxMenu.moveConfirm.value ? (ctxMenu.moveConfirm.value.destDir || t('filePreview.moveToRoot')) : ''"
+    :target="
+      ctxMenu.moveConfirm.value
+        ? ctxMenu.moveConfirm.value.destDir || t('filePreview.moveToRoot')
+        : ''
+    "
     :confirm-text="t('filePreview.moveTitle')"
     :cancel-text="t('filePreview.cancel')"
     @confirm="ctxMenu.onMoveConfirm"
@@ -375,10 +429,15 @@ import { Star, PanelLeftClose, PanelLeftOpen } from 'lucide-vue-next'
 
 const props = withDefaults(
   defineProps<{ visible: boolean; paneId: string; embedded?: boolean }>(),
-  { embedded: false },
+  { embedded: false }
 )
 const treeCollapsed = defineModel<boolean>('treeCollapsed', { default: false })
-const emit = defineEmits<{ close: []; navigate: [path: string]; 'update:canGoBack': [v: boolean]; 'update:canGoForward': [v: boolean] }>()
+const emit = defineEmits<{
+  close: []
+  navigate: [path: string]
+  'update:canGoBack': [v: boolean]
+  'update:canGoForward': [v: boolean]
+}>()
 
 const { t } = useI18n()
 
@@ -450,8 +509,8 @@ const ctxMenu = useTreeContextMenu({
   t,
 })
 
-watch(nav.canGoBack, v => emit('update:canGoBack', v), { immediate: true })
-watch(nav.canGoForward, v => emit('update:canGoForward', v), { immediate: true })
+watch(nav.canGoBack, (v) => emit('update:canGoBack', v), { immediate: true })
+watch(nav.canGoForward, (v) => emit('update:canGoForward', v), { immediate: true })
 
 // --- File Watch ---
 const fileWatch = useFileWatch({
@@ -484,9 +543,13 @@ const fileWatch = useFileWatch({
 // --- Audio ---
 const previewContentRef1 = ref<InstanceType<typeof FilePreviewContent> | null>(null)
 const previewContentRef2 = ref<InstanceType<typeof FilePreviewContent> | null>(null)
-const audioRef = computed(() => previewContentRef1.value?.audioRef ?? previewContentRef2.value?.audioRef ?? null)
+const audioRef = computed(
+  () => previewContentRef1.value?.audioRef ?? previewContentRef2.value?.audioRef ?? null
+)
 
-const audioTitle = computed(() => (selectedRel.value ? selectedRel.value.split('/').pop() || selectedRel.value : ''))
+const audioTitle = computed(() =>
+  selectedRel.value ? selectedRel.value.split('/').pop() || selectedRel.value : ''
+)
 const audioSub = computed(() => '')
 
 // --- Computed ---
@@ -562,10 +625,17 @@ function doGoForward() {
 }
 
 // --- Tree interactions ---
-function bumpTreePointerTs() { lastTreePointerTs.value = Date.now() }
+function bumpTreePointerTs() {
+  lastTreePointerTs.value = Date.now()
+}
 
 function shouldBlockNavigate(): boolean {
-  if (!editor.editorDirty.value || !meta.value || (meta.value.kind !== 'text' && meta.value.kind !== 'markdown')) return false
+  if (
+    !editor.editorDirty.value ||
+    !meta.value ||
+    (meta.value.kind !== 'text' && meta.value.kind !== 'markdown')
+  )
+    return false
   return !confirm(t('filePreview.discardChanges'))
 }
 
@@ -642,7 +712,10 @@ async function fetchGitStatus() {
     const res = await authFetch(apiUrl(`/api/workspace/git-status?${q}`))
     if (!res.ok) return
     const data = await res.json()
-    if (!data.is_git_repo) { gitStatusMap.value = {}; return }
+    if (!data.is_git_repo) {
+      gitStatusMap.value = {}
+      return
+    }
     const map: Record<string, string> = {}
     for (const f of data.files || []) {
       map[f.path] = f.status
@@ -692,7 +765,10 @@ function startNewFolder() {
 
 async function onInlineCreateCommit(name: string) {
   if (!inlineCreate.value) return
-  if (!name) { inlineCreate.value = null; return }
+  if (!name) {
+    inlineCreate.value = null
+    return
+  }
   const { parentRel, kind } = inlineCreate.value
   inlineCreate.value = null
   await getApiBase()
@@ -712,7 +788,9 @@ async function onInlineCreateCommit(name: string) {
   const next = { ...childCache.value }
   delete next[parentRel]
   childCache.value = next
-  try { await ensureChildren(parentRel) } catch {}
+  try {
+    await ensureChildren(parentRel)
+  } catch {}
   if (kind === 'file') await onSelectFile(rel)
   else {
     expanded.value = new Set([...expanded.value, rel])
@@ -721,11 +799,16 @@ async function onInlineCreateCommit(name: string) {
   }
 }
 
-function onInlineCreateCancel() { inlineCreate.value = null }
+function onInlineCreateCancel() {
+  inlineCreate.value = null
+}
 
 async function onInlineRenameCommit(newName: string) {
   if (!inlineRename.value) return
-  if (!newName) { inlineRename.value = null; return }
+  if (!newName) {
+    inlineRename.value = null
+    return
+  }
   const { rel, isDir } = inlineRename.value
   inlineRename.value = null
   await getApiBase()
@@ -752,14 +835,18 @@ async function onInlineRenameCommit(newName: string) {
     }
   }
   childCache.value = next
-  try { await ensureChildren(parentRel) } catch {}
+  try {
+    await ensureChildren(parentRel)
+  } catch {}
   if (selectedRel.value === rel) {
     if (isDir) onSelectDir(newRel)
     else await onSelectFile(newRel)
   }
 }
 
-function onInlineRenameCancel() { inlineRename.value = null }
+function onInlineRenameCancel() {
+  inlineRename.value = null
+}
 
 async function onUploadToDir(dir: string, ev: DragEvent) {
   if (isTauri()) return // handled by file-drop-paths listener
@@ -769,9 +856,16 @@ async function onUploadToDir(dir: string, ev: DragEvent) {
   const promises: Promise<void>[] = []
   for (let i = 0; i < items.length; i++) {
     const entry = items[i].webkitGetAsEntry?.()
-    if (entry) promises.push(ops.traverseEntry(entry, '').then(files => { allFiles.push(...files) }))
+    if (entry)
+      promises.push(
+        ops.traverseEntry(entry, '').then((files) => {
+          allFiles.push(...files)
+        })
+      )
   }
-  try { await Promise.all(promises) } catch {}
+  try {
+    await Promise.all(promises)
+  } catch {}
   if (!allFiles.length) return
   await ops.uploadFiles(allFiles, dir)
 }
@@ -782,9 +876,11 @@ function onSwipeAction(payload: { rel: string; action: string }) {
   if (action === 'copy-path') {
     void copyToClipboard(absPath)
   } else if (action === 'insert-to-terminal') {
-    window.dispatchEvent(new CustomEvent('terminal-insert-path', {
-      detail: { path: absPath },
-    }))
+    window.dispatchEvent(
+      new CustomEvent('terminal-insert-path', {
+        detail: { path: absPath },
+      })
+    )
   }
 }
 
@@ -796,17 +892,21 @@ async function reloadAll() {
   expanded.value = new Set()
   previewErr.value = ''
   meta.value = null
-  try { await ensureChildren('') } catch { previewErr.value = 'list failed' }
+  try {
+    await ensureChildren('')
+  } catch {
+    previewErr.value = 'list failed'
+  }
 }
 
 async function expandFirstLevelDirs() {
   const entries = childCache.value['']
   if (!entries) return
-  const dirs = entries.filter(e => e.is_dir)
+  const dirs = entries.filter((e) => e.is_dir)
   if (!dirs.length) return
-  const dirPaths = dirs.map(d => d.name)
+  const dirPaths = dirs.map((d) => d.name)
   expanded.value = new Set(dirPaths)
-  await Promise.all(dirPaths.map(p => ensureChildren(p)))
+  await Promise.all(dirPaths.map((p) => ensureChildren(p)))
 }
 
 async function boot() {
@@ -822,10 +922,14 @@ async function boot() {
     await ensureChildren('')
     fileWatch.connectTreeWatchSocket()
     fetchGitStatus()
-  } catch { previewErr.value = 'list failed' }
+  } catch {
+    previewErr.value = 'list failed'
+  }
 }
 
-function close() { emit('close') }
+function close() {
+  emit('close')
+}
 
 function onRecentSelect(path: string) {
   recentDropdownOpen.value = false
@@ -844,7 +948,12 @@ async function openFromTerminal(path: string) {
   ctxMenu.contextMenu.value = null
   childCache.value = {}
   expanded.value = new Set()
-  try { await ensureChildren('') } catch { previewErr.value = 'list failed'; return }
+  try {
+    await ensureChildren('')
+  } catch {
+    previewErr.value = 'list failed'
+    return
+  }
   const parts = rel.split('/').filter(Boolean)
   if (parts.length === 0) {
     selectedRel.value = null
@@ -878,7 +987,8 @@ function onEditorSaveKeydown(e: KeyboardEvent) {
     return
   }
   if (!props.visible) return
-  const saveChord = (e.metaKey || e.ctrlKey) && (e.code === 'KeyS' || e.key === 's' || e.key === 'S')
+  const saveChord =
+    (e.metaKey || e.ctrlKey) && (e.code === 'KeyS' || e.key === 's' || e.key === 'S')
   if (!saveChord) return
   if (!editor.canSaveEditorContext.value) return
   e.preventDefault()
@@ -895,7 +1005,13 @@ watch(layout.narrow, (isNarrow) => {
 })
 
 watch(
-  () => [selectedRel.value, selectedIsDir.value, meta.value?.kind, meta.value?.content, meta.value?.truncated],
+  () => [
+    selectedRel.value,
+    selectedIsDir.value,
+    meta.value?.kind,
+    meta.value?.content,
+    meta.value?.truncated,
+  ],
   () => {
     if (selectedIsDir.value || !selectedRel.value) {
       editor.editorText.value = ''
@@ -911,7 +1027,7 @@ watch(
       editor.editorText.value = ''
       editor.editorBaseline.value = ''
     }
-  },
+  }
 )
 
 watch(
@@ -919,17 +1035,21 @@ watch(
   () => {
     if (meta.value?.kind !== 'audio') return
     audio.resetAudio(audioRef.value)
-  },
+  }
 )
 
-watch(selectedRel, () => { editor.mdShowPreview.value = false; editor.htmlShowPreview.value = false; editor.editorSelection.value = null })
+watch(selectedRel, () => {
+  editor.mdShowPreview.value = false
+  editor.htmlShowPreview.value = false
+  editor.editorSelection.value = null
+})
 
 watch(
   () => [props.visible, props.paneId, props.embedded],
   () => {
     if (props.visible && props.paneId) void boot()
   },
-  { immediate: true },
+  { immediate: true }
 )
 
 // --- Lifecycle ---
@@ -940,6 +1060,7 @@ onMounted(() => {
   window.addEventListener('keydown', onEditorSaveKeydown, true)
   window.addEventListener('scroll', onCloseContextScroll, true)
   ops.setActiveWorkspace()
+  ops.setupWorkspaceDragDrop(fileWorkspaceBodyRef.value)
   void getApiBase()
 })
 
@@ -947,6 +1068,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', layout.onResize)
   window.removeEventListener('keydown', onEditorSaveKeydown, true)
   window.removeEventListener('scroll', onCloseContextScroll, true)
+  ops.teardownWorkspaceDragDrop()
   ops.clearActiveWorkspace()
   fileWatch.disconnectTreeWatchSocket()
 })
@@ -1063,18 +1185,24 @@ defineExpose({
   cursor: default;
 }
 
-.file-workspace-add-menu { position: relative; }
-.file-workspace-add-backdrop { position: fixed; inset: 0; z-index: 199; }
+.file-workspace-add-menu {
+  position: relative;
+}
+.file-workspace-add-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 199;
+}
 .file-workspace-add-dropdown {
   position: absolute;
   top: calc(100% + 4px);
   left: 50%;
   transform: translateX(-50%);
   min-width: 120px;
-  background: var(--bg-surface, #1A1A1A);
+  background: var(--bg-surface, #1a1a1a);
   border: 1px solid var(--border, #333);
   border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   z-index: 200;
   padding: 4px 0;
   display: flex;
@@ -1083,12 +1211,14 @@ defineExpose({
 .file-workspace-add-dropdown button {
   padding: 8px 16px;
   font-size: 13px;
-  color: var(--fg, #C7C7C7);
+  color: var(--fg, #c7c7c7);
   text-align: left;
   white-space: nowrap;
   border-radius: 0;
 }
-.file-workspace-add-dropdown button:hover { background: rgba(255,255,255,0.06); }
+.file-workspace-add-dropdown button:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
 
 .file-workspace-cwd {
   flex: 1;
@@ -1138,7 +1268,7 @@ defineExpose({
   border: 2px dashed rgba(59, 130, 246, 0.5);
   border-radius: 6px;
   font-size: 14px;
-  color: var(--fg, #C7C7C7);
+  color: var(--fg, #c7c7c7);
   pointer-events: none;
 }
 
@@ -1185,7 +1315,9 @@ defineExpose({
   transition: background 0.12s;
 }
 
-.file-workspace-tree-splitter:hover { background: var(--accent, #89b4fa); }
+.file-workspace-tree-splitter:hover {
+  background: var(--accent, #89b4fa);
+}
 
 .file-workspace-tree-wrap.narrow {
   border-right: 1px solid var(--border, #333);
@@ -1194,7 +1326,6 @@ defineExpose({
 .star-active {
   color: var(--accent, #89b4fa) !important;
 }
-
 </style>
 
 <style>
@@ -1218,7 +1349,13 @@ defineExpose({
   background: #252526;
   border: 1px solid #3c3c3c;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
 }
 
 .tree-ctx-menu--bottom {
@@ -1233,7 +1370,10 @@ defineExpose({
   padding-bottom: calc(8px + env(safe-area-inset-bottom));
 }
 
-.tree-ctx-menu--bottom .tree-ctx-item { padding: 12px 16px; font-size: 15px; }
+.tree-ctx-menu--bottom .tree-ctx-item {
+  padding: 12px 16px;
+  font-size: 15px;
+}
 
 .tree-ctx-item {
   display: flex;
@@ -1254,12 +1394,35 @@ defineExpose({
 }
 
 .tree-ctx-item:hover,
-.tree-ctx-item:focus-visible { background: #094771; color: #ffffff; outline: none; }
+.tree-ctx-item:focus-visible {
+  background: #094771;
+  color: #ffffff;
+  outline: none;
+}
 .tree-ctx-item-danger:hover,
-.tree-ctx-item-danger:focus-visible { background: #5a1d1d; color: #ffcccc; }
-.tree-ctx-label { flex: 1; min-width: 0; }
-.tree-ctx-kbd { flex-shrink: 0; font-size: 11px; color: #888; font-variant-numeric: tabular-nums; }
+.tree-ctx-item-danger:focus-visible {
+  background: #5a1d1d;
+  color: #ffcccc;
+}
+.tree-ctx-label {
+  flex: 1;
+  min-width: 0;
+}
+.tree-ctx-kbd {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #888;
+  font-variant-numeric: tabular-nums;
+}
 .tree-ctx-item:hover .tree-ctx-kbd,
-.tree-ctx-item:focus-visible .tree-ctx-kbd { color: rgba(255, 255, 255, 0.75); }
-.tree-ctx-sep { height: 1px; margin: 4px 0; background: #3c3c3c; border: none; padding: 0; }
+.tree-ctx-item:focus-visible .tree-ctx-kbd {
+  color: rgba(255, 255, 255, 0.75);
+}
+.tree-ctx-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: #3c3c3c;
+  border: none;
+  padding: 0;
+}
 </style>

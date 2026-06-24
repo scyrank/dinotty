@@ -18,7 +18,9 @@
       />
       <div v-if="notifications.length === 0" class="panel-empty">{{ t('notification.empty') }}</div>
     </div>
-    <button v-if="notifications.length > 0" class="panel-clear" @click="clearAll">{{ t('notification.clearAll') }}</button>
+    <button v-if="notifications.length > 0" class="panel-clear" @click="clearAll">
+      {{ t('notification.clearAll') }}
+    </button>
   </div>
 </template>
 
@@ -48,7 +50,9 @@ const { t } = useI18n()
   transform: translateY(-10px);
   opacity: 0;
   pointer-events: none;
-  transition: transform 0.2s ease, opacity 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    opacity 0.2s ease;
   border: 1px solid var(--border, #333);
   border-radius: 8px;
   background: var(--bg-surface, #1e1e2e);

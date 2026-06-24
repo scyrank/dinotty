@@ -64,7 +64,11 @@ function startDrag(e: MouseEvent | TouchEvent, isTouch: boolean) {
   const moveEvent = isTouch ? 'touchmove' : 'mousemove'
   const endEvent = isTouch ? 'touchend' : 'mouseup'
 
-  window.addEventListener(moveEvent, onPointerMove as EventListener, { passive: !isTouch } as AddEventListenerOptions)
+  window.addEventListener(
+    moveEvent,
+    onPointerMove as EventListener,
+    { passive: !isTouch } as AddEventListenerOptions
+  )
   window.addEventListener(endEvent, onPointerEnd)
 }
 
@@ -82,7 +86,8 @@ function ensureDragStarted() {
 
   // Create red preview div (hidden initially)
   preview = document.createElement('div')
-  preview.style.cssText = 'position:fixed;z-index:10000;background:rgba(239,68,68,0.3);pointer-events:none;display:none;border-radius:2px;'
+  preview.style.cssText =
+    'position:fixed;z-index:10000;background:rgba(239,68,68,0.3);pointer-events:none;display:none;border-radius:2px;'
   document.body.appendChild(preview)
 }
 
@@ -90,7 +95,10 @@ function onPointerMove(e: MouseEvent | TouchEvent) {
   const pos = getPointerPos(e)
   // Wait for movement threshold before starting drag
   if (!dragStarted) {
-    if (Math.abs(pos.clientX - startX) < DRAG_THRESHOLD && Math.abs(pos.clientY - startY) < DRAG_THRESHOLD) {
+    if (
+      Math.abs(pos.clientX - startX) < DRAG_THRESHOLD &&
+      Math.abs(pos.clientY - startY) < DRAG_THRESHOLD
+    ) {
       return
     }
     ensureDragStarted()

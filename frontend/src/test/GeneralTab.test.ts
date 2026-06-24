@@ -5,7 +5,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 // clipboard IO in unit tests.
 vi.mock('../composables/apiBase', () => ({
   apiUrl: (path: string) => path,
-  authFetch: vi.fn(async () => ({ ok: true, json: async () => ({ lan_ip: '127.0.0.1', port: 7681 }) })),
+  authFetch: vi.fn(async () => ({
+    ok: true,
+    json: async () => ({ lan_ip: '127.0.0.1', port: 7681 }),
+  })),
   getAuthToken: () => '',
   setAuthToken: () => {},
   getApiBase: async () => 'http://127.0.0.1:7681',
@@ -39,7 +42,9 @@ describe('GeneralTab - confirm-before-close-tab toggle', () => {
 
   it('renders a toggle input bound to settings.confirm_before_close_tab', () => {
     const wrapper = mount(GeneralTab)
-    const input = wrapper.find<HTMLInputElement>('input[type="checkbox"][data-setting="confirm-before-close-tab"]')
+    const input = wrapper.find<HTMLInputElement>(
+      'input[type="checkbox"][data-setting="confirm-before-close-tab"]'
+    )
     expect(input.exists()).toBe(true)
     // Initial value mirrors reactive default (true).
     expect(input.element.checked).toBe(true)
@@ -71,7 +76,9 @@ describe('GeneralTab - confirm-before-close-tab toggle', () => {
 
   it('toggling the checkbox updates settings.confirm_before_close_tab', async () => {
     const wrapper = mount(GeneralTab)
-    const input = wrapper.find<HTMLInputElement>('input[type="checkbox"][data-setting="confirm-before-close-tab"]')
+    const input = wrapper.find<HTMLInputElement>(
+      'input[type="checkbox"][data-setting="confirm-before-close-tab"]'
+    )
     expect(input.exists()).toBe(true)
 
     // Sanity: starts at the default true.
@@ -86,7 +93,9 @@ describe('GeneralTab - confirm-before-close-tab toggle', () => {
 
   it('reflects an externally toggled settings.confirm_before_close_tab back into the checkbox', async () => {
     const wrapper = mount(GeneralTab)
-    const input = wrapper.find<HTMLInputElement>('input[type="checkbox"][data-setting="confirm-before-close-tab"]')
+    const input = wrapper.find<HTMLInputElement>(
+      'input[type="checkbox"][data-setting="confirm-before-close-tab"]'
+    )
     expect(input.exists()).toBe(true)
 
     settings.confirm_before_close_tab = false

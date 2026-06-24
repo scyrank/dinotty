@@ -18,27 +18,22 @@ describe('formatCloseTabMessage', () => {
   })
 
   it('English: wraps title in single quotes with ASCII question mark', () => {
-    expect(formatCloseTabMessage(BASE, 'npm install', 'en'))
-      .toBe(`${BASE} 'npm install'?`)
+    expect(formatCloseTabMessage(BASE, 'npm install', 'en')).toBe(`${BASE} 'npm install'?`)
   })
 
   it('Chinese: wraps title in CJK brackets with fullwidth question mark', () => {
-    expect(formatCloseTabMessage(BASE, 'npm install', 'zh'))
-      .toBe(`${BASE}「npm install」？`)
+    expect(formatCloseTabMessage(BASE, 'npm install', 'zh')).toBe(`${BASE}「npm install」？`)
   })
 
   it('English: handles CJK characters in title (no special escaping)', () => {
-    expect(formatCloseTabMessage(BASE, '服务器', 'en'))
-      .toBe(`${BASE} '服务器'?`)
+    expect(formatCloseTabMessage(BASE, '服务器', 'en')).toBe(`${BASE} '服务器'?`)
   })
 
   it('Chinese: handles ASCII characters in title', () => {
-    expect(formatCloseTabMessage(BASE, '服务器', 'zh'))
-      .toBe(`${BASE}「服务器」？`)
+    expect(formatCloseTabMessage(BASE, '服务器', 'zh')).toBe(`${BASE}「服务器」？`)
   })
 
   it('English: handles title containing single quotes', () => {
-    expect(formatCloseTabMessage(BASE, "it's running", 'en'))
-      .toBe(`${BASE} 'it's running'?`)
+    expect(formatCloseTabMessage(BASE, "it's running", 'en')).toBe(`${BASE} 'it's running'?`)
   })
 })

@@ -37,7 +37,9 @@
       <div v-if="data" class="disk-info">
         <div v-for="(d, i) in data.disk" :key="i" class="settings-row">
           <label>{{ d.mount }}</label>
-          <span class="disk-val">{{ fmtBytes(d.used) }} / {{ fmtBytes(d.total) }} ({{ d.usage.toFixed(0) }}%)</span>
+          <span class="disk-val"
+            >{{ fmtBytes(d.used) }} / {{ fmtBytes(d.total) }} ({{ d.usage.toFixed(0) }}%)</span
+          >
         </div>
       </div>
       <div v-else class="disk-info"><span class="disk-val">—</span></div>
@@ -76,10 +78,16 @@
       <div v-if="settings.monitor.gpu && hasGpu" class="disk-info">
         <div v-for="(g, i) in data!.gpu" :key="i" class="settings-row">
           <label>GPU {{ i }} · {{ g.name }}</label>
-          <span class="disk-val">VRAM {{ fmtBytes(g.memory_used * 1024 * 1024) }} / {{ fmtBytes(g.memory_total * 1024 * 1024) }} ({{ g.memory_usage.toFixed(0) }}%) · {{ g.utilization_gpu.toFixed(0) }}%</span>
+          <span class="disk-val"
+            >VRAM {{ fmtBytes(g.memory_used * 1024 * 1024) }} /
+            {{ fmtBytes(g.memory_total * 1024 * 1024) }} ({{ g.memory_usage.toFixed(0) }}%) ·
+            {{ g.utilization_gpu.toFixed(0) }}%</span
+          >
         </div>
       </div>
-      <div v-if="!settings.monitor.gpu || !hasGpu" class="disk-info"><span class="disk-val">—</span></div>
+      <div v-if="!settings.monitor.gpu || !hasGpu" class="disk-info">
+        <span class="disk-val">—</span>
+      </div>
     </section>
   </div>
 </template>
@@ -99,7 +107,14 @@ import { Line } from 'vue-chartjs'
 import { useSettings } from '../../composables/useSettings'
 import { useI18n } from '../../composables/useI18n'
 import { monitorData } from '../../composables/useMonitor'
-import { cpuHistory, memHistory, netRxHistory, netTxHistory, gpuUtilHistory, gpuMemHistory } from '../../composables/useMonitor'
+import {
+  cpuHistory,
+  memHistory,
+  netRxHistory,
+  netTxHistory,
+  gpuUtilHistory,
+  gpuMemHistory,
+} from '../../composables/useMonitor'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip)
 
@@ -118,7 +133,18 @@ watch(hasGpu, (available) => {
 
 const labels = computed(() => cpuHistory.value.map(() => ''))
 
-const gpuColors = ['#76b900', '#00a8e8', '#e84040', '#f59e0b', '#8b5cf6', '#34d399', '#f472b6', '#fbbf24', '#60a5fa', '#a78bfa']
+const gpuColors = [
+  '#76b900',
+  '#00a8e8',
+  '#e84040',
+  '#f59e0b',
+  '#8b5cf6',
+  '#34d399',
+  '#f472b6',
+  '#fbbf24',
+  '#60a5fa',
+  '#a78bfa',
+]
 
 const baseOptions = {
   responsive: true,
@@ -179,22 +205,26 @@ const netChartOptions = {
 
 const cpuChartData = computed(() => ({
   labels: labels.value,
-  datasets: [{
-    data: [...cpuHistory.value],
-    borderColor: '#8A8A8A',
-    backgroundColor: 'rgba(77,127,255,0.1)',
-    fill: true,
-  }],
+  datasets: [
+    {
+      data: [...cpuHistory.value],
+      borderColor: '#8A8A8A',
+      backgroundColor: 'rgba(77,127,255,0.1)',
+      fill: true,
+    },
+  ],
 }))
 
 const memChartData = computed(() => ({
   labels: labels.value,
-  datasets: [{
-    data: [...memHistory.value],
-    borderColor: '#34d399',
-    backgroundColor: 'rgba(52,211,153,0.1)',
-    fill: true,
-  }],
+  datasets: [
+    {
+      data: [...memHistory.value],
+      borderColor: '#34d399',
+      backgroundColor: 'rgba(52,211,153,0.1)',
+      fill: true,
+    },
+  ],
 }))
 
 const netChartData = computed(() => ({

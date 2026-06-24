@@ -25,7 +25,11 @@ export function useTreeContextMenu(opts: {
   absolutePath: (rel: string) => string
   parentRelPath: (rel: string) => string
   ensureChildren: (rel: string) => Promise<void>
-  deleteSelected: (skipConfirm: boolean, t: (key: string) => string, resetState: () => void) => Promise<boolean>
+  deleteSelected: (
+    skipConfirm: boolean,
+    t: (key: string) => string,
+    resetState: () => void
+  ) => Promise<boolean>
   onSelectFile: (rel: string) => Promise<void>
   onSelectDir: (rel: string) => void
   triggerUpload: () => void
@@ -37,7 +41,9 @@ export function useTreeContextMenu(opts: {
   const moveConfirm = ref<{ src: string; destDir: string } | null>(null)
 
   const ctxDeleteKeyHint = computed(() =>
-    typeof navigator !== 'undefined' && /Mac|iPhone|iPod|iPad/i.test(navigator.platform) ? '⌘⌫' : 'Del',
+    typeof navigator !== 'undefined' && /Mac|iPhone|iPod|iPad/i.test(navigator.platform)
+      ? '⌘⌫'
+      : 'Del'
   )
 
   const contextMenuStyle = computed(() => {
@@ -56,16 +62,28 @@ export function useTreeContextMenu(opts: {
     return { left: `${left}px`, top: `${top}px` }
   })
 
-  function closeContextMenu() { contextMenu.value = null }
+  function closeContextMenu() {
+    contextMenu.value = null
+  }
 
   function shouldBlockNavigate(): boolean {
-    if (!opts.editorDirty.value || !opts.meta.value || (opts.meta.value.kind !== 'text' && opts.meta.value.kind !== 'markdown')) return false
+    if (
+      !opts.editorDirty.value ||
+      !opts.meta.value ||
+      (opts.meta.value.kind !== 'text' && opts.meta.value.kind !== 'markdown')
+    )
+      return false
     return !confirm(opts.t('filePreview.discardChanges'))
   }
 
   function onTreeContextMenu(payload: { ev: MouseEvent; rel: string; isDir: boolean }) {
     payload.ev.preventDefault()
-    contextMenu.value = { x: payload.ev.clientX, y: payload.ev.clientY, rel: payload.rel, isDir: payload.isDir }
+    contextMenu.value = {
+      x: payload.ev.clientX,
+      y: payload.ev.clientY,
+      rel: payload.rel,
+      isDir: payload.isDir,
+    }
   }
 
   function onTreeBgContextMenu(ev: MouseEvent) {
@@ -116,11 +134,16 @@ export function useTreeContextMenu(opts: {
     const targetRel = rel || opts.selectedRel.value
     const targetIsDir = rel ? isDir : opts.selectedIsDir.value
     if (!targetRel) return
-    const discardNeeded = opts.editorDirty.value && opts.meta.value && (opts.meta.value.kind === 'text' || opts.meta.value.kind === 'markdown')
+    const discardNeeded =
+      opts.editorDirty.value &&
+      opts.meta.value &&
+      (opts.meta.value.kind === 'text' || opts.meta.value.kind === 'markdown')
     const prevRel = opts.selectedRel.value
     const prevIsDir = opts.selectedIsDir.value
     const prevMeta = opts.meta.value
-    const deleteMsg = targetIsDir ? opts.t('filePreview.confirmDeleteFolder') : opts.t('filePreview.confirmDeleteFile')
+    const deleteMsg = targetIsDir
+      ? opts.t('filePreview.confirmDeleteFolder')
+      : opts.t('filePreview.confirmDeleteFile')
     if (discardNeeded) {
       if (!confirm(`${opts.t('filePreview.discardChanges')}\n\n${deleteMsg}`)) return
       opts.editorText.value = opts.editorBaseline.value
@@ -171,9 +194,11 @@ export function useTreeContextMenu(opts: {
     closeContextMenu()
     const targetRel = rel || opts.selectedRel.value
     if (!targetRel) return
-    window.dispatchEvent(new CustomEvent('terminal-insert-path', {
-      detail: { path: opts.absolutePath(targetRel) },
-    }))
+    window.dispatchEvent(
+      new CustomEvent('terminal-insert-path', {
+        detail: { path: opts.absolutePath(targetRel) },
+      })
+    )
   }
 
   function onMoveEntry(payload: { src: string; destDir: string }) {
@@ -206,11 +231,17 @@ export function useTreeContextMenu(opts: {
       if (k === src || k.startsWith(`${src}/`)) delete next[k]
     }
     opts.childCache.value = next
-    try { await Promise.all([opts.ensureChildren(srcParent), opts.ensureChildren(destDir)]) } catch {}
+    try {
+      await Promise.all([opts.ensureChildren(srcParent), opts.ensureChildren(destDir)])
+    } catch {}
   }
 
-  function onMoveConfirm() { executeMove() }
-  function onMoveCancel() { moveConfirm.value = null }
+  function onMoveConfirm() {
+    executeMove()
+  }
+  function onMoveCancel() {
+    moveConfirm.value = null
+  }
 
   function onCloseContextScroll() {
     if (contextMenu.value) contextMenu.value = null

@@ -25,7 +25,16 @@
         </div>
         <div class="settings-row sub">
           <label>{{ t('notification.debounce') }}</label>
-          <input type="number" class="num-input" v-model.number="cfg.bell.debounce_ms" min="0" max="5000" step="50" @change="saveSettings()" /> ms
+          <input
+            type="number"
+            class="num-input"
+            v-model.number="cfg.bell.debounce_ms"
+            min="0"
+            max="5000"
+            step="50"
+            @change="saveSettings()"
+          />
+          ms
         </div>
         <div class="settings-row">
           <label>OSC {{ t('notification.oscNotify') }}</label>
@@ -76,7 +85,17 @@
         <select class="sound-select" v-model="cfg.sounds[key].value" @change="saveSettings()">
           <option v-for="name in builtinNames" :key="name" :value="name">{{ name }}</option>
         </select>
-        <input type="range" class="vol-slider" min="0" max="100" :value="Math.round(cfg.sounds[key].volume * 100)" @input="(e: Event) => cfg.sounds[key].volume = (e.target as HTMLInputElement).valueAsNumber / 100" />
+        <input
+          type="range"
+          class="vol-slider"
+          min="0"
+          max="100"
+          :value="Math.round(cfg.sounds[key].volume * 100)"
+          @input="
+            (e: Event) =>
+              (cfg.sounds[key].volume = (e.target as HTMLInputElement).valueAsNumber / 100)
+          "
+        />
         <button class="preview-btn" @click="previewSound(key)">▶</button>
       </div>
     </section>
@@ -91,12 +110,23 @@
         </label>
         <select class="hook-type-select" v-model="hook.notification_type" @change="saveSettings()">
           <option :value="null">{{ t('notification.hookAll') }}</option>
-          <option v-for="nt in notifTypes" :key="nt" :value="nt">{{ t(`notification.type.${nt}`) }}</option>
+          <option v-for="nt in notifTypes" :key="nt" :value="nt">
+            {{ t(`notification.type.${nt}`) }}
+          </option>
         </select>
-        <input type="text" class="hook-cmd-input" v-model="hook.command" :placeholder="t('notification.hookCommand')" @change="saveSettings()" />
+        <input
+          type="text"
+          class="hook-cmd-input"
+          v-model="hook.command"
+          :placeholder="t('notification.hookCommand')"
+          @change="saveSettings()"
+        />
         <button class="hook-del-btn" @click="cfg.hooks.splice(idx, 1)">&times;</button>
       </div>
-      <button class="hook-add-btn" @click="cfg.hooks.push({ enabled: true, notification_type: null, command: '' })">
+      <button
+        class="hook-add-btn"
+        @click="cfg.hooks.push({ enabled: true, notification_type: null, command: '' })"
+      >
         + {{ t('notification.hookAdd') }}
       </button>
     </section>
@@ -108,7 +138,9 @@
           <span class="method-badge">POST</span>
           <span class="api-url">/api/notify</span>
           <div class="mode-tabs">
-            <button :class="{ active: testMode === 'form' }" @click="switchMode('form')">Form</button>
+            <button :class="{ active: testMode === 'form' }" @click="switchMode('form')">
+              Form
+            </button>
             <button :class="{ active: testMode === 'raw' }" @click="switchMode('raw')">Raw</button>
           </div>
         </div>
@@ -143,7 +175,9 @@
           <button class="send-btn" :disabled="!canSend || sending" @click="sendTest">
             {{ sending ? '...' : '▶ Send' }}
           </button>
-          <span v-if="testResult" class="api-result" :class="testResult.ok ? 'ok' : 'err'">{{ testResult.text }}</span>
+          <span v-if="testResult" class="api-result" :class="testResult.ok ? 'ok' : 'err'">{{
+            testResult.text
+          }}</span>
         </div>
       </div>
     </section>
@@ -154,7 +188,11 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useSettings } from '../../composables/useSettings'
 import { useI18n } from '../../composables/useI18n'
-import { playSound, getBuiltinSoundNames, type NotificationType } from '../../composables/useNotification'
+import {
+  playSound,
+  getBuiltinSoundNames,
+  type NotificationType,
+} from '../../composables/useNotification'
 import { getApiBase, authFetch } from '../../composables/apiBase'
 
 const { settings, saveSettings } = useSettings()
@@ -179,7 +217,10 @@ const sending = ref(false)
 const testResult = ref<{ ok: boolean; text: string } | null>(null)
 
 function formToPayload(): Record<string, string> {
-  const p: Record<string, string> = { body: testForm.body, notification_type: testForm.notification_type }
+  const p: Record<string, string> = {
+    body: testForm.body,
+    notification_type: testForm.notification_type,
+  }
   if (testForm.pane_id) p.pane_id = testForm.pane_id
   if (testForm.title) p.title = testForm.title
   return p
@@ -196,16 +237,25 @@ function switchMode(mode: 'form' | 'raw') {
       testForm.pane_id = obj.pane_id ?? ''
       testForm.title = obj.title ?? ''
       testForm.body = obj.body ?? ''
-      testForm.notification_type = notifTypes.includes(obj.notification_type) ? obj.notification_type : 'info'
+      testForm.notification_type = notifTypes.includes(obj.notification_type)
+        ? obj.notification_type
+        : 'info'
       rawError.value = ''
-    } catch { /* keep form as-is */ }
+    } catch {
+      /* keep form as-is */
+    }
   }
   testMode.value = mode
 }
 
 const canSend = computed(() => {
   if (testMode.value === 'form') return !!testForm.body
-  try { const o = JSON.parse(rawJson.value); return !!o.body } catch { return false }
+  try {
+    const o = JSON.parse(rawJson.value)
+    return !!o.body
+  } catch {
+    return false
+  }
 })
 
 function previewSound(type: NotificationType) {
@@ -329,7 +379,7 @@ async function sendTest() {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: var(--bg-secondary, rgba(255,255,255,0.03));
+  background: var(--bg-secondary, rgba(255, 255, 255, 0.03));
 }
 .api-method-row {
   display: flex;
@@ -429,14 +479,23 @@ async function sendTest() {
   font-weight: 600;
   cursor: pointer;
 }
-.send-btn:hover { opacity: 0.85; }
-.send-btn:disabled { opacity: 0.4; cursor: default; }
+.send-btn:hover {
+  opacity: 0.85;
+}
+.send-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 .api-result {
   font-size: 12px;
   font-family: monospace;
 }
-.api-result.ok { color: #49cc90; }
-.api-result.err { color: #ef4444; }
+.api-result.ok {
+  color: #49cc90;
+}
+.api-result.err {
+  color: #ef4444;
+}
 .hook-hint {
   font-size: 11px;
   color: var(--fg-muted, #666);
@@ -491,7 +550,9 @@ async function sendTest() {
   cursor: pointer;
   padding: 0 4px;
 }
-.hook-del-btn:hover { color: #ef4444; }
+.hook-del-btn:hover {
+  color: #ef4444;
+}
 .hook-add-btn {
   background: none;
   border: 1px dashed var(--border, #333);
@@ -502,5 +563,8 @@ async function sendTest() {
   cursor: pointer;
   width: 100%;
 }
-.hook-add-btn:hover { border-color: var(--fg-muted, #666); color: var(--fg, #ccc); }
+.hook-add-btn:hover {
+  border-color: var(--fg-muted, #666);
+  color: var(--fg, #ccc);
+}
 </style>

@@ -2,7 +2,15 @@
   <!-- Leaf node: render TerminalPane wrapper -->
   <div
     v-if="leaf"
-    :class="['split-leaf', { active: leaf.paneId === activePaneId, zoomed: leaf.zoomed, 'broadcast-active': broadcastActive, 'broadcast-receiving': broadcastReceiving }]"
+    :class="[
+      'split-leaf',
+      {
+        active: leaf.paneId === activePaneId,
+        zoomed: leaf.zoomed,
+        'broadcast-active': broadcastActive,
+        'broadcast-receiving': broadcastReceiving,
+      },
+    ]"
     :data-pane-id="leaf.paneId"
     @mousedown="onLeafClick(leaf.paneId)"
   >
@@ -20,21 +28,45 @@
       :title="t('split.closePane')"
       @mousedown.stop
       @click.stop="emit('close', leaf!.paneId)"
-    >&times;</button>
+    >
+      &times;
+    </button>
     <template v-if="broadcastActive">
       <div class="broadcast-icon broadcast-icon--active" :title="t('split.broadcastTooltip')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M2 12C2 6.5 6.5 2 12 2"/>
-          <path d="M6 12c0-3.3 2.7-6 6-6"/>
-          <circle cx="12" cy="12" r="2" fill="currentColor"/>
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M2 12C2 6.5 6.5 2 12 2" />
+          <path d="M6 12c0-3.3 2.7-6 6-6" />
+          <circle cx="12" cy="12" r="2" fill="currentColor" />
         </svg>
       </div>
     </template>
-    <div v-else-if="broadcastReceiving" class="broadcast-icon broadcast-icon--receiving" :title="t('split.broadcastTooltip')">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M2 12C2 6.5 6.5 2 12 2"/>
-        <path d="M6 12c0-3.3 2.7-6 6-6"/>
-        <circle cx="12" cy="12" r="2" fill="currentColor"/>
+    <div
+      v-else-if="broadcastReceiving"
+      class="broadcast-icon broadcast-icon--receiving"
+      :title="t('split.broadcastTooltip')"
+    >
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M2 12C2 6.5 6.5 2 12 2" />
+        <path d="M6 12c0-3.3 2.7-6 6-6" />
+        <circle cx="12" cy="12" r="2" fill="currentColor" />
       </svg>
     </div>
     <TerminalPane
@@ -49,12 +81,11 @@
   </div>
 
   <!-- Split node: render flex container with children and dividers -->
-  <div
-    v-else-if="split"
-    ref="containerRef"
-    :class="['split-container', split.direction]"
-  >
-    <template v-for="(child, idx) in split.children" :key="child.type === 'leaf' ? child.paneId : child.id">
+  <div v-else-if="split" ref="containerRef" :class="['split-container', split.direction]">
+    <template
+      v-for="(child, idx) in split.children"
+      :key="child.type === 'leaf' ? child.paneId : child.id"
+    >
       <SplitContainer
         :layout="child"
         :active-pane-id="activePaneId"
@@ -121,8 +152,8 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const containerRef = ref<HTMLElement>()
 
-const leaf = computed(() => props.layout.type === 'leaf' ? props.layout as LeafPane : null)
-const split = computed(() => props.layout.type === 'split' ? props.layout : null)
+const leaf = computed(() => (props.layout.type === 'leaf' ? (props.layout as LeafPane) : null))
+const split = computed(() => (props.layout.type === 'split' ? props.layout : null))
 
 const broadcastActive = computed(() => {
   if (!leaf.value) return false
@@ -226,7 +257,10 @@ function getChildStyle(idx: number) {
   align-items: center;
   justify-content: center;
   opacity: 0;
-  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  transition:
+    opacity 0.15s,
+    background 0.15s,
+    color 0.15s;
 }
 
 /* Adjust close button position when vertical header with expanded padding is present */
@@ -271,7 +305,12 @@ function getChildStyle(idx: number) {
 }
 
 @keyframes radar-pulse {
-  0%, 100% { opacity: 0.9; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 </style>
