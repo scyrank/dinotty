@@ -1,5 +1,6 @@
 pub const INJECT_SCRIPT_INTERNAL: &str = r#"<script>(function(){
 window.parent.postMessage({type:'preview-ready'},'*');
+window.parent.postMessage({type:'preview-console',level:'info',args:['[dinotty] inject script loaded'],ts:Date.now()});
 window.addEventListener('error',function(e){
 window.parent.postMessage({type:'preview-error',message:e.message,source:e.filename,line:e.lineno},'*');
 });
@@ -9,6 +10,9 @@ var PORT=document.currentScript.getAttribute('data-port');
 var HOST=document.currentScript.getAttribute('data-host');
 window.__dinotty_proxy_port=PORT;
 window.__dinotty_proxy_host=HOST;
+(function(){var _c={};['log','warn','info','debug','error'].forEach(function(l){_c[l]=console[l];console[l]=function(){_c[l].apply(console,arguments);try{var a=[];for(var i=0;i<arguments.length;i++){var v=arguments[i];if(v instanceof Error)a.push(v.message+'\n'+v.stack);else if(typeof v==='object'){try{a.push(JSON.stringify(v));}catch(e){a.push(String(v));}}else a.push(String(v));}window.parent.postMessage({type:'preview-console',level:l,args:a,ts:Date.now()},'*');}catch(e){}};});var _cl=console.clear;console.clear=function(){_cl.apply(console);try{window.parent.postMessage({type:'preview-console',level:'clear',args:[],ts:Date.now()},'*');}catch(e){}};
+window.addEventListener('unhandledrejection',function(e){var m=e.reason?(e.reason.message||String(e.reason)):'Unknown promise rejection';var s=e.reason&&e.reason.stack?e.reason.stack:'';window.parent.postMessage({type:'preview-error',message:m,stack:s,unhandledRejection:true},'*');});
+})();
 function notifyNav(){
 var m=location.pathname.match(/^\/preview\/(?:([^\/]+?)\/)?(\d+)(\/.*)?$/);
 if(!m)return;
@@ -44,15 +48,17 @@ var r=rewrite(f.action);
 if(r){f.action=r;}
 },true);
 var _open=XMLHttpRequest.prototype.open;
-XMLHttpRequest.prototype.open=function(m,u){
-var r=rewrite(u);
-return _open.apply(this,[m,r||u].concat([].slice.call(arguments,2)));
-};
+XMLHttpRequest.prototype.open=function(m,u){this.__dn_m=m;this.__dn_u=u;var r=rewrite(u);return _open.apply(this,[m,r||u].concat([].slice.call(arguments,2)));};
+var _send=XMLHttpRequest.prototype.send;
+XMLHttpRequest.prototype.send=function(){var s=performance.now(),x=this;x.addEventListener('loadend',function(){try{window.parent.postMessage({type:'preview-network',method:x.__dn_m||'GET',url:x.__dn_u,status:x.status,duration:Math.round(performance.now()-s),ts:Date.now()},'*');}catch(e){}});return _send.apply(this,arguments);};
 var _fetch=window.fetch;
 window.fetch=function(u,o){
+var url=typeof u==='string'?u:(u instanceof Request?u.url:String(u));
+var m=(o&&o.method)||((u instanceof Request)?u.method:'GET')||'GET';
+var s=performance.now();
 if(typeof u==='string'){var r=rewrite(u);if(r)u=r;}
 else if(u instanceof Request){var r2=rewrite(u.url);if(r2)u=new Request(r2,u);}
-return _fetch.call(this,u,o);
+return _fetch.call(this,u,o).then(function(resp){try{window.parent.postMessage({type:'preview-network',method:m,url:url,status:resp.status,duration:Math.round(performance.now()-s),ts:Date.now()},'*');}catch(e){}return resp;}).catch(function(err){try{window.parent.postMessage({type:'preview-network',method:m,url:url,status:0,duration:Math.round(performance.now()-s),error:true,ts:Date.now()},'*');}catch(e){}throw err;});
 };
 var _WebSocket=window.WebSocket;
 window.WebSocket=function(u,p){
@@ -98,6 +104,9 @@ window.parent.postMessage({type:'preview-error',message:e.message,source:e.filen
 });
 if(window.__dinotty_ext_proxy)return;
 window.__dinotty_ext_proxy=true;
+(function(){var _c={};['log','warn','info','debug','error'].forEach(function(l){_c[l]=console[l];console[l]=function(){_c[l].apply(console,arguments);try{var a=[];for(var i=0;i<arguments.length;i++){var v=arguments[i];if(v instanceof Error)a.push(v.message+'\n'+v.stack);else if(typeof v==='object'){try{a.push(JSON.stringify(v));}catch(e){a.push(String(v));}}else a.push(String(v));}window.parent.postMessage({type:'preview-console',level:l,args:a,ts:Date.now()},'*');}catch(e){}};});var _cl=console.clear;console.clear=function(){_cl.apply(console);try{window.parent.postMessage({type:'preview-console',level:'clear',args:[],ts:Date.now()},'*');}catch(e){}};
+window.addEventListener('unhandledrejection',function(e){var m=e.reason?(e.reason.message||String(e.reason)):'Unknown promise rejection';var s=e.reason&&e.reason.stack?e.reason.stack:'';window.parent.postMessage({type:'preview-error',message:m,stack:s,unhandledRejection:true},'*');});
+})();
 var BASE=document.currentScript.getAttribute('data-base-url')||'';
 function notifyNav(url){
 window.parent.postMessage({type:'proxy-navigate',url:url},'*');
@@ -171,15 +180,17 @@ f.action=target;
 }
 },true);
 var _open=XMLHttpRequest.prototype.open;
-XMLHttpRequest.prototype.open=function(m,u){
-var r=proxyUrl(u);
-return _open.apply(this,[m,r||u].concat([].slice.call(arguments,2)));
-};
+XMLHttpRequest.prototype.open=function(m,u){this.__dn_m=m;this.__dn_u=u;var r=proxyUrl(u);return _open.apply(this,[m,r||u].concat([].slice.call(arguments,2)));};
+var _send=XMLHttpRequest.prototype.send;
+XMLHttpRequest.prototype.send=function(){var s=performance.now(),x=this;x.addEventListener('loadend',function(){try{window.parent.postMessage({type:'preview-network',method:x.__dn_m||'GET',url:x.__dn_u,status:x.status,duration:Math.round(performance.now()-s),ts:Date.now()},'*');}catch(e){}});return _send.apply(this,arguments);};
 var _fetch=window.fetch;
 window.fetch=function(u,o){
+var url=typeof u==='string'?u:(u instanceof Request?u.url:String(u));
+var m=(o&&o.method)||((u instanceof Request)?u.method:'GET')||'GET';
+var s=performance.now();
 if(typeof u==='string'){var r=proxyUrl(u);if(r)u=r;}
 else if(u instanceof Request){var r2=proxyUrl(u.url);if(r2)u=new Request(r2,u);}
-return _fetch.call(this,u,o);
+return _fetch.call(this,u,o).then(function(resp){try{window.parent.postMessage({type:'preview-network',method:m,url:url,status:resp.status,duration:Math.round(performance.now()-s),ts:Date.now()},'*');}catch(e){}return resp;}).catch(function(err){try{window.parent.postMessage({type:'preview-network',method:m,url:url,status:0,duration:Math.round(performance.now()-s),error:true,ts:Date.now()},'*');}catch(e){}throw err;});
 };
 var _wopen=window.open;
 window.open=function(u,n,f){

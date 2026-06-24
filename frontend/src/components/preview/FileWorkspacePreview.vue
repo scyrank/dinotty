@@ -144,9 +144,9 @@
       <input ref="ops.fileInputRef" type="file" multiple class="sr-only" @change="ops.onFilePick" />
       <div ref="fileWorkspaceBodyRef" class="file-workspace-body"
         @dragover.prevent
-        @dragenter.prevent="ops.dragCounter.value++"
-        @dragleave="ops.dragCounter.value = Math.max(0, ops.dragCounter.value - 1)"
-        @drop.prevent="ops.dragCounter.value = 0; ops.onDrop($event)"
+        @dragenter.prevent="ops.onWorkspaceDragEnter()"
+        @dragleave="ops.onWorkspaceDragLeave()"
+        @drop.prevent="ops.onWorkspaceDrop($event)"
       >
         <div v-if="ops.dragging.value" class="file-workspace-drop-overlay">{{ t('filePreview.dropHint') }}</div>
         <div
@@ -940,6 +940,7 @@ onMounted(() => {
   window.addEventListener('keydown', onEditorSaveKeydown, true)
   window.addEventListener('scroll', onCloseContextScroll, true)
   ops.setActiveWorkspace()
+  ops.setupWorkspaceDragDrop(fileWorkspaceBodyRef.value)
   void getApiBase()
 })
 
@@ -947,6 +948,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', layout.onResize)
   window.removeEventListener('keydown', onEditorSaveKeydown, true)
   window.removeEventListener('scroll', onCloseContextScroll, true)
+  ops.teardownWorkspaceDragDrop()
   ops.clearActiveWorkspace()
   fileWatch.disconnectTreeWatchSocket()
 })

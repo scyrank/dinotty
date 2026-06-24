@@ -9,6 +9,13 @@ let _activeUploadFn: ((files: { file: File; path: string }[], targetDir?: string
 let _workspaceDropHover = false
 let _hoveredDir: string | undefined = undefined
 
+// Mouse-position-based workspace detection for Tauri native drag-drop
+let _workspaceElement: HTMLElement | null = null
+let _workspaceMouseX = 0
+let _workspaceMouseY = 0
+let _onMouseMove: ((e: MouseEvent) => void) | null = null
+let _tauriUnlisten: (() => void) | null = null
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -21,6 +28,13 @@ function fileToBase64(file: File): Promise<string> {
   })
 }
 
+function isMouseOverWorkspace(): boolean {
+  if (!_workspaceElement) return false
+  const rect = _workspaceElement.getBoundingClientRect()
+  return _workspaceMouseX >= rect.left && _workspaceMouseX <= rect.right &&
+         _workspaceMouseY >= rect.top && _workspaceMouseY <= rect.bottom
+}
+
 function setupTauriFileDrop() {
   if (tauriFileDropRegistered) return
   tauriFileDropRegistered = true
@@ -28,8 +42,13 @@ function setupTauriFileDrop() {
   const listen = w.__TAURI__?.event?.listen
   if (!listen) return
 
-  listen('file-drop-paths', async (event: any) => {
-    if (!_activeUploadFn || !_workspaceDropHover) return
+  // Tauri v2 listen() returns Promise<UnlistenFn>
+  const unlistenPromise = listen('file-drop-paths', async (event: any) => {
+    if (!_activeUploadFn) return
+    // In Tauri v2, HTML5 drag events (dragenter/dragover) may not fire for OS file drags,
+    // so _workspaceDropHover may never be set. Use mouse position as fallback.
+    const overWorkspace = _workspaceDropHover || isMouseOverWorkspace()
+    if (!overWorkspace) return
     const paths: string[] = event.payload || []
     if (!paths.length) return
     const files: { file: File; path: string }[] = []
@@ -48,6 +67,35 @@ function setupTauriFileDrop() {
     }
     if (files.length) await _activeUploadFn!(files, _hoveredDir)
   })
+  if (unlistenPromise && typeof unlistenPromise.then === 'function') {
+    unlistenPromise.then((fn: () => void) => { _tauriUnlisten = fn })
+  }
+}
+
+function setupWorkspaceDragDrop(el: HTMLElement | null) {
+  _workspaceElement = el
+  if (el && isTauri()) {
+    _onMouseMove = (e: MouseEvent) => {
+      _workspaceMouseX = e.clientX
+      _workspaceMouseY = e.clientY
+    }
+    document.addEventListener('mousemove', _onMouseMove)
+  }
+}
+
+function teardownWorkspaceDragDrop() {
+  if (_onMouseMove) {
+    document.removeEventListener('mousemove', _onMouseMove)
+    _onMouseMove = null
+  }
+  _workspaceElement = null
+  if (_tauriUnlisten) {
+    _tauriUnlisten()
+    _tauriUnlisten = null
+  }
+  // Allow re-registration on next mount (orphaned listener is safe —
+  // callback guards on _activeUploadFn which is cleared by clearActiveWorkspace)
+  tauriFileDropRegistered = false
 }
 
 interface Meta {
@@ -302,5 +350,7 @@ export function useFileOperations(opts: {
     onWorkspaceDragEnter,
     onWorkspaceDragLeave,
     onWorkspaceDrop,
+    setupWorkspaceDragDrop,
+    teardownWorkspaceDragDrop,
   }
 }
