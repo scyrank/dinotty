@@ -257,6 +257,11 @@ async fn tauri_upload(
     Ok(FetchResponse { status, headers, body })
 }
 
+#[tauri::command]
+fn close_window(window: tauri::Window) {
+    let _ = window.close();
+}
+
 fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::new(
@@ -294,12 +299,17 @@ fn main() {
             tracing::info!("Desktop mode: embedded server on port {}", port);
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) => {
                 let path_strings: Vec<String> =
                     paths.iter().map(|p| p.to_string_lossy().into_owned()).collect();
                 let _ = window.emit("file-drop-paths", &path_strings);
             }
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                api.prevent_close();
+                let _ = window.emit("window-close-requested", ());
+            }
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             pty_spawn,
@@ -311,6 +321,7 @@ fn main() {
             tauri_fetch,
             tauri_upload,
             tauri_read_file,
+            close_window,
         ])
         .run(tauri::generate_context!())
         .expect("error running tauri application");
