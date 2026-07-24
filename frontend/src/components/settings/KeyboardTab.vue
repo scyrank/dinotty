@@ -518,8 +518,7 @@
       </div>
     </CollapsibleSection>
 
-    <div class="settings-group">
-      <h3 class="settings-group-title">{{ t('settings.keyboard.feedback') }}</h3>
+    <CollapsibleSection :title="t('settings.advancedText')" level="group">
       <div class="settings-row">
         <label>{{ t('settings.keyboard.quickSendThreshold') }}</label>
         <input
@@ -553,7 +552,20 @@
         />
       </div>
       <p class="settings-hint">{{ t('settings.keyboard.guardMode.hint') }}</p>
-    </div>
+      <div class="settings-row">
+        <label>{{ t('settings.text.imeKeyboardOverlapPx') }}</label>
+        <input
+          v-model.number="imeKeyboardOverlapPx"
+          type="number"
+          min="0"
+          max="300"
+          step="8"
+          class="settings-input-number"
+          data-setting="ime-keyboard-overlap-px"
+        />
+      </div>
+      <p class="settings-hint">{{ t('settings.text.imeKeyboardOverlapHint') }}</p>
+    </CollapsibleSection>
 
     <CollapsibleSection :title="t('settings.keyboard.openApi')" level="group" default-open>
       <p class="settings-hint">{{ t('settings.keyboard.openApiHint') }}</p>
@@ -664,6 +676,7 @@ import type { KeyboardGuardMode } from '../../utils/keyboardGuardMode'
 import { useOpenApiTest } from '../../composables/useOpenApiTest'
 import { useKbRecording } from '../../composables/useKbRecording'
 import { useActionKeyboardGesture } from '../../composables/useActionKeyboardGesture'
+import { useDeviceKeyboardSettings } from '../../composables/useDeviceKeyboardSettings'
 import {
   escapeForDisplay,
   unescapeFromDisplay,
@@ -672,6 +685,7 @@ import {
 } from '../../composables/useKeySequenceUtils'
 
 const { settings, saveSettings } = useSettings()
+const { imeKeyboardOverlapPx } = useDeviceKeyboardSettings()
 const { hasOverride, reloadAfterSuperviseTabs, resetOverride } = useDeviceSuperviseReload()
 const { t } = useI18n()
 

@@ -324,7 +324,7 @@ import SshHostsPanel from './components/ssh/SshHostsPanel.vue'
 import SshAuthPromptDialog from './components/ssh/SshAuthPromptDialog.vue'
 import StatusBar from './components/terminal/StatusBar.vue'
 import type { Tab, TerminalTab, PluginTab, PaneLayout, LeafPane, DropPosition } from './types/pane'
-import { getAllLeaves, findLeaf, findFirstLeaf, ensureSplitRoot } from './types/pane'
+import { getAllLeaves, findLeaf, findFirstLeaf, ensureSplitRoot, paneKind } from './types/pane'
 import { createFrozenSendFn, type SendDataFn } from './utils/frozenSend'
 import { initializePaneMru } from './types/paneMru'
 // useSettings replaced by useSettingsStore
@@ -351,6 +351,8 @@ import { useCursorPicker } from './composables/useCursorPicker'
 import { useOverviewCallbacks } from './composables/useOverviewCallbacks'
 import { useTabPersistence } from './composables/useTabPersistence'
 import { useViewportResize } from './composables/useViewportResize'
+import { useDeviceKeyboardSettings } from './composables/useDeviceKeyboardSettings'
+import { useKeyboardOverlap } from './composables/useKeyboardOverlap'
 import { usePluginLauncher } from './composables/usePluginLauncher'
 import { useSshConnectFlow } from './composables/useSshConnectFlow'
 import { useTabLifecycle } from './composables/useTabLifecycle'
@@ -709,6 +711,27 @@ const resolvedPosition = computed(() => {
   const pos = appSettings.panel_position ?? 'auto'
   if (pos === 'auto') return isLandscape.value ? 'right' : 'top'
   return pos
+})
+
+const isSingleTerminalTab = computed(() => {
+  const tab = activeTab.value
+  if (!tab || tab.type !== 'terminal') return false
+  const leaves = getAllLeaves(tab.layout)
+  return leaves.length === 1 && paneKind(leaves[0]) === 'terminal'
+})
+const hasVerticalPreview = computed(() => {
+  const tab = activeTab.value
+  return tab?.type === 'terminal'
+    && tab.previewVisible
+    && (resolvedPosition.value === 'top' || resolvedPosition.value === 'bottom')
+})
+const { imeKeyboardOverlapPx } = useDeviceKeyboardSettings()
+useKeyboardOverlap({
+  settingPx: imeKeyboardOverlapPx,
+  kbVisible,
+  textInputFocused: kbTyping,
+  isSingleTerminalTab,
+  hasVerticalPreview,
 })
 
 watch(
@@ -1746,7 +1769,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: calc(100% - var(--mkb-height, 0px) - var(--sys-kb-height, 0px));
+  height: calc(100% - max(0px, var(--mkb-height, 0px) - var(--kb-overlap, 0px)) - var(--sys-kb-height, 0px));
 }
 .tab-page.active.has-preview {
   display: flex;
