@@ -15,7 +15,7 @@
   </div>
   <div v-else class="tln-leaf">
     <div class="tln-leaf-row">
-      <component :is="kindIcon(node)" :size="16" class="tln-icon" />
+      <component :is="kindIcon(node)" :size="18" class="tln-icon" />
       <span v-if="node.title" class="tln-title" :title="node.title">{{ node.title }}</span>
       <span v-else class="tln-title tln-title-placeholder">{{ kindLabel(node) }}</span>
     </div>
@@ -58,30 +58,29 @@ const subtitle = computed(() => {
   return ''
 })
 
+const GAP = 6
+
 const splitStyle = computed<{
+  width: string
+  height: string
   display: string
   gap: string
-  minWidth: string
-  minHeight: string
-  flex: string
   flexDirection: 'column' | 'row'
 }>(() => {
   if (!isSplit(props.node)) {
     return {
+      width: '100%',
+      height: '100%',
       display: 'flex',
-      gap: '5px',
-      minWidth: '0',
-      minHeight: '0',
-      flex: '1 1 auto',
+      gap: `${GAP}px`,
       flexDirection: 'row',
     }
   }
   return {
+    width: '100%',
+    height: '100%',
     display: 'flex',
-    gap: '5px',
-    minWidth: '0',
-    minHeight: '0',
-    flex: '1 1 auto',
+    gap: `${GAP}px`,
     flexDirection: props.node.direction === 'vertical' ? 'column' : 'row',
   }
 })
@@ -91,19 +90,22 @@ function childKey(child: PaneLayout, index: number): string | number {
   return child.id || index
 }
 
-function childStyle(node: SplitPane, index: number): {
+function childStyle(
+  node: SplitPane,
+  index: number,
+): {
   flex: string
   minWidth: string
-  minHeight: string
   display: string
-  flexDirection: 'column' | 'row'
 } {
+  const n = node.children.length
+  const ratios = node.ratios.length === n ? node.ratios : Array(n).fill(1 / n)
+  const sum = ratios.reduce((a, b) => a + b, 0) || n
+  const ratio = ratios[index] ?? 1 / n
   return {
-    flex: `${node.ratios[index] ?? 1 / node.children.length} 1 0%`,
+    flex: `${ratio / sum} 1 0%`,
     minWidth: '0',
-    minHeight: '0',
     display: 'flex',
-    flexDirection: node.direction === 'vertical' ? 'column' : 'row',
   }
 }
 
@@ -128,11 +130,9 @@ function kindIcon(leaf: LeafPane) {
 <style scoped>
 .tln-split {
   border-radius: var(--radius);
-  overflow: hidden;
 }
 .tln-child {
   border-radius: var(--radius);
-  overflow: hidden;
 }
 .tln-leaf {
   background: var(--bg-surface);
@@ -143,15 +143,16 @@ function kindIcon(leaf: LeafPane) {
   flex-direction: column;
   align-items: stretch;
   justify-content: center;
-  gap: 4px;
+  gap: 5px;
   min-width: 0;
-  min-height: 64px;
   flex: 1 1 auto;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 .tln-leaf-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   min-width: 0;
 }
 .tln-icon {
@@ -159,7 +160,7 @@ function kindIcon(leaf: LeafPane) {
   flex-shrink: 0;
 }
 .tln-title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--fg-bright);
   overflow: hidden;
@@ -172,7 +173,7 @@ function kindIcon(leaf: LeafPane) {
   font-weight: 400;
 }
 .tln-subtitle {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--fg-muted);
   overflow: hidden;
   text-overflow: ellipsis;

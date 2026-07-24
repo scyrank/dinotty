@@ -52,11 +52,13 @@ const leafCount = computed(() => getAllLeaves(props.layout).length)
 }
 .tlp-schematic {
   flex: 1;
-  min-height: 0;
+  min-height: 340px;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 12px;
+  padding: 14px;
 }
 </style>

@@ -269,9 +269,9 @@ watch(
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: 8px;
-  width: min(760px, 94vw);
-  max-width: 94vw;
-  max-height: min(840px, 92vh);
+  width: min(860px, 96vw);
+  max-width: 96vw;
+  max-height: min(860px, 88vh);
   overflow: hidden;
   display: flex;
   flex-direction: column;
