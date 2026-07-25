@@ -61,6 +61,9 @@ export interface PluginManifest {
   commands?: Array<{ id: string; title: string }>
   styles?: string
   permissions?: string[]
+  category?: string
+  targets?: string[]
+  showInToolbar?: boolean
 }
 
 export interface Disposable {
@@ -178,6 +181,18 @@ export interface PluginContext {
       opts?: { target_plugin_id?: string },
     ): void
   }
+
+  /** 获取插件资源的 HTTP URL（不含认证信息，认证由调用方处理）
+   *  @param relativePath 相对于插件目录的路径，如 './vendor/lib.js'
+   *  @returns 完整 HTTP URL，路径段已 encodeURIComponent
+   */
+  assetUrl(relativePath: string): string
+
+  /** 以当前认证身份请求插件资源，返回 Response。
+   *  浏览器模式自动带 cookie；Tauri 模式走 tauri_fetch 带 Bearer。
+   *  用于 vendor JS 等需要 header 认证的场景；JSON/图片可直接用 fetch(ctx.assetUrl(path))。
+   */
+  fetchAsset(relativePath: string, init?: RequestInit): Promise<Response>
 }
 
 export interface ProcessInfo {
@@ -246,6 +261,12 @@ function removePluginCSS(id: string) {
 }
 
 // ─── Plugin Context Factory (module scope) ───────────────────────────────────
+
+function buildAssetUrl(pluginId: string, relativePath: string): string {
+  const clean = relativePath.replace(/^\.\//, '')
+  const segments = clean.split('/').map(encodeURIComponent)
+  return apiUrl(`/api/plugins/${pluginId}/${segments.join('/')}`)
+}
 
 function createPluginContext(pluginId: string): PluginContext {
   const { locale } = useI18n()
@@ -467,6 +488,12 @@ function createPluginContext(pluginId: string): PluginContext {
         eventSubscribe(name, handler, { pluginId: pluginId }),
       emit: (name: string, data: unknown, opts?: { target_plugin_id?: string }) =>
         eventEmit(name, data, { plugin_id: pluginId, ...opts }),
+    },
+    assetUrl(relativePath: string): string {
+      return buildAssetUrl(pluginId, relativePath)
+    },
+    async fetchAsset(relativePath: string, init?: RequestInit): Promise<Response> {
+      return authFetch(buildAssetUrl(pluginId, relativePath), init)
     },
   }
 
@@ -722,14 +749,18 @@ export function usePluginLoader() {
   })
 
   const pluginList = computed(() => {
-    return Array.from(loadedPlugins.values()).map((p) => ({
-      id: p.id,
-      name: p.manifest.name,
-      description: p.manifest.description,
-      icon: p.manifest.icon,
-      state: p.state,
-      isDevLink: p.isDevLink,
-    }))
+    return Array.from(loadedPlugins.values())
+      .map((p) => ({
+        id: p.id,
+        name: p.manifest.name,
+        description: p.manifest.description,
+        icon: p.manifest.icon,
+        state: p.state,
+        isDevLink: p.isDevLink,
+        category: p.manifest.category,
+        showInToolbar: p.manifest.showInToolbar,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name))
   })
 
   return {

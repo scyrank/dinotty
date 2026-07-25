@@ -84,7 +84,7 @@
 import { ref, shallowRef, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import type { Terminal } from '@xterm/xterm'
 import { TerminalInstance } from '../../composables/useTerminal'
-import { copyToClipboard } from '../../utils/clipboard'
+import { copyToClipboard, readHostClipboard } from '../../utils/clipboard'
 import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager'
 import { isTauri } from '../../composables/useTransport'
 import SearchBar from './SearchBar.vue'
@@ -252,7 +252,15 @@ function isComposing(): boolean {
 }
 
 function sendData(data: string, force?: boolean) {
-  terminal?.sendData(data, force)
+  return terminal?.sendData(data, force)
+}
+
+function pasteFromClipboard(text: string, autoEnter = false): boolean {
+  if (!paneAlive || !terminal || !text) return false
+  terminal.focus()
+  terminal.pasteText(text)
+  if (autoEnter && !/[\r\n]/.test(text)) terminal.sendInput('\r')
+  return true
 }
 
 function setOutputListener(cb: ((data: string) => void) | null) {
@@ -301,19 +309,53 @@ function onMenuCopy() {
 
 async function onMenuPaste() {
   if (!terminal) return
-  let text: string | null = null
-  if (isTauri()) {
-    try { text = await readClipboardText() } catch {}
-  }
-  if (!text) {
-    try { text = await navigator.clipboard.readText() } catch {}
-  }
-  if (!text) return
+  // Focus before reading so the browser associates the clipboard access with
+  // the terminal pane; some Linux browsers reject readText when focus is on the
+  // just-closed context menu or the body.
   terminal.focus()
-  if (terminal.xterm) {
-    terminal.xterm.paste(text)
-  } else {
-    terminal.pasteText(text)
+
+  let text: string | null = null
+  let source: 'tauri' | 'browser' | 'host' | null = null
+
+  if (isTauri()) {
+    try {
+      text = await readClipboardText()
+      source = 'tauri'
+    } catch (err) {
+      console.warn('[TerminalPane] Tauri clipboard read failed:', err)
+    }
+  }
+
+  if (text === null && typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
+    try {
+      text = await navigator.clipboard.readText()
+      source = 'browser'
+    } catch (err) {
+      console.warn('[TerminalPane] Browser clipboard read failed:', err)
+    }
+  }
+
+  // Fallback to the Dinotty host clipboard endpoint. This covers Linux browsers
+  // where navigator.clipboard.readText is unavailable or permission-denied
+  // (e.g. Firefox defaults, locked-down Chromium). For local usage the host
+  // clipboard matches the client clipboard; for remote usage it is a degraded
+  // but functional fallback.
+  if (text === null) {
+    text = await readHostClipboard()
+    if (text !== null) source = 'host'
+  }
+
+  if (text === null) {
+    toast.error(t('mobileKb.pasteFailed'), { position: POSITION.BOTTOM_CENTER })
+    return
+  }
+  if (text === '') {
+    toast.info(t('mobileKb.clipboardEmpty'), { position: POSITION.BOTTOM_CENTER })
+    return
+  }
+  pasteFromClipboard(text, false)
+  if (source === 'host') {
+    console.info('[TerminalPane] Pasted from host clipboard fallback')
   }
 }
 
@@ -967,7 +1009,7 @@ onBeforeUnmount(() => {
   terminal = null
 })
 
-defineExpose({ getTerminal, focus, blur, fit, sendData, setOutputListener, toggleSearch, adjustFontSize, resetFontSize, isComposing })
+defineExpose({ getTerminal, focus, blur, fit, sendData, pasteFromClipboard, setOutputListener, toggleSearch, adjustFontSize, resetFontSize, isComposing })
 </script>
 
 <style scoped>

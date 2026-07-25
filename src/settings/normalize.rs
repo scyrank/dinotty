@@ -160,6 +160,12 @@ pub(crate) fn clamp_theme_on_put(settings: &mut Settings) -> bool {
     clamp_theme_library(&mut settings.custom_themes, &mut settings.hidden_builtins)
 }
 
+pub(crate) fn clamp_quick_send_threshold(settings: &mut Settings) -> bool {
+    let old = settings.quick_send_threshold;
+    settings.quick_send_threshold = settings.quick_send_threshold.clamp(0, 5000);
+    settings.quick_send_threshold != old
+}
+
 // Legit CSS font stacks contain only letters/digits/space/comma/quotes.
 // Anything with control chars or < > ; { } is a CSS-injection vector -> neutralise.
 fn font_family_is_unsafe(s: &str) -> bool {
@@ -225,7 +231,11 @@ fn normalize_action_key(key: &mut ActionKey) {
         key.send.clear();
         key.special = None;
         key.repeat = false;
-        key.auto_enter = false;
+        if key.action.as_deref() == Some("pasteTerminal") {
+            key.auto_enter.get_or_insert(true);
+        } else {
+            key.auto_enter = None;
+        }
     }
 }
 
@@ -240,7 +250,7 @@ fn default_action_enter(label: String) -> ActionKey {
         shape: None,
         repeat: false,
         special: None,
-        auto_enter: false,
+        auto_enter: None,
         grow: None,
     }
 }

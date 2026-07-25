@@ -344,7 +344,9 @@ impl PluginManager {
 
     #[must_use]
     pub fn list(&self) -> Vec<PluginInfo> {
-        self.registry.iter().map(|r| r.value().clone()).collect()
+        let mut items: Vec<PluginInfo> = self.registry.iter().map(|r| r.value().clone()).collect();
+        items.sort_by_key(|a| a.manifest.name.to_lowercase());
+        items
     }
 
     pub fn watch_changes(self: &Arc<Self>, manager: Arc<SessionManager>) {
@@ -756,6 +758,9 @@ mod tests {
                     commands: None,
                     styles: None,
                     permissions: None,
+                    category: None,
+                    targets: None,
+                    show_in_toolbar: None,
                 },
                 install_date: None,
                 state: PluginStateValue::Active,

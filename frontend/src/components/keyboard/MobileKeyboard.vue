@@ -32,6 +32,8 @@
           @focus="onTextInputFocus"
           @blur="onTextInputBlur"
           @input="resizeTextInput"
+          @compositionstart="onCompositionStart"
+          @compositionend="onCompositionEnd"
           @keydown.enter.exact.prevent="sendTextInput"
         />
       </div>
@@ -112,21 +114,16 @@
         <Trash2 :size="18" />
         <span class="mkb-btn-label">{{ t('mobileKb.deleteLine') }}</span>
       </button>
-      <span
-        class="mkb-target-hint"
-        style="
-          margin-left: auto;
-          color: var(--fg-muted);
-          font-size: 11px;
-          line-height: 1.2;
-          text-align: right;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        "
+      <button
+        type="button"
+        class="mkb-tool-btn mkb-dismiss-btn"
+        :title="t('mobileKb.dismissKeyboard')"
+        :aria-label="t('mobileKb.dismissKeyboard')"
+        @mousedown.prevent.stop="dismissSystemKeyboard"
+        @click.prevent.stop="dismissSystemKeyboard"
       >
-        {{ t('mobileKb.targetHint') }}
-      </span>
+        <KeyboardOff :size="18" />
+      </button>
     </div>
 
     <div v-if="toolbarQuickKeyDefs.length" v-show="textInputFocused" class="mkb-toolbar mkb-toolbar-quick-row">
@@ -302,6 +299,10 @@
   </div>
 </template>
 
+<script lang="ts">
+export const SPLIT_DELAY_MS = 50
+</script>
+
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import MkbRow from './MkbRow.vue'
@@ -309,7 +310,7 @@ import MkbKey from './MkbKey.vue'
 import SuggestionBar from './SuggestionBar.vue'
 import HistoryPanel from './HistoryPanel.vue'
 import FilePickerModal from '../preview/FilePickerModal.vue'
-import type { ModState } from './mkbTypes'
+import type { AppActionOptions, ModState } from './mkbTypes'
 import {
   useSettings,
   onThemeChange,
@@ -325,6 +326,7 @@ import {
   CornerDownLeft,
   ClipboardPaste,
   Trash2,
+  KeyboardOff,
 } from 'lucide-vue-next'
 import { useSelectedPath } from '../../composables/useFileNavigation'
 import { shellEscapePath, trailingPathDeleteLen } from '../../utils/shell'
@@ -335,17 +337,22 @@ import { POSITION, useToast } from 'vue-toastification'
 import { useTextareaMetrics } from '../../composables/useTextareaMetrics'
 import { useSwipePanel } from '../../composables/useSwipePanel'
 import { useKeyboardLayout } from '../../composables/useKeyboardLayout'
+import type { SendDataFn } from '../../utils/frozenSend'
+import { hasCollapseGuard } from '../../utils/keyboardGuardMode'
+import { isTouchDevice } from '../../utils/terminalInput'
 
 const props = defineProps<{
   visible: boolean
   paneId: string
-  getSendFn: () => ((data: string) => void) | null
+  getSendFn: () => SendDataFn | null
 }>()
 
 const emit = defineEmits<{
   'update:visible': [val: boolean]
   bookmarks: []
-  'app-action': [id: string]
+  'app-action': [id: string, options: AppActionOptions]
+  dismiss: []
+  'typing-change': [focused: boolean]
 }>()
 
 const { settings } = useSettings()
@@ -372,6 +379,10 @@ const textInputFocused = ref(false)
 const kbMode = ref<'default' | 'action'>('action')
 const inputBuffer = ref('')
 let blurTimer: ReturnType<typeof setTimeout> | null = null
+let composing = false
+let sendLocked = false
+let sendGeneration = 0
+let componentMounted = false
 
 const {
   resetTextareaMetrics,
@@ -440,6 +451,12 @@ function onTextInputFocus() {
     blurTimer = null
   }
   textInputFocused.value = true
+  // Arm iOS-dismiss detection now if the system keyboard is ALREADY open — e.g.
+  // the user moved focus here from the search or preview-address input without
+  // the keyboard closing, so onViewportChange sees no fresh open edge to arm on.
+  // Without this, a later iOS dismiss would not fall back to the shortcut keyboard.
+  if (sysKbOpen) sysKbArmed = true
+  emit('typing-change', true)
   nextTick(resizeTextInput)
 }
 
@@ -451,22 +468,73 @@ function onTextInputBlur() {
       return
     }
     textInputFocused.value = false
+    emit('typing-change', false)
     resetTextInputHeight()
     nextTick(updateHeight)
     blurTimer = null
   }, 100)
 }
 
-function sendTextInput() {
-  const text = textInput.value
-  if (!text) return
-  props.getSendFn()?.(text + '\r')
+function dismissSystemKeyboard() {
+  // Lift the sticky-typing guard BEFORE blurring so the terminal becomes
+  // focusable again the moment the user leaves typing mode.
+  emit('typing-change', false)
+  textInputRef.value?.blur()
+  emit('dismiss')
+}
+
+function onCompositionStart() {
+  composing = true
+}
+
+function onCompositionEnd() {
+  composing = false
+}
+
+function clearSentText() {
   textInput.value = ''
   textInputRef.value?.focus()
   nextTick(resizeTextInput)
 }
 
+async function sendTextInput() {
+  if (composing || sendLocked) return
+  const text = textInput.value
+  if (text.includes('\0') || text.includes('\x1b')) return
+  const send = props.getSendFn()
+  if (!send) return
+  if (!text) {
+    send('\r')
+    return
+  }
+
+  const direct =
+    !text.includes('\n') &&
+    settings.quick_send_threshold > 0 &&
+    text.length <= settings.quick_send_threshold
+  if (!direct) {
+    send(text)
+    clearSentText()
+    return
+  }
+
+  sendLocked = true
+  const generation = ++sendGeneration
+  try {
+    const textLeg = send(text)
+    clearSentText()
+    await textLeg
+    await new Promise<void>((resolve) => setTimeout(resolve, SPLIT_DELAY_MS))
+    if (componentMounted && generation === sendGeneration) send('\r')
+  } catch {
+    // Rejected text leg: degrade to two-stage (no \r). Transport already logged.
+  } finally {
+    if (generation === sendGeneration) sendLocked = false
+  }
+}
+
 function onKeyPress(ch: string) {
+  if (sendLocked) return
   let data = ch
   if (data.length !== 1) {
     if (data === '\r' || data === '\n') inputBuffer.value = ''
@@ -507,8 +575,9 @@ function onKeyPress(ch: string) {
   if (kbMode.value === 'default') fetchDebounced(inputBuffer.value || undefined)
 }
 
-function onAppAction(id: string) {
-  emit('app-action', id)
+function onAppAction(id: string, options: AppActionOptions) {
+  if (sendLocked) return
+  emit('app-action', id, options)
 }
 
 function onSpecial(sp: string) {
@@ -721,13 +790,21 @@ function updateHeight() {
 // Viewport listener for system keyboard detection
 let naturalVH = 0
 let sysKbOpen = false
+// Armed only by a system-keyboard OPEN edge observed while our own text input holds
+// focus. A bare `sysKbOpen` transition is not enough to conclude "the user dismissed
+// the keyboard": iPad Stage Manager, split-view drags and window resizes shrink the
+// visual viewport past the 120px threshold too, and their restore would otherwise
+// read as a dismissal. Cleared on every close edge and on orientation change.
+let sysKbArmed = false
 
 function onViewportChange() {
   if (!window.visualViewport) return
   const vh = window.visualViewport.height
   if (vh > naturalVH) naturalVH = vh
   const off = window.innerHeight - (window.visualViewport.offsetTop + vh)
+  const wasSysKbOpen = sysKbOpen
   sysKbOpen = naturalVH - vh > 120
+  if (sysKbOpen && !wasSysKbOpen) sysKbArmed = textInputFocused.value
   // Set --kb-open: either system keyboard or custom keyboard is visible
   document.documentElement.style.setProperty('--kb-open', sysKbOpen || props.visible ? '1' : '0')
   if (barRef.value) {
@@ -746,6 +823,29 @@ function onViewportChange() {
   }
   if (textInputFocused.value) resizeTextInput()
   updateHeight()
+  // iOS owns dismiss affordances the page cannot intercept: Safari's keyboard-down
+  // button in the input accessory bar, and the Done check in the standalone-PWA
+  // accessory bar. Both hide the system keyboard while leaving our textarea
+  // focused, which strands the UI in typing mode — toolbar shown, shortcut
+  // keyboard hidden, no keyboard at all — and, with the sticky typing guard on,
+  // the terminal cannot take focus either, so there is no way back. Detect the
+  // outcome instead of the button: on an ARMED open→closed edge with our input
+  // still holding focus, run the same path our own dismiss button runs, landing
+  // on the shortcut keyboard. Guarding on activeElement keeps this from
+  // double-firing after our own button, which has already blurred by then.
+  // Touch + collapse-guard gated: this is a behaviour the guard introduces, so
+  // desktop and the off / open_only modes must never reach it.
+  const dismissedByOS = wasSysKbOpen && !sysKbOpen && sysKbArmed
+  if (!sysKbOpen) sysKbArmed = false
+  if (
+    dismissedByOS &&
+    isTouchDevice() &&
+    hasCollapseGuard(settings.keyboard_guard_mode) &&
+    textInputFocused.value &&
+    document.activeElement === textInputRef.value
+  ) {
+    dismissSystemKeyboard()
+  }
 }
 
 watch(
@@ -758,7 +858,7 @@ watch(
 )
 
 watch(globalSelectedPath, () => {
-  if (globalSelectedPath.value && props.visible) {
+  if (globalSelectedPath.value && props.visible && !hasCollapseGuard(settings.keyboard_guard_mode)) {
     emit('update:visible', false)
   }
 })
@@ -767,11 +867,8 @@ function onWheelCollapse() {
   if (props.visible) emit('update:visible', false)
 }
 
-function onTerminalScrollCollapse() {
-  if (props.visible) emit('update:visible', false)
-}
-
 onMounted(() => {
+  componentMounted = true
   fetchSuggestions()
   resetTextInputHeight()
 
@@ -781,9 +878,6 @@ onMounted(() => {
     window.visualViewport.addEventListener('scroll', onViewportChange)
     window.addEventListener('orientationchange', onOrientationChange)
   }
-
-  // Collapse keyboard on scroll (wheel for trackpad/mouse, terminal-scroll for touch)
-  document.addEventListener('terminal-scroll', onTerminalScrollCollapse)
 
   if (barRef.value) {
     resizeObserver = new ResizeObserver(() => {
@@ -798,20 +892,45 @@ let roAf = 0
 let resizeObserver: ResizeObserver | null = null
 function onOrientationChange() {
   resetTextareaMetrics()
+  // Disarm SYNCHRONOUSLY: the viewport resize events that a rotation fires arrive
+  // before the 300ms baseline reset below, and against the stale naturalVH a
+  // height change can look like an iOS dismissal. Clearing the arming now means
+  // no dismiss can fire during the rotation window; the timeout re-establishes
+  // the baseline once the new orientation settles.
+  sysKbArmed = false
   setTimeout(() => {
     naturalVH = window.visualViewport!.height
+    // The baseline just moved, so any pending open-edge arming is stale.
+    sysKbOpen = false
+    sysKbArmed = false
     if (textInputFocused.value) resizeTextInput()
     updateHeight()
   }, 300)
 }
 
 onBeforeUnmount(() => {
+  componentMounted = false
+  // Release typing mode explicitly. The pending blur timer would otherwise fire
+  // after this component is gone, when its emit no longer reaches the parent —
+  // leaving the parent's typing flag stuck true and, with it, the sticky guard
+  // that disables every terminal's helper textarea. That happens for real when
+  // the session drops mid-typing and the authenticated subtree unmounts: after
+  // re-login every newly attached pane would come up unfocusable.
+  if (blurTimer) {
+    clearTimeout(blurTimer)
+    blurTimer = null
+  }
+  textInputFocused.value = false
+  emit('typing-change', false)
+  if (sendLocked) {
+    sendLocked = false
+    sendGeneration++
+  }
   if (window.visualViewport) {
     window.visualViewport.removeEventListener('resize', onViewportChange)
     window.visualViewport.removeEventListener('scroll', onViewportChange)
   }
   window.removeEventListener('orientationchange', onOrientationChange)
-  document.removeEventListener('terminal-scroll', onTerminalScrollCollapse)
   resizeObserver?.disconnect()
   unsubThemeMetrics()
   unsubTextMetrics()

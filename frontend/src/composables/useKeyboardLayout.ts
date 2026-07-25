@@ -114,7 +114,7 @@ export function useKeyboardLayout(opts: KeyboardLayoutOptions): KeyboardLayoutSt
   const arrowUp: KeyDef = { l: '↑', s: '\x1b[A', repeat: true, cls: 'mkb-arrow' }
   const arrowDown: KeyDef = { l: '↓', s: '\x1b[B', repeat: true, cls: 'mkb-arrow' }
   const arrowLeft: KeyDef = { l: '←', s: '\x1b[D', repeat: true, cls: 'mkb-arrow' }
-  const arrowRight: KeyDef = { l: '->', s: '\x1b[C', repeat: true, cls: 'mkb-arrow' }
+  const arrowRight: KeyDef = { l: '→', s: '\x1b[C', repeat: true, cls: 'mkb-arrow' }
 
   const row5bottom: KeyDef[] = [
     { l: 'fn', sp: 'fn', g: 1.05, cls: 'mkb-mod' },

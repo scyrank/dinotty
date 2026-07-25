@@ -60,9 +60,13 @@ pub async fn plugin_asset(
     };
     let mime = mime_guess::from_path(&file_path).first_or_octet_stream();
 
+    let is_dev_link = pm.registry.get(&id).is_some_and(|info| info.is_dev_link);
+    let cache_control = if is_dev_link { "no-cache" } else { "private, max-age=3600" };
+
     Response::builder()
         .header("Content-Type", mime.as_ref())
-        .header("Cache-Control", "no-cache")
+        .header("Cache-Control", cache_control)
+        .header("X-Content-Type-Options", "nosniff")
         .body(Body::from(content))
         .unwrap()
 }
@@ -225,9 +229,9 @@ pub async fn install_from_dir(
 
 #[cfg(test)]
 mod tests {
-    use super::dev_link_plugin;
+    use super::{dev_link_plugin, plugin_asset};
     use crate::plugin::manager::PluginManager;
-    use crate::plugin::types::DevLinkRequest;
+    use crate::plugin::types::{DevLinkRequest, PluginInfo, PluginManifest, PluginStateValue};
     use axum::{extract::State, http::StatusCode, Json};
     use dashmap::DashMap;
     use std::path::Path;
@@ -258,6 +262,31 @@ mod tests {
         src
     }
 
+    fn test_plugin_info(id: &str, is_dev_link: bool) -> PluginInfo {
+        PluginInfo {
+            manifest: PluginManifest {
+                id: id.into(),
+                name: "Test".into(),
+                version: "1.0.0".into(),
+                min_app_version: None,
+                description: None,
+                icon: None,
+                entry: None,
+                bin: None,
+                commands: None,
+                styles: None,
+                permissions: None,
+                category: None,
+                targets: None,
+                show_in_toolbar: None,
+            },
+            install_date: None,
+            state: PluginStateValue::Active,
+            error: None,
+            is_dev_link,
+        }
+    }
+
     // 验证 dev-link API 遇到真实目录冲突时不会删除原目录。
     #[tokio::test]
     async fn dev_link_plugin_conflicts_with_existing_real_directory_without_deleting_it() {
@@ -281,5 +310,46 @@ mod tests {
         assert!(existing.join("sentinel.txt").is_file());
         assert!(!existing.is_symlink());
         assert!(!manager.registry.contains_key("real-dir-plugin"));
+    }
+
+    #[tokio::test]
+    async fn plugin_asset_sets_nosniff_and_private_cache_for_normal_plugin() {
+        let tmp = tempfile::tempdir().unwrap();
+        let manager = test_manager(tmp.path());
+        let plugin_id = "normal-plugin";
+        let plugin_dir = manager.plugin_dir.join(plugin_id);
+        std::fs::create_dir_all(&plugin_dir).unwrap();
+        std::fs::write(plugin_dir.join("main.js"), "console.log('hi')").unwrap();
+        manager.registry.insert(plugin_id.to_string(), test_plugin_info(plugin_id, false));
+
+        let response = plugin_asset(
+            axum::extract::Path((plugin_id.to_string(), "main.js".to_string())),
+            State(Arc::clone(&manager)),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers().get("X-Content-Type-Options").unwrap(), "nosniff");
+        assert_eq!(response.headers().get("Cache-Control").unwrap(), "private, max-age=3600");
+    }
+
+    #[tokio::test]
+    async fn plugin_asset_sets_no_cache_for_dev_link_plugin() {
+        let tmp = tempfile::tempdir().unwrap();
+        let manager = test_manager(tmp.path());
+        let plugin_id = "dev-plugin";
+        let plugin_dir = manager.plugin_dir.join(plugin_id);
+        std::fs::create_dir_all(&plugin_dir).unwrap();
+        std::fs::write(plugin_dir.join("main.js"), "console.log('hi')").unwrap();
+        manager.registry.insert(plugin_id.to_string(), test_plugin_info(plugin_id, true));
+
+        let response = plugin_asset(
+            axum::extract::Path((plugin_id.to_string(), "main.js".to_string())),
+            State(Arc::clone(&manager)),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers().get("Cache-Control").unwrap(), "no-cache");
     }
 }

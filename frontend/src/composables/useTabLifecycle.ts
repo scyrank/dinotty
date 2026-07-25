@@ -1,6 +1,6 @@
 import { type Ref, type ShallowRef, nextTick } from 'vue'
 import type { Tab, TerminalTab } from '../types/pane'
-import { getAllLeaves, findLeaf, ensureSplitRoot } from '../types/pane'
+import { getAllLeaves, findLeaf, findFirstLeaf, ensureSplitRoot } from '../types/pane'
 import type { Workspace } from '../types/workspace'
 import { nextRevealNavGen, currentRevealNavGen } from '../utils/navGen'
 import { pickSuccessorTab } from '../utils/tabSuccessor'
@@ -8,6 +8,7 @@ import { isTouchDevice } from './useTerminal'
 import { clearFileWorkspaceState } from './useFileWorkspaceState'
 import { invalidatePluginPreview } from './useTabPreview'
 import { apiActivatePane, apiCloseTab, apiCreateTab, apiCreateSshTab } from './useTabApi'
+import { apiApplyTemplate } from './useTemplateApi'
 import type { SshConnectResult } from './useSshConnectFlow'
 import type { MarkReadReason } from './useNotification'
 
@@ -43,6 +44,10 @@ export interface TabLifecycleState {
     (cwd?: string): Promise<void>
     (cwd: string, argv: string[], title?: string): Promise<string>
   }
+  applyTemplate: (
+    templateId: string,
+    workspaceId?: string,
+  ) => Promise<{ tabId: string; warnings: string[] } | null>
   resolveTab: (tabId: string) => Tab | undefined
   resolveTabWorkspace: (tab: Tab) => Workspace | null
   clearResolvedTabNotifications: (tab: Tab, reason?: MarkReadReason) => void
@@ -128,6 +133,73 @@ export function useTabLifecycle(opts: TabLifecycleOptions): TabLifecycleState {
       console.error('Failed to create tab:', e)
       if (argv) throw e
       return ''
+    }
+  }
+
+  /** Apply a layout template: create a new tab from a saved template.
+   *  Backend broadcasts `TabCreated` which may race with the REST response,
+   *  so we dedup by tab_id (same pattern as `newTab`). Returns warnings
+   *  surfaced by the backend (e.g. missing plugin, downgraded SSH pane). */
+  async function applyTemplate(
+    templateId: string,
+    workspaceId?: string,
+  ): Promise<{ tabId: string; warnings: string[] } | null> {
+    try {
+      const result = await apiApplyTemplate({ template_id: templateId, workspace_id: workspaceId })
+
+      // Determine the workspace this new tab belongs to. Prefer the explicit
+      // workspace_id requested by the caller; fall back to matching by the
+      // cwd / connection_id returned by the backend.
+      const targetWorkspace = workspaceId
+        ? workspaces.value.find((w) => w.id === workspaceId) ?? null
+        : matchWorkspace(result.cwd ?? '', result.connection_id, undefined)
+      const targetWorkspaceId = targetWorkspace?.id ?? null
+
+      const tabFields = {
+        cwd: result.cwd,
+        connectionId: result.connection_id,
+        workspaceId: targetWorkspaceId ?? undefined,
+      }
+
+      const existing = tabs.value.find(
+        (t) => t.type === 'terminal' && t.paneId === result.tab_id,
+      )
+      if (existing) {
+        Object.assign(existing, tabFields)
+        commitLocalActivePane(result.tab_id)
+        if (targetWorkspaceId && targetWorkspaceId !== activeWorkspaceId.value) {
+          await activateWorkspace(targetWorkspaceId)
+        }
+        persist()
+        nextTick(() => focusActive())
+        return { tabId: result.tab_id, warnings: result.warnings }
+      }
+      const layout = ensureSplitRoot(result.layout)
+      const firstPaneId = findFirstLeaf(layout).paneId
+      tabs.value.push({
+        type: 'terminal',
+        paneId: result.tab_id,
+        layout,
+        activePaneId: firstPaneId,
+        paneMru: [firstPaneId],
+        broadcastMode: false,
+        broadcastActivity: 0,
+        previewVisible: false,
+        previewAddress: '',
+        previewUrl: '',
+        previewKind: 'web',
+        ...tabFields,
+      })
+      commitLocalActivePane(result.tab_id)
+      if (targetWorkspaceId && targetWorkspaceId !== activeWorkspaceId.value) {
+        await activateWorkspace(targetWorkspaceId)
+      }
+      persist()
+      nextTick(() => focusActive())
+      return { tabId: result.tab_id, warnings: result.warnings }
+    } catch (e) {
+      console.error('Failed to apply template:', e)
+      throw e
     }
   }
 
@@ -435,6 +507,7 @@ export function useTabLifecycle(opts: TabLifecycleOptions): TabLifecycleState {
 
   return {
     newTab,
+    applyTemplate,
     resolveTab,
     resolveTabWorkspace,
     clearResolvedTabNotifications,

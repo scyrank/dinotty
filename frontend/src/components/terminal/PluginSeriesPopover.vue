@@ -154,6 +154,7 @@ watch(
       removeClickListener()
     }
   },
+  { immediate: true }
 )
 </script>
 

@@ -1,3 +1,4 @@
+use super::types::KeyboardGuardMode;
 use super::*;
 
 #[test]
@@ -22,6 +23,7 @@ fn settings_empty_json_is_valid() {
     let settings: Settings = serde_json::from_str(r"{}").unwrap();
     assert_eq!(settings.settings_version, 0);
     assert!(!settings.keyboard_sound);
+    assert_eq!(settings.quick_send_threshold, 63);
     assert!(!settings.show_virtual_keyboard);
     assert!(!settings.windows_alt_as_cmd);
     assert!(settings.confirm_before_close_tab);
@@ -32,6 +34,113 @@ fn settings_empty_json_is_valid() {
         assert_eq!(settings.ip_whitelist, vec!["127.0.0.1", "::1"]);
     }
     assert_eq!(settings.upload_dir, default_upload_dir());
+}
+
+#[test]
+fn keyboard_guard_mode_round_trips_all_values_without_serializing_legacy_key() {
+    for (mode, serialized_name) in [
+        (KeyboardGuardMode::Off, "off"),
+        (KeyboardGuardMode::CollapseOnly, "collapse_only"),
+        (KeyboardGuardMode::OpenOnly, "open_only"),
+        (KeyboardGuardMode::Both, "both"),
+    ] {
+        let settings = Settings { keyboard_guard_mode: mode, ..Settings::default() };
+
+        let serialized = serde_json::to_string(&settings).unwrap();
+        let restored: Settings = serde_json::from_str(&serialized).unwrap();
+
+        assert!(serialized.contains(&format!(r#""keyboard_guard_mode":"{serialized_name}""#)));
+        assert!(!serialized.contains("keyboard_keep_on_scroll"));
+        assert_eq!(restored.keyboard_guard_mode, mode);
+    }
+}
+
+#[test]
+fn v7_migrates_all_legacy_keyboard_guard_values_idempotently_and_stably() {
+    for (legacy_json, expected) in [
+        (
+            r#"{"settings_version":6,"keyboard_keep_on_scroll":true}"#,
+            KeyboardGuardMode::CollapseOnly,
+        ),
+        (r#"{"settings_version":6,"keyboard_keep_on_scroll":false}"#, KeyboardGuardMode::Off),
+        (r#"{"settings_version":6}"#, KeyboardGuardMode::Off),
+    ] {
+        let mut settings: Settings = serde_json::from_str(legacy_json).unwrap();
+
+        assert!(migrate_settings(&mut settings));
+        assert_eq!(settings.settings_version, 7);
+        assert_eq!(settings.keyboard_guard_mode, expected);
+        assert!(!migrate_settings(&mut settings));
+
+        let first_save = serde_json::to_string(&settings).unwrap();
+        assert!(!first_save.contains("keyboard_keep_on_scroll"));
+        let mut loaded: Settings = serde_json::from_str(&first_save).unwrap();
+        assert!(!migrate_settings(&mut loaded));
+        let second_save = serde_json::to_string(&loaded).unwrap();
+
+        assert_eq!(second_save.as_bytes(), first_save.as_bytes());
+    }
+}
+
+#[test]
+fn keyboard_guard_mode_deserialization_tolerates_unknown_and_wrong_typed_values() {
+    for invalid in [
+        serde_json::json!("banana"),
+        serde_json::json!(42),
+        serde_json::Value::Null,
+        serde_json::json!({}),
+        serde_json::json!([]),
+    ] {
+        let json = serde_json::json!({"keyboard_guard_mode": invalid, "locale": "en"});
+        let settings: Settings = serde_json::from_value(json).unwrap();
+
+        assert_eq!(settings.keyboard_guard_mode, KeyboardGuardMode::Off);
+        assert_eq!(settings.locale, "en");
+    }
+}
+
+#[test]
+fn legacy_keyboard_bool_deserialization_is_field_local_and_tolerant() {
+    for invalid in [serde_json::Value::Null, serde_json::json!("yes"), serde_json::json!(1)] {
+        let json = serde_json::json!({
+            "settings_version": 6,
+            "keyboard_keep_on_scroll": invalid,
+            "locale": "en"
+        });
+        let mut settings: Settings = serde_json::from_value(json).unwrap();
+
+        assert!(!settings.keyboard_keep_on_scroll);
+        assert_eq!(settings.locale, "en");
+        assert!(migrate_settings(&mut settings));
+        assert_eq!(settings.settings_version, 7);
+        assert_eq!(settings.keyboard_guard_mode, KeyboardGuardMode::Off);
+        assert_eq!(settings.locale, "en");
+    }
+}
+
+#[test]
+fn quick_send_threshold_is_clamped_on_load_normalization() {
+    let mut loaded: Settings = serde_json::from_str(r#"{"quick_send_threshold":99999}"#).unwrap();
+
+    assert!(clamp_quick_send_threshold(&mut loaded));
+    assert_eq!(loaded.quick_send_threshold, 5000);
+}
+
+#[test]
+fn quick_send_threshold_is_clamped_on_put_normalization() {
+    let mut put = Settings { quick_send_threshold: 99999, ..Settings::default() };
+
+    assert!(clamp_quick_send_threshold(&mut put));
+    assert_eq!(put.quick_send_threshold, 5000);
+    assert!(!clamp_quick_send_threshold(&mut put));
+}
+
+#[test]
+fn settings_ignores_removed_global_paste_auto_enter() {
+    let settings: Settings = serde_json::from_str(r#"{"paste_auto_enter":false}"#)
+        .expect("settings with removed paste_auto_enter should still parse");
+
+    assert_eq!(settings.settings_version, 0);
 }
 
 #[test]
@@ -123,6 +232,30 @@ fn settings_notification_defaults() {
     let settings: Settings = serde_json::from_str(r"{}").unwrap();
     assert!(settings.notification.enabled);
     assert!(!settings.notification.idle_reminder);
+}
+
+#[test]
+fn settings_plugin_prefs_default_empty() {
+    let settings: Settings = serde_json::from_str(r"{}").unwrap();
+    assert!(settings.plugin_prefs.hidden_toolbar.is_empty());
+    assert!(!settings.plugin_prefs.show_incompatible);
+}
+
+#[test]
+fn settings_plugin_prefs_round_trips() {
+    let json = r#"{
+        "plugin_prefs": {
+            "hidden_toolbar": ["foo", "bar"],
+            "show_incompatible": true
+        }
+    }"#;
+    let settings: Settings = serde_json::from_str(json).unwrap();
+    assert_eq!(settings.plugin_prefs.hidden_toolbar, vec!["foo".to_string(), "bar".to_string()]);
+    assert!(settings.plugin_prefs.show_incompatible);
+
+    let serialized = serde_json::to_string(&settings).unwrap();
+    assert!(serialized.contains("\"hidden_toolbar\""));
+    assert!(serialized.contains("\"show_incompatible\":true"));
 }
 
 #[test]
@@ -537,9 +670,32 @@ fn action_keyboard_plain_send_omits_absent_optional_fields() {
     assert!(key.get("action").is_none());
     assert!(key.get("style").is_none());
     assert!(key.get("grow").is_none());
+    assert!(key.get("auto_enter").is_none());
 
     let round_trip: ActionKeyboardConfig = serde_json::from_value(serialized).unwrap();
     assert_eq!(round_trip, config);
+}
+
+#[test]
+fn action_keyboard_normalize_defaults_only_missing_paste_auto_enter() {
+    let mut config = parse_action_keyboard(
+        r#"{
+            "rows":[[
+                {"label":"paste-default","kind":"action","action":"pasteTerminal"},
+                {"label":"paste-off","kind":"action","action":"pasteTerminal","auto_enter":false},
+                {"label":"send-default","kind":"send","send":"echo ok"}
+            ]]
+        }"#,
+    );
+
+    config.normalize();
+
+    let keys = &config.rows[0];
+    assert_eq!(keys[0].auto_enter, Some(true));
+    assert_eq!(keys[1].auto_enter, Some(false));
+    assert_eq!(keys[2].auto_enter, None);
+    assert!(!keys[2].auto_enter.unwrap_or(false));
+    assert!(serde_json::to_value(&keys[2]).unwrap().get("auto_enter").is_none());
 }
 
 #[test]
@@ -670,6 +826,8 @@ fn action_keyboard_normalize_applies_kind_contract() {
                 {"label":"missing","kind":"action","send":"keep","repeat":true},
                 {"label":"blank","kind":"action","action":"  ","send":"keep","auto_enter":true},
                 {"label":"valid","kind":"action","action":"newTab","send":"remove","special":"bookmarks","repeat":true,"auto_enter":true,"grow":1.5},
+                {"label":"paste-on","kind":"action","action":"pasteTerminal","auto_enter":true},
+                {"label":"paste-off","kind":"action","action":"pasteTerminal","auto_enter":false},
                 {"label":"bookmarks","special":"bookmarks"}
             ]]
         }"#,
@@ -685,19 +843,24 @@ fn action_keyboard_normalize_applies_kind_contract() {
     assert_eq!(keys[1].send, "keep");
     assert!(keys[1].repeat);
     assert_eq!(keys[2].send, "keep");
-    assert!(keys[2].auto_enter);
+    assert_eq!(keys[2].auto_enter, Some(true));
 
     assert!(keys[3].send.is_empty());
     assert!(keys[3].special.is_none());
     assert!(!keys[3].repeat);
-    assert!(!keys[3].auto_enter);
+    assert_eq!(keys[3].auto_enter, None);
     let valid_action_json = serde_json::to_value(&keys[3]).unwrap();
     for forbidden in ["send", "special", "repeat", "auto_enter"] {
         assert!(valid_action_json.get(forbidden).is_none(), "{forbidden} survived");
     }
 
-    assert!(keys[4].send.is_empty());
-    assert_eq!(keys[4].special.as_deref(), Some("bookmarks"));
+    assert_eq!(keys[4].auto_enter, Some(true));
+    assert_eq!(keys[5].auto_enter, Some(false));
+    assert_eq!(serde_json::to_value(&keys[4]).unwrap()["auto_enter"], true);
+    assert_eq!(serde_json::to_value(&keys[5]).unwrap()["auto_enter"], false);
+
+    assert!(keys[6].send.is_empty());
+    assert_eq!(keys[6].special.as_deref(), Some("bookmarks"));
 }
 
 #[test]

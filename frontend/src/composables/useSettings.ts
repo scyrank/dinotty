@@ -6,6 +6,7 @@ import ClaudeLogo from '../components/icons/ClaudeLogo.vue'
 import CodexLogo from '../components/icons/CodexLogo.vue'
 import OpencodeLogo from '../components/icons/OpencodeLogo.vue'
 import { isWindowsClient } from '../utils/clientPlatform'
+import type { KeyboardGuardMode } from '../utils/keyboardGuardMode'
 import type { KeyBinding } from './useKeybindings'
 import type { SavedTheme } from './useDeviceThemeSelection'
 export type WorkspaceBadgeMode = 'off' | 'tab' | 'icon' | 'both'
@@ -22,6 +23,7 @@ export interface SettingsData {
   }
   custom_themes: SavedTheme[]
   hidden_builtins: string[]
+  plugin_prefs: PluginPrefsConfig
   background: {
     mode: string
     color: string | null
@@ -48,8 +50,9 @@ export interface SettingsData {
   upload_file_cap_mb: number
   upload_cap_count: number
   keyboard_sound: boolean
+  quick_send_threshold: number
   show_virtual_keyboard: boolean
-  keyboard_keep_on_scroll: boolean
+  keyboard_guard_mode: KeyboardGuardMode
   workspace_badge_mode: WorkspaceBadgeMode | null
   confirm_before_close_tab: boolean
   reload_after_supervise_tabs: boolean
@@ -183,6 +186,11 @@ export interface RecentEntry {
   visited_at: number
 }
 
+export interface PluginPrefsConfig {
+  hidden_toolbar: string[]
+  show_incompatible: boolean
+}
+
 export interface ActionKey {
   label: string
   kind?: 'send' | 'action'
@@ -266,7 +274,11 @@ function normalizeActionKey(key: ActionKey): void {
   delete key.send
   delete key.special
   delete key.repeat
-  delete key.auto_enter
+  if (key.action === 'pasteTerminal') {
+    if (typeof key.auto_enter !== 'boolean') key.auto_enter = true
+  } else {
+    delete key.auto_enter
+  }
   delete key.icon
 }
 
@@ -360,6 +372,7 @@ export const settings = reactive<SettingsData>({
   theme: { preset: 'dark', custom: null },
   custom_themes: [],
   hidden_builtins: [],
+  plugin_prefs: { hidden_toolbar: [], show_incompatible: false },
   background: { mode: 'solid', color: null, opacity: 1.0, has_image: false },
   text: {
     font_size: 14,
@@ -387,8 +400,9 @@ export const settings = reactive<SettingsData>({
   upload_file_cap_mb: 0,
   upload_cap_count: 100,
   keyboard_sound: false,
+  quick_send_threshold: 63,
   show_virtual_keyboard: false,
-  keyboard_keep_on_scroll: false,
+  keyboard_guard_mode: 'off',
   workspace_badge_mode: null,
   confirm_before_close_tab: true,
   reload_after_supervise_tabs: false,

@@ -16,6 +16,10 @@ export interface MarketPlugin {
   homepage?: string
   installed_version?: string
   has_update: boolean
+  category?: string
+  targets?: string[]
+  showInToolbar?: boolean
+  compatible: boolean
 }
 
 export function useMarketplace() {

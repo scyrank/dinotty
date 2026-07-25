@@ -73,7 +73,8 @@ pub async fn get_market_registry(State(pm): State<PluginManagerState>) -> Respon
         }
     };
 
-    let market: Vec<MarketPlugin> = registry
+    let host_target = pm.host_target;
+    let mut market: Vec<MarketPlugin> = registry
         .plugins
         .into_iter()
         .map(|entry| {
@@ -81,6 +82,7 @@ pub async fn get_market_registry(State(pm): State<PluginManagerState>) -> Respon
             let installed_version = installed.as_ref().map(|i| i.manifest.version.clone());
             let has_update =
                 installed_version.as_ref().is_some_and(|v| version_gt(&entry.version, v));
+            let compatible = super::helpers::is_compatible(entry.targets.as_deref(), host_target);
 
             MarketPlugin {
                 id: entry.id,
@@ -96,9 +98,14 @@ pub async fn get_market_registry(State(pm): State<PluginManagerState>) -> Respon
                 homepage: entry.homepage,
                 installed_version,
                 has_update,
+                category: entry.category,
+                targets: entry.targets,
+                show_in_toolbar: entry.show_in_toolbar,
+                compatible,
             }
         })
         .collect();
+    market.sort_by_key(|a| a.name.to_lowercase());
 
     Json(market).into_response()
 }

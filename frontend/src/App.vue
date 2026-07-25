@@ -27,6 +27,8 @@
       @open-plugin="openPlugin"
       @rename="onRenameTab"
       @open-overview="openOverview"
+      @save-as-template="openSaveTemplateDialog"
+      @apply-template="templatePickerVisible = true"
     >
       <template #left>
         <button
@@ -85,7 +87,11 @@
       </template>
     </TabBar>
 
-    <div id="tab-content" @touchend="onTerminalTouch">
+    <div
+      id="tab-content"
+      @mousedown.capture="onTabContentMouseDownCapture"
+      @touchend="onTerminalTouch"
+    >
       <div
         v-for="tab in tabs"
         :key="tabKey(tab)"
@@ -232,10 +238,12 @@
       @update:visible="(v: boolean) => (kbVisible = v)"
       @bookmarks="bookmarksRef?.open()"
       @app-action="dispatchAppAction"
+      @dismiss="onKeyboardDismiss"
+      @typing-change="(v: boolean) => (kbTyping = v)"
     />
 
     <KbToggleButton
-      v-show="appSettings.show_virtual_keyboard && !kbVisible"
+      v-show="(appSettings.show_virtual_keyboard || hasOpenGuard(appSettings.keyboard_guard_mode)) && !kbVisible"
       :visible="kbVisible"
       @toggle="kbVisible = !kbVisible"
     />
@@ -260,6 +268,21 @@
       :items="cursorPickerItems"
       @confirm="onCursorPickerConfirm"
       @cancel="cursorPickerVisible = false"
+    />
+
+    <SaveTemplateDialog
+      :visible="saveTemplateVisible"
+      :source-tab-id="saveTemplateSourceTabId"
+      :source-layout="saveTemplateSourceLayout"
+      @close="saveTemplateVisible = false"
+      @saved="onTemplateSaved"
+    />
+
+    <TemplatePicker
+      :visible="templatePickerVisible"
+      :workspace-id="activeWorkspaceId"
+      @close="templatePickerVisible = false"
+      @apply="onTemplateApplied"
     />
   </div>
 </template>
@@ -291,6 +314,8 @@ import ConfirmModal from './components/ui/ConfirmModal.vue'
 import { confirmState, uiConfirm, confirmResolve, confirmCancel } from './composables/useConfirm'
 import PromptModal from './components/ui/PromptModal.vue'
 import MultiSelectPicker from './components/ui/MultiSelectPicker.vue'
+import SaveTemplateDialog from './components/ui/SaveTemplateDialog.vue'
+import TemplatePicker from './components/ui/TemplatePicker.vue'
 import { promptState, promptResolve, promptCancel } from './composables/usePrompt'
 import PreviewPanel from './components/preview/PreviewPanel.vue'
 import CommandBookmarks from './components/command/CommandBookmarks.vue'
@@ -299,7 +324,8 @@ import SshHostsPanel from './components/ssh/SshHostsPanel.vue'
 import SshAuthPromptDialog from './components/ssh/SshAuthPromptDialog.vue'
 import StatusBar from './components/terminal/StatusBar.vue'
 import type { Tab, TerminalTab, PluginTab, PaneLayout, LeafPane, DropPosition } from './types/pane'
-import { getAllLeaves, findLeaf, findFirstLeaf, ensureSplitRoot } from './types/pane'
+import { getAllLeaves, findLeaf, findFirstLeaf, ensureSplitRoot, paneKind } from './types/pane'
+import { createFrozenSendFn, type SendDataFn } from './utils/frozenSend'
 import { initializePaneMru } from './types/paneMru'
 // useSettings replaced by useSettingsStore
 import {
@@ -308,11 +334,15 @@ import {
   fetchAutoToken,
   validateToken,
   apiUrl,
-  authFetch,
   markCookieAuthenticated,
 } from './composables/apiBase'
 import { isTauri, tauriInvoke } from './composables/useTransport'
-import { isTouchDevice, setActivePaneId } from './composables/useTerminal'
+import {
+  isKbTypingLocked,
+  isTouchDevice,
+  setActivePaneId,
+  setKbTypingLock,
+} from './composables/useTerminal'
 import { useI18n } from './composables/useI18n'
 import { keyEventMatchesBinding, useKeybindings } from './composables/useKeybindings'
 import { usePluginNotifyBridge } from './composables/usePluginNotifyBridge'
@@ -321,6 +351,8 @@ import { useCursorPicker } from './composables/useCursorPicker'
 import { useOverviewCallbacks } from './composables/useOverviewCallbacks'
 import { useTabPersistence } from './composables/useTabPersistence'
 import { useViewportResize } from './composables/useViewportResize'
+import { useDeviceKeyboardSettings } from './composables/useDeviceKeyboardSettings'
+import { useKeyboardOverlap } from './composables/useKeyboardOverlap'
 import { usePluginLauncher } from './composables/usePluginLauncher'
 import { useSshConnectFlow } from './composables/useSshConnectFlow'
 import { useTabLifecycle } from './composables/useTabLifecycle'
@@ -332,9 +364,10 @@ import { isWebPreviewInput } from './utils/previewRouting'
 import { isWindowsClient } from './utils/clientPlatform'
 import { nextRevealNavGen, currentRevealNavGen } from './utils/navGen'
 import { pickSuccessorTab } from './utils/tabSuccessor'
+import { workspaceIdFromPaneId } from './utils/pluginPaneId'
 import { initMonitorHistory } from './composables/useMonitor'
 import NotificationPanel from './components/notification/NotificationPanel.vue'
-import { useToast } from 'vue-toastification'
+import { POSITION, useToast } from 'vue-toastification'
 import {
   useNotification,
   pushNotification,
@@ -375,7 +408,14 @@ import { useSettingsStore } from './stores/settingsStore'
 import { shellEscapePath } from './utils/shell'
 import { buildRunCodeCommand } from './utils/runCodeCommand'
 import { resolveAbbr, resolveColor } from './utils/workspaceIcon'
-import { APP_ACTION_IDS } from './utils/appActionCatalog'
+import {
+  getTerminalSequenceAppAction,
+  isDispatchableAppAction,
+} from './utils/appActionCatalog'
+import { createHostClipboardPasteController } from './utils/hostClipboardPaste'
+import { readHostClipboard } from './utils/clipboard'
+import { hasCollapseGuard, hasOpenGuard } from './utils/keyboardGuardMode'
+import type { AppActionOptions } from './components/keyboard/mkbTypes'
 
 // ── Stores ──────────────────────────────────────────────────────
 const session = useSessionStore()
@@ -395,6 +435,8 @@ const windowCloseConfirmVisible = ref(false)
 let linkJustActivated = false
 let scrollGestureDetected = false
 let scrollGestureTimer = 0
+// Sticky typing mode: true while the mobile keyboard's text input is focused.
+const kbTyping = ref(false)
 
 // ── Template refs (purely UI concerns) ─────────────────────────
 const paletteRef = ref<InstanceType<typeof CommandPalette>>()
@@ -413,6 +455,27 @@ const notif = useNotification()
 const presentationSettings = useNotificationPresentation().settings
 const { supervise } = useSuperviseTabs()
 const toast = useToast()
+const hostClipboardPaste = createHostClipboardPasteController({
+  fetchText: async () => {
+    const text = await readHostClipboard()
+    if (text === null) throw new Error('clipboard unavailable')
+    return text
+  },
+  paste: (text, autoEnter) => {
+    if (!activePaneId.value) return
+    const tab = tabs.value.find((candidate) => candidate.paneId === activePaneId.value)
+    if (!tab || tab.type !== 'terminal') return
+    termRefs[tab.activePaneId]?.pasteFromClipboard(text, autoEnter)
+  },
+  clipboardEmpty: () =>
+    toast.info(t('mobileKb.clipboardEmpty'), { position: POSITION.BOTTOM_CENTER }),
+  pasteFailed: () =>
+    toast.error(t('mobileKb.pasteFailed'), { position: POSITION.BOTTOM_CENTER }),
+  confirmMultiline: (lines) =>
+    toast.info(t('mobileKb.confirmMultiline', { n: lines }), {
+      position: POSITION.BOTTOM_CENTER,
+    }),
+})
 const cursorPicker = useCursorPicker({
   tabs,
   activePaneId,
@@ -446,8 +509,16 @@ const { isMobile } = useIsMobile()
 const { workspaces, activeWorkspaceId, activeWorkspace, activeWorkspacePath, activeWorkspaceName, matchWorkspace, activateWorkspace, cancelPendingWorkspaceActivation } = useWorkspaces()
 
 function workspaceIdOfTab(tab: Tab): string | null {
-  if (tab.type === 'plugin') return tab.workspaceId ?? null
-  return matchWorkspace(tab.cwd ?? '', tab.connectionId, tab.workspaceId)?.id ?? null
+  if (tab.type === 'plugin') {
+    return tab.workspaceId ?? workspaceIdFromPaneId(tab.paneId) ?? null
+  }
+  return (
+    matchWorkspace(
+      tab.cwd ?? '',
+      tab.connectionId,
+      tab.workspaceId ?? workspaceIdFromPaneId(tab.paneId)
+    )?.id ?? null
+  )
 }
 const activeWorkspaceAbbr = computed(() =>
   activeWorkspace.value ? resolveAbbr(activeWorkspace.value) : ''
@@ -527,6 +598,7 @@ const onSshConnectRef = shallowRef<(result: { tab_id: string; pane_id: string; l
 
 const {
   newTab,
+  applyTemplate,
   resolveTab,
   resolveTabWorkspace,
   clearResolvedTabNotifications,
@@ -608,6 +680,17 @@ function adjustActiveTerminalFontSize(delta: number) {
   }
 }
 
+// Sticky typing mode: the terminal must not be able to take focus while the user
+// is typing on the mobile keyboard, otherwise the iOS system keyboard closes.
+// Only under the collapse guard, so off/open_only stay upstream-equivalent.
+watch(
+  [kbTyping, () => appSettings.keyboard_guard_mode],
+  ([typing, mode]) => {
+    setKbTypingLock(isTouchDevice() && typing && hasCollapseGuard(mode))
+  },
+  { immediate: true },
+)
+
 // Capture plugin preview when active tab changes to a plugin tab (handles initial load)
 watch(
   activePaneId,
@@ -628,6 +711,27 @@ const resolvedPosition = computed(() => {
   const pos = appSettings.panel_position ?? 'auto'
   if (pos === 'auto') return isLandscape.value ? 'right' : 'top'
   return pos
+})
+
+const isSingleTerminalTab = computed(() => {
+  const tab = activeTab.value
+  if (!tab || tab.type !== 'terminal') return false
+  const leaves = getAllLeaves(tab.layout)
+  return leaves.length === 1 && paneKind(leaves[0]) === 'terminal'
+})
+const hasVerticalPreview = computed(() => {
+  const tab = activeTab.value
+  return tab?.type === 'terminal'
+    && tab.previewVisible
+    && (resolvedPosition.value === 'top' || resolvedPosition.value === 'bottom')
+})
+const { imeKeyboardOverlapPx } = useDeviceKeyboardSettings()
+useKeyboardOverlap({
+  settingPx: imeKeyboardOverlapPx,
+  kbVisible,
+  textInputFocused: kbTyping,
+  isSingleTerminalTab,
+  hasVerticalPreview,
 })
 
 watch(
@@ -886,23 +990,35 @@ function onFileClick(path: string) {
   nextTick(() => previewPanelRef.value?.openFromPath(path))
 }
 
-function getSendFn(): ((data: string) => void) | null {
+function getSendFn(): SendDataFn | null {
   if (!activePaneId.value) return null
   const tab = tabs.value.find((t) => t.paneId === activePaneId.value)
   if (!tab || tab.type !== 'terminal') return null
   const paneId = tab.activePaneId
   if (!termRefs[paneId]) return null
-  return (data: string) => {
-    termRefs[paneId]?.sendData(data)
-    if (tab.broadcastMode && getAllLeaves(tab.layout).length > 1) {
-      for (const leaf of getAllLeaves(tab.layout)) {
-        if (leaf.paneId !== paneId) {
-          termRefs[leaf.paneId]?.sendData(data, true)
-        }
-      }
-      tab.broadcastActivity++
-    }
+  const broadcastMode = tab.broadcastMode
+  const frozenLeaves = broadcastMode ? getAllLeaves(tab.layout) : []
+  const recipientIds = [
+    paneId,
+    ...frozenLeaves.filter((leaf) => leaf.paneId !== paneId).map((leaf) => leaf.paneId),
+  ]
+  return createFrozenSendFn(
+    recipientIds.map((recipientId) =>
+      recipientId === paneId
+        ? (data: string) => termRefs[recipientId]?.sendData(data)
+        : (data: string) => termRefs[recipientId]?.sendData(data, true)
+    ),
+    broadcastMode && recipientIds.length > 1 ? () => tab.broadcastActivity++ : undefined,
+  )
+}
+
+function onKeyboardDismiss() {
+  const tab = activeTab.value
+  if (tab?.type === 'terminal') {
+    termRefs[tab.activePaneId]?.blur()
   }
+  const activeElement = document.activeElement
+  if (activeElement instanceof HTMLElement) activeElement.blur()
 }
 
 async function onLoginSuccess() {
@@ -957,6 +1073,36 @@ function onLinkActivate() {
   linkJustActivated = true
 }
 
+// Sticky typing mode, native focus-move guard.
+//
+// While typing, disabling every xterm helper textarea already stops a tap that
+// LANDS on a terminal from stealing focus (xterm's own mousedown handler calls
+// preventDefault() and then focus() on a now-unfocusable textarea). But a tap on
+// pane chrome that xterm does not cover — a split pane's header, the reduced-
+// opacity inactive-pane surface, the gap between panes — has no such
+// preventDefault, so the browser's default mousedown action moves focus off our
+// mobile keyboard input, which is exactly what closes the iOS system keyboard.
+// This is why a single-pane tap (always on the terminal) was fine while tapping
+// the other pane in a split was not. Cancel that default action for every
+// mousedown inside the terminal area while the lock is on. Capture phase so it
+// runs before the target's default focus handling; no stopPropagation, so pane
+// activation (SplitContainer's own mousedown -> focusPane) and link clicks still
+// fire. The lock is only ever set on touch under the collapse guard, so desktop
+// and off / open_only never reach this.
+//
+// #tab-content also holds the preview panel, whose address field and other real
+// inputs the user must still be able to focus while typing — cancelling their
+// default action would make them uneditable. So skip genuine focus targets
+// (form controls / contenteditable) and only guard taps on inert terminal
+// chrome. Buttons and links are unaffected either way: preventing a mousedown's
+// default does not cancel the subsequent click.
+function onTabContentMouseDownCapture(e: MouseEvent) {
+  if (!isKbTypingLocked()) return
+  const target = e.target as HTMLElement | null
+  if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+  e.preventDefault()
+}
+
 function onTerminalTouch(e: TouchEvent) {
   if (!isTouchDevice()) return
   const target = e.target as HTMLElement
@@ -969,7 +1115,7 @@ function onTerminalTouch(e: TouchEvent) {
     // Don't show keyboard when a scroll gesture was just detected
     if (scrollGestureDetected) {
       scrollGestureDetected = false
-      if (kbVisible.value && !appSettings.keyboard_keep_on_scroll) kbVisible.value = false
+      if (kbVisible.value && !hasCollapseGuard(appSettings.keyboard_guard_mode)) kbVisible.value = false
       return
     }
     const tab = tabs.value.find((t) => t.paneId === activePaneId.value)
@@ -977,10 +1123,10 @@ function onTerminalTouch(e: TouchEvent) {
     const term = paneId ? termRefs[paneId]?.getTerminal() : null
     if (term && term.touchMoved) {
       term.touchMoved = false
-      if (kbVisible.value && !appSettings.keyboard_keep_on_scroll) kbVisible.value = false
+      if (kbVisible.value && !hasCollapseGuard(appSettings.keyboard_guard_mode)) kbVisible.value = false
       return
     }
-    kbVisible.value = true
+    if (!hasOpenGuard(appSettings.keyboard_guard_mode)) kbVisible.value = true
   }
 }
 
@@ -988,9 +1134,9 @@ function onTerminalScroll() {
   scrollGestureDetected = true
   clearTimeout(scrollGestureTimer)
   scrollGestureTimer = window.setTimeout(() => { scrollGestureDetected = false }, 300)
-  // With keep-on-scroll enabled, scrolling back through history must not
+  // With the collapse guard enabled, scrolling back through history must not
   // dismiss the keyboard the user is typing on.
-  if (appSettings.keyboard_keep_on_scroll) return
+  if (hasCollapseGuard(appSettings.keyboard_guard_mode)) return
   if (kbVisible.value) kbVisible.value = false
 }
 
@@ -1046,6 +1192,48 @@ function onNewMenuAction(
     case 'ssh-connect':
       return sshPanelRef.value?.open()
   }
+}
+
+// ─── Save as Template dialog ───────────────────────────────────────
+const saveTemplateVisible = ref(false)
+const saveTemplateSourceTabId = ref('')
+const saveTemplateSourceLayout = computed<PaneLayout | null>(() => {
+  const tab = tabs.value.find((t) => t.paneId === saveTemplateSourceTabId.value)
+  if (!tab || tab.type !== 'terminal') return null
+  return tab.layout
+})
+
+function openSaveTemplateDialog(tabId: string) {
+  const tab = tabs.value.find((t) => t.paneId === tabId)
+  if (!tab || tab.type !== 'terminal') return
+  saveTemplateSourceTabId.value = tabId
+  saveTemplateVisible.value = true
+}
+
+function onTemplateSaved(_templateId: string) {
+  toast?.success(t('template.savedToast'))
+}
+
+// ─── Apply Template dialog ───────────────────────────────────────────
+const templatePickerVisible = ref(false)
+
+async function onTemplateApplied(
+  templateId: string,
+  scope: 'workspace' | 'global',
+  workspaceId?: string,
+) {
+  try {
+    const result = await applyTemplate(templateId, workspaceId)
+    if (!result) return
+    if (result.warnings.length > 0) {
+      toast?.warning(t('template.applyWarningsToast').replace('{n}', String(result.warnings.length)))
+    } else {
+      toast?.success(t('template.applyToast'))
+    }
+  } catch (e: any) {
+    toast?.error(e?.message || 'Apply failed')
+  }
+  void scope
 }
 
 async function onClosePane(tabId: string, paneId: string) {
@@ -1225,6 +1413,19 @@ const paletteCommands = computed<Command[]>(() => {
       subtitle: t('palette.newLocalTerminalDesc'),
       action: () => splitPane.splitPane('horizontal', true, activeWorkspacePath.value),
     }] : []),
+    // Only show "Save as Template" when active tab is a terminal tab with a layout
+    ...(activeTab.value?.type === 'terminal' ? [{
+      icon: '⎘',
+      title: t('palette.saveAsTemplate'),
+      subtitle: t('palette.saveAsTemplateDesc'),
+      action: () => openSaveTemplateDialog(activeTab.value!.paneId),
+    }] : []),
+    {
+      icon: '⊷',
+      title: t('palette.applyTemplate'),
+      subtitle: t('palette.applyTemplateDesc'),
+      action: () => { templatePickerVisible.value = true },
+    },
   ]
 
   // Plugin-registered commands
@@ -1259,7 +1460,7 @@ const paletteCommands = computed<Command[]>(() => {
   return base
 })
 
-const keyActions: Record<string, () => void> = {
+const keyActions: Record<string, (options?: AppActionOptions) => void> = {
   togglePalette: () => paletteRef.value?.toggle(),
   openBookmarks: () => bookmarksRef.value?.open(),
   newTab: () => newTab(),
@@ -1286,6 +1487,7 @@ const keyActions: Record<string, () => void> = {
     if (!tab || tab.type !== 'terminal') return
     termRefs[tab.activePaneId]?.toggleSearch()
   },
+  pasteTerminal: (options) => void hostClipboardPaste.trigger(options?.autoEnter ?? true),
   missionControl: () => openOverview(),
   superviseTabs: () =>
     void supervise((id) => activateTab(id, { defer: true }))
@@ -1301,10 +1503,15 @@ const keyActions: Record<string, () => void> = {
   addCursorsInFiles: () => triggerAddCursors(),
 }
 
-function dispatchAppAction(id: string) {
-  if (!APP_ACTION_IDS.has(id)) return
+function dispatchAppAction(id: string, options?: AppActionOptions) {
+  if (!isDispatchableAppAction(id)) return
+  const terminalAction = getTerminalSequenceAppAction(id)
+  if (terminalAction) {
+    getSendFn()?.(terminalAction.sequence)
+    return
+  }
   if (id === 'closeTab') lastTabCloseShortcutAt = Date.now()
-  keyActions[id]?.()
+  keyActions[id]?.(options)
 }
 
 function onGlobalKeydown(e: KeyboardEvent) {
@@ -1521,6 +1728,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  hostClipboardPaste.dispose()
   stopForegroundGainSubscription()
   pluginNotifyBridge.dispose()
   disposeNotificationPresentationScheduler()
@@ -1561,7 +1769,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: calc(100% - var(--mkb-height, 0px) - var(--sys-kb-height, 0px));
+  height: calc(100% - max(0px, var(--mkb-height, 0px) - var(--kb-overlap, 0px)) - var(--sys-kb-height, 0px));
 }
 .tab-page.active.has-preview {
   display: flex;

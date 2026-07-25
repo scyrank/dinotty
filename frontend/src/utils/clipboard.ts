@@ -1,3 +1,5 @@
+import { authFetch, apiUrl } from '../composables/apiBase'
+
 function copyViaRange(text: string): void {
   const priorSelection = window.getSelection()
   const savedRanges: Range[] = []
@@ -30,5 +32,17 @@ export async function copyToClipboard(text: string): Promise<void> {
     await navigator.clipboard.writeText(text)
   } catch {
     copyViaRange(text)
+  }
+}
+
+export async function readHostClipboard(): Promise<string | null> {
+  try {
+    const response = await authFetch(apiUrl('/api/clipboard'))
+    if (!response.ok) throw new Error('clipboard request failed')
+    const body = (await response.json()) as { text?: unknown }
+    if (typeof body.text !== 'string') throw new Error('invalid clipboard response')
+    return body.text
+  } catch {
+    return null
   }
 }

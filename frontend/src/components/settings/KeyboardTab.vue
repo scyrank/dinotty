@@ -502,7 +502,7 @@
               <option value="danger">{{ t('settings.style.danger') }}</option>
             </select>
           </label>
-          <label v-if="akEdit.kind === 'send' && !akIsEnterEdit" class="shortcut-check">
+          <label v-if="akSupportsAutoEnter" class="shortcut-check">
             <input type="checkbox" v-model="akEdit.auto_enter" /> {{ t('settings.appendEnter') }}
           </label>
           <label v-if="akEdit.kind === 'send' && !akIsEnterEdit" class="shortcut-check">
@@ -518,8 +518,21 @@
       </div>
     </CollapsibleSection>
 
-    <div class="settings-group">
-      <h3 class="settings-group-title">{{ t('settings.keyboard.feedback') }}</h3>
+    <CollapsibleSection :title="t('settings.advancedText')" level="group">
+      <div class="settings-row">
+        <label>{{ t('settings.keyboard.quickSendThreshold') }}</label>
+        <input
+          v-model.number="settings.quick_send_threshold"
+          type="number"
+          min="0"
+          max="5000"
+          step="1"
+          class="settings-input-number"
+          data-setting="quick-send-threshold"
+          @change="onQuickSendThresholdChange"
+        />
+      </div>
+      <p class="settings-hint">{{ t('settings.keyboard.quickSendThresholdHint') }}</p>
       <div class="settings-row">
         <label>{{ t('settings.keyboard.sound') }}</label>
         <label class="toggle">
@@ -527,19 +540,32 @@
           <span class="toggle-track"><span class="toggle-thumb"></span></span>
         </label>
       </div>
-      <div class="settings-row">
-        <label>{{ t('settings.keyboard.keepOnScroll') }}</label>
-        <label class="toggle">
-          <input
-            type="checkbox"
-            v-model="settings.keyboard_keep_on_scroll"
-            @change="saveSettings()"
-          />
-          <span class="toggle-track"><span class="toggle-thumb"></span></span>
-        </label>
+      <div class="settings-row keyboard-guard-row">
+        <label>{{ t('settings.keyboard.guardMode.label') }}</label>
+        <SegmentedControl
+          class="keyboard-guard-control"
+          data-setting="keyboard-guard-mode"
+          :model-value="settings.keyboard_guard_mode"
+          :options="keyboardGuardModeOptions"
+          :aria-label="t('settings.keyboard.guardMode.label')"
+          @update:model-value="onKeyboardGuardModeChange"
+        />
       </div>
-      <p class="settings-hint">{{ t('settings.keyboard.keepOnScrollHint') }}</p>
-    </div>
+      <p class="settings-hint">{{ t('settings.keyboard.guardMode.hint') }}</p>
+      <div class="settings-row">
+        <label>{{ t('settings.text.imeKeyboardOverlapPx') }}</label>
+        <input
+          v-model.number="imeKeyboardOverlapPx"
+          type="number"
+          min="0"
+          max="300"
+          step="8"
+          class="settings-input-number"
+          data-setting="ime-keyboard-overlap-px"
+        />
+      </div>
+      <p class="settings-hint">{{ t('settings.text.imeKeyboardOverlapHint') }}</p>
+    </CollapsibleSection>
 
     <CollapsibleSection :title="t('settings.keyboard.openApi')" level="group" default-open>
       <p class="settings-hint">{{ t('settings.keyboard.openApiHint') }}</p>
@@ -612,6 +638,12 @@
 
 <script lang="ts">
 export { akDropGripThreshold, akResolveDropIndex } from '../../composables/useActionKeyboardGesture'
+
+export function normalizeQuickSendThreshold(value: unknown): number {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return 63
+  return Math.min(5000, Math.max(0, Math.trunc(numeric)))
+}
 </script>
 
 <script setup lang="ts">
@@ -639,9 +671,12 @@ import { APP_ACTIONS, APP_ACTION_IDS } from '../../utils/appActionCatalog'
 import { isWindowsClient } from '../../utils/clientPlatform'
 import { useDeviceSuperviseReload } from '../../composables/useDeviceSuperviseReload'
 import { RotateCcw } from 'lucide-vue-next'
+import SegmentedControl from '../ui/SegmentedControl.vue'
+import type { KeyboardGuardMode } from '../../utils/keyboardGuardMode'
 import { useOpenApiTest } from '../../composables/useOpenApiTest'
 import { useKbRecording } from '../../composables/useKbRecording'
 import { useActionKeyboardGesture } from '../../composables/useActionKeyboardGesture'
+import { useDeviceKeyboardSettings } from '../../composables/useDeviceKeyboardSettings'
 import {
   escapeForDisplay,
   unescapeFromDisplay,
@@ -650,8 +685,26 @@ import {
 } from '../../composables/useKeySequenceUtils'
 
 const { settings, saveSettings } = useSettings()
+const { imeKeyboardOverlapPx } = useDeviceKeyboardSettings()
 const { hasOverride, reloadAfterSuperviseTabs, resetOverride } = useDeviceSuperviseReload()
 const { t } = useI18n()
+
+const keyboardGuardModeOptions = computed(() => [
+  { value: 'off', label: t('settings.keyboard.guardMode.off') },
+  { value: 'collapse_only', label: t('settings.keyboard.guardMode.collapseOnly') },
+  { value: 'open_only', label: t('settings.keyboard.guardMode.openOnly') },
+  { value: 'both', label: t('settings.keyboard.guardMode.both') },
+])
+
+function onKeyboardGuardModeChange(value: string) {
+  settings.keyboard_guard_mode = value as KeyboardGuardMode
+  void saveSettings()
+}
+
+function onQuickSendThresholdChange() {
+  settings.quick_send_threshold = normalizeQuickSendThreshold(settings.quick_send_threshold)
+  void saveSettings()
+}
 const { defs, getBinding, formatBinding, isReadOnly } = useKeybindings()
 const appDefs = computed(() => defs.filter((def) => (def.kind ?? 'app') === 'app'))
 const terminalDefs = computed(() => defs.filter((def) => def.kind === 'terminal'))
@@ -891,6 +944,12 @@ const akEdit = ref<{
 const akRecording = ref(false)
 const recordFocusSinkRef = ref<HTMLElement | null>(null)
 const akIsEnterEdit = computed(() => akEdit.value?.scope === 'bottom-enter')
+const akSupportsAutoEnter = computed(() =>
+  !!akEdit.value &&
+  !akIsEnterEdit.value &&
+  (akEdit.value.kind === 'send' ||
+    (akEdit.value.kind === 'action' && akEdit.value.action === 'pasteTerminal'))
+)
 
 const akCanSave = computed(() => {
   if (!akEdit.value) return false
@@ -981,6 +1040,7 @@ function saveActionKey() {
         action: edit.action,
         display: edit.display,
         style: edit.style || undefined,
+        ...(edit.action === 'pasteTerminal' ? { auto_enter: edit.auto_enter } : {}),
         grow: edit.grow,
       }
     : {
@@ -1178,6 +1238,13 @@ onBeforeUnmount(() => {
 }
 .send-btn:hover {
   opacity: 0.85;
+}
+.keyboard-guard-row {
+  align-items: stretch;
+  flex-direction: column;
+}
+.keyboard-guard-control {
+  width: 100%;
 }
 .send-btn:disabled {
   opacity: 0.4;

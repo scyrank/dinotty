@@ -51,6 +51,30 @@ export function setActivePaneId(paneId: string | null) {
   _activePaneId = paneId
 }
 
+// Sticky typing mode (mobile web): while the user is typing in the app's own
+// mobile-keyboard textarea, every xterm helper textarea is disabled so that no
+// focus can land there — neither programmatic (xterm's own mousedown handler
+// calls an explicit focus(), and split-pane activation focuses again on a later
+// tick) nor native. That helper carries inputMode='none', so focus landing on it
+// is exactly what closes the iOS system keyboard; keeping focus from EVER leaving
+// our textarea is what makes this flicker-free instead of restoring it after the
+// fact. The query covers hidden split panes too.
+// Deliberately sweep on every call so late-created or re-enabled helpers are reconciled.
+let _kbTypingLock = false
+export function setKbTypingLock(active: boolean) {
+  _kbTypingLock = active
+  document.querySelectorAll('.xterm-helper-textarea').forEach((el) => {
+    ;(el as HTMLTextAreaElement).disabled = active
+  })
+}
+
+// True while sticky typing mode holds the iOS keyboard open (touch + collapse
+// guard + our textarea focused). Consumers use it to suppress terminal focus
+// moves that would blur the mobile keyboard input and close the iOS keyboard.
+export function isKbTypingLocked(): boolean {
+  return _kbTypingLock
+}
+
 export class TerminalInstance {
   paneId: string
   xterm: XTerm | null = null
@@ -379,6 +403,7 @@ export class TerminalInstance {
     if (textarea && isTouchDevice()) {
       textarea.inputMode = 'none'
       textarea.setAttribute('virtualkeyboardpolicy', 'manual')
+      textarea.disabled = _kbTypingLock
     }
     // Track IME composition state on all platforms so focusActive() can
     // defer .focus()/.blur()/.fit() during composition. Interrupting an
@@ -640,7 +665,7 @@ export class TerminalInstance {
     // Guard: only the active pane sends input (prevents WKWebView multi-focus duplication)
     if (!force && _activePaneId !== null && _activePaneId !== this.paneId) return
     if (this._transport) {
-      this._transport.send({ type: 'input', data })
+      return this._transport.send({ type: 'input', data })
     } else if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'input', data } as ClientMsg))
     }
@@ -705,7 +730,15 @@ export class TerminalInstance {
   }
 
   pasteText(text: string) {
-    this.sendData(text)
+    if (this.xterm) {
+      this.xterm.paste(text)
+    } else {
+      this._emitInput(text)
+    }
+  }
+
+  sendInput(data: string) {
+    this._emitInput(data)
   }
 
   destroy() {

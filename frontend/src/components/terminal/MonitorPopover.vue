@@ -329,7 +329,8 @@ watch(
     } else {
       removeClickListener()
     }
-  }
+  },
+  { immediate: true }
 )
 
 function fmtBytes(b: number): string {

@@ -1,8 +1,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::too_many_lines)]
 
 use dinotty_server::{
-    agent, audit, auth, events, file_watcher, history, mcp, monitor, notification, openapi, plugin,
-    proxy, session, settings, tabs, token, webhook, workspace, workspace_mgmt, ws,
+    agent, api::clipboard, audit, auth, events, file_watcher, history, mcp, monitor, notification,
+    openapi, plugin, proxy, session, settings, tabs, templates, token, webhook, workspace,
+    workspace_mgmt, ws,
 };
 
 use axum::{
@@ -38,6 +39,7 @@ async fn dynamic_cors_middleware(
 ) -> Response<Body> {
     let origin =
         req.headers().get(header::ORIGIN).and_then(|v| v.to_str().ok()).map(str::to_string);
+    let is_clipboard = req.uri().path() == "/api/clipboard";
 
     let allowed_origins = {
         let s = state.settings.read().await;
@@ -62,8 +64,12 @@ async fn dynamic_cors_middleware(
         next.run(req).await
     };
 
+    let suppress_clipboard_origin = is_clipboard && response.status() == StatusCode::FORBIDDEN;
     let headers = response.headers_mut();
-    if let Some(ref ao) = allowed_origin {
+    if is_clipboard {
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    }
+    if let Some(ref ao) = allowed_origin.filter(|_| !suppress_clipboard_origin) {
         headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, ao.parse().unwrap());
         headers.insert(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, HeaderValue::from_static("true"));
         headers.insert(
@@ -97,7 +103,7 @@ pub struct GitInfo {
 
 fn read_git_info() -> GitInfo {
     GitInfo {
-        version: env!("DINOTTY_VERSION").to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
         repo_url: env!("CARGO_PKG_REPOSITORY").to_string(),
     }
 }
@@ -187,6 +193,14 @@ impl axum::extract::FromRef<AppState> for (PluginManagerState, Arc<SessionManage
     }
 }
 
+impl axum::extract::FromRef<AppState>
+    for (PluginManagerState, Arc<SessionManager>, workspace_mgmt::WorkspacesState)
+{
+    fn from_ref(state: &AppState) -> Self {
+        (state.plugins.clone(), state.manager.clone(), state.workspaces.clone())
+    }
+}
+
 impl axum::extract::FromRef<AppState> for token::TokenState {
     fn from_ref(state: &AppState) -> Self {
         state.tokens.clone()
@@ -226,6 +240,12 @@ impl axum::extract::FromRef<AppState> for Arc<SessionStore> {
 impl axum::extract::FromRef<AppState> for Arc<tokio::sync::RwLock<String>> {
     fn from_ref(state: &AppState) -> Self {
         state.auth_token.clone()
+    }
+}
+
+impl axum::extract::FromRef<AppState> for clipboard::ClipboardState {
+    fn from_ref(state: &AppState) -> Self {
+        clipboard::ClipboardState::new(state.auth_token.clone(), state.sessions.clone(), state.port)
     }
 }
 
@@ -644,6 +664,7 @@ async fn main() {
     let port = listener.local_addr().expect("bound listener").port();
     auth::set_session_cookie_port(port);
     let manager = Arc::new(SessionManager::new());
+    session::ledger::boot_sweep();
 
     let monitor_state = MonitorState::new(Arc::clone(&manager.sync_clients));
     monitor_state.clone().start_collector();
@@ -787,11 +808,23 @@ async fn main() {
             .route("/api/token-configured", get(token_configured))
             .route("/api/auto-token", get(auto_token))
             .route("/api/settings", get(settings::get_settings).put(put_settings_with_session_ttl))
+            .route("/api/clipboard", get(clipboard::get_clipboard))
             .route(
                 "/api/settings/background",
                 post(settings::upload_background).get(settings::get_background),
             )
             .route("/api/log", get(settings::get_log))
+            .route(
+                "/api/templates",
+                get(templates::list_templates).post(templates::create_template),
+            )
+            .route("/api/templates/apply", post(templates::apply_template))
+            .route(
+                "/api/templates/:id",
+                get(templates::get_template)
+                    .put(templates::update_template)
+                    .delete(templates::delete_template),
+            )
             .route("/api/workspace/resolve", get(workspace::workspace_resolve))
             .route("/api/workspace/list", get(workspace::workspace_list))
             .route("/api/workspace/meta", get(workspace::workspace_meta))

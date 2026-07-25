@@ -235,11 +235,13 @@ cargo run
 
 - [方案对比](docs/comparison.md) — 与 ttyd/gotty/Wetty 及其他 AI Coding 远程方案的差异
 - [部署指南](docs/deployment.md) — systemd、Docker、Windows 原生运行、跨平台构建、配置说明
+- [发布指南](docs/releasing.md) — 统一版本管理、版本 PR、`dev` 到 `main` 晋升、Tag 与 GitHub Release
 - [文件编辑器](docs/file-editor.md) — 分屏、多光标编辑、Cursor Group 跨文件同步
 - [通知系统](docs/notifications.md) — HTTP API、Claude Code 集成、Open API
 - [插件系统](docs/plugins.md) — 安装、清单、API、内置插件
 - [插件开发](docs/plugin-development.md) — 完整的插件开发文档
 - [Agent API](docs/agent-api.md) — HTTP/WebSocket 结构化交互，供 AI Agent 与自动化脚本调用
+- [主机剪贴板 API](docs/clipboard-api.md) — 移动端主机粘贴使用的敏感认证接口
 - [MCP Server](docs/mcp-server.md) — 内置 MCP JSON-RPC 服务器，AI 助手直接操作终端会话
 - [Token 权限系统](docs/token-system.md) — 基于 Capability 的多 Token 细粒度访问控制
 - [Event Bus](docs/event-bus.md) — 全局事件总线，模块间事件分发
