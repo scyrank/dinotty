@@ -10,39 +10,38 @@
 
   <!-- Title -->
   <text x="400.0" y="22" text-anchor="middle" fill="#e6edf3" font-family="system-ui,sans-serif" font-size="14" font-weight="600">
-    Star History - 473 stars
+    Star History - 476 stars
   </text>
 
   <!-- Y-axis grid + labels -->
   <line x1="55" y1="250.0" x2="780" y2="250.0" stroke="#21262d" stroke-width="0.5"/>
   <text x="47" y="254.0" text-anchor="end" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">0</text>
-  <line x1="55" y1="208.3" x2="780" y2="208.3" stroke="#21262d" stroke-width="0.5"/>
-  <text x="47" y="212.3" text-anchor="end" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">94</text>
-  <line x1="55" y1="166.1" x2="780" y2="166.1" stroke="#21262d" stroke-width="0.5"/>
-  <text x="47" y="170.1" text-anchor="end" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">189</text>
-  <line x1="55" y1="124.4" x2="780" y2="124.4" stroke="#21262d" stroke-width="0.5"/>
-  <text x="47" y="128.4" text-anchor="end" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">283</text>
-  <line x1="55" y1="82.2" x2="780" y2="82.2" stroke="#21262d" stroke-width="0.5"/>
-  <text x="47" y="86.2" text-anchor="end" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">378</text>
+  <line x1="55" y1="208.1" x2="780" y2="208.1" stroke="#21262d" stroke-width="0.5"/>
+  <text x="47" y="212.1" text-anchor="end" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">95</text>
+  <line x1="55" y1="166.2" x2="780" y2="166.2" stroke="#21262d" stroke-width="0.5"/>
+  <text x="47" y="170.2" text-anchor="end" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">190</text>
+  <line x1="55" y1="124.3" x2="780" y2="124.3" stroke="#21262d" stroke-width="0.5"/>
+  <text x="47" y="128.3" text-anchor="end" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">285</text>
+  <line x1="55" y1="82.4" x2="780" y2="82.4" stroke="#21262d" stroke-width="0.5"/>
+  <text x="47" y="86.4" text-anchor="end" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">380</text>
   <line x1="55" y1="40.0" x2="780" y2="40.0" stroke="#21262d" stroke-width="0.5"/>
-  <text x="47" y="44.0" text-anchor="end" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">473</text>
+  <text x="47" y="44.0" text-anchor="end" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">476</text>
 
   <!-- Area fill -->
-  <polygon points="55.0,246.4 65.5,244.2 76.0,238.5 86.5,235.3 97.0,234.5 107.5,233.6 118.0,232.7 128.6,232.2 139.1,231.8 149.6,230.9 160.1,230.9 170.6,228.2 181.1,223.8 191.6,220.7 202.1,219.8 212.6,217.1 223.1,215.8 233.6,213.6 244.1,212.3 254.6,210.0 265.1,210.0 275.7,208.3 286.2,205.6 296.7,202.9 307.2,200.7 317.7,200.3 328.2,198.9 338.7,197.6 349.2,197.2 359.7,195.8 370.2,194.9 380.7,194.1 391.2,192.7 401.7,191.0 412.2,191.0 422.8,190.1 433.3,189.6 443.8,189.2 454.3,182.1 464.8,160.8 475.3,152.3 485.8,144.8 496.3,141.7 506.8,133.7 517.3,123.9 527.8,115.5 538.3,108.4 548.8,105.3 559.3,102.6 569.9,99.9 580.4,96.4 590.9,94.6 601.4,92.4 611.9,89.7 622.4,88.4 632.9,87.9 643.4,86.2 653.9,84.8 664.4,82.6 674.9,82.2 685.4,81.7 695.9,80.0 706.4,78.6 717.0,75.5 727.5,75.1 738.0,74.6 748.5,53.8 759.0,50.7 769.5,43.6 780.0,40.0 780.0,250.0 55.0,250.0" fill="url(#fill)"/>
+  <polygon points="55.0,246.5 65.4,244.3 75.7,238.5 86.1,235.4 96.4,234.6 106.8,233.7 117.1,232.8 127.5,232.4 137.9,231.9 148.2,231.0 158.6,231.0 168.9,228.4 179.3,224.0 189.6,220.9 200.0,220.0 210.4,217.4 220.7,216.0 231.1,213.8 241.4,212.5 251.8,210.3 262.1,210.3 272.5,208.5 282.9,205.9 293.2,203.2 303.6,201.0 313.9,200.6 324.3,199.3 334.6,197.9 345.0,197.5 355.4,196.2 365.7,195.3 376.1,194.4 386.4,193.1 396.8,191.3 407.1,191.3 417.5,190.4 427.9,190.0 438.2,189.6 448.6,182.5 458.9,161.3 469.3,152.9 479.6,145.4 490.0,142.4 500.4,134.4 510.7,124.7 521.1,116.3 531.4,109.3 541.8,106.2 552.1,103.5 562.5,100.9 572.9,97.4 583.2,95.6 593.6,93.4 603.9,90.7 614.3,89.4 624.6,89.0 635.0,87.2 645.4,85.9 655.7,83.7 666.1,83.2 676.4,82.8 686.8,81.0 697.1,79.7 707.5,76.6 717.9,76.2 728.2,75.7 738.6,55.0 748.9,51.9 759.3,44.9 769.6,41.3 780.0,40.0 780.0,250.0 55.0,250.0" fill="url(#fill)"/>
 
   <!-- Line -->
-  <polyline points="55.0,246.4 65.5,244.2 76.0,238.5 86.5,235.3 97.0,234.5 107.5,233.6 118.0,232.7 128.6,232.2 139.1,231.8 149.6,230.9 160.1,230.9 170.6,228.2 181.1,223.8 191.6,220.7 202.1,219.8 212.6,217.1 223.1,215.8 233.6,213.6 244.1,212.3 254.6,210.0 265.1,210.0 275.7,208.3 286.2,205.6 296.7,202.9 307.2,200.7 317.7,200.3 328.2,198.9 338.7,197.6 349.2,197.2 359.7,195.8 370.2,194.9 380.7,194.1 391.2,192.7 401.7,191.0 412.2,191.0 422.8,190.1 433.3,189.6 443.8,189.2 454.3,182.1 464.8,160.8 475.3,152.3 485.8,144.8 496.3,141.7 506.8,133.7 517.3,123.9 527.8,115.5 538.3,108.4 548.8,105.3 559.3,102.6 569.9,99.9 580.4,96.4 590.9,94.6 601.4,92.4 611.9,89.7 622.4,88.4 632.9,87.9 643.4,86.2 653.9,84.8 664.4,82.6 674.9,82.2 685.4,81.7 695.9,80.0 706.4,78.6 717.0,75.5 727.5,75.1 738.0,74.6 748.5,53.8 759.0,50.7 769.5,43.6 780.0,40.0" fill="none" stroke="#FFD700" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <polyline points="55.0,246.5 65.4,244.3 75.7,238.5 86.1,235.4 96.4,234.6 106.8,233.7 117.1,232.8 127.5,232.4 137.9,231.9 148.2,231.0 158.6,231.0 168.9,228.4 179.3,224.0 189.6,220.9 200.0,220.0 210.4,217.4 220.7,216.0 231.1,213.8 241.4,212.5 251.8,210.3 262.1,210.3 272.5,208.5 282.9,205.9 293.2,203.2 303.6,201.0 313.9,200.6 324.3,199.3 334.6,197.9 345.0,197.5 355.4,196.2 365.7,195.3 376.1,194.4 386.4,193.1 396.8,191.3 407.1,191.3 417.5,190.4 427.9,190.0 438.2,189.6 448.6,182.5 458.9,161.3 469.3,152.9 479.6,145.4 490.0,142.4 500.4,134.4 510.7,124.7 521.1,116.3 531.4,109.3 541.8,106.2 552.1,103.5 562.5,100.9 572.9,97.4 583.2,95.6 593.6,93.4 603.9,90.7 614.3,89.4 624.6,89.0 635.0,87.2 645.4,85.9 655.7,83.7 666.1,83.2 676.4,82.8 686.8,81.0 697.1,79.7 707.5,76.6 717.9,76.2 728.2,75.7 738.6,55.0 748.9,51.9 759.3,44.9 769.6,41.3 780.0,40.0" fill="none" stroke="#FFD700" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
 
   <!-- X-axis labels -->
   <text x="55.0" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">05-16</text>
-  <text x="191.6" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">05-29</text>
-  <text x="328.2" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">06-11</text>
-  <text x="464.8" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">06-24</text>
-  <text x="601.4" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">07-07</text>
-  <text x="738.0" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">07-20</text>
-  <text x="780.0" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">07-24</text>
+  <text x="200.0" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">05-30</text>
+  <text x="345.0" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">06-13</text>
+  <text x="490.0" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">06-27</text>
+  <text x="635.0" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">07-11</text>
+  <text x="780.0" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">07-25</text>
 
   <!-- End dot -->
   <circle cx="780.0" cy="40.0" r="4" fill="#FFD700"/>
-  <text x="778.0" y="30.0" text-anchor="end" fill="#FFD700" font-family="system-ui,sans-serif" font-size="12" font-weight="600">473</text>
+  <text x="778.0" y="30.0" text-anchor="end" fill="#FFD700" font-family="system-ui,sans-serif" font-size="12" font-weight="600">476</text>
 </svg>
