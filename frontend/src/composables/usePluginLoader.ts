@@ -61,6 +61,9 @@ export interface PluginManifest {
   commands?: Array<{ id: string; title: string }>
   styles?: string
   permissions?: string[]
+  category?: string
+  targets?: string[]
+  showInToolbar?: boolean
 }
 
 export interface Disposable {
@@ -746,14 +749,18 @@ export function usePluginLoader() {
   })
 
   const pluginList = computed(() => {
-    return Array.from(loadedPlugins.values()).map((p) => ({
-      id: p.id,
-      name: p.manifest.name,
-      description: p.manifest.description,
-      icon: p.manifest.icon,
-      state: p.state,
-      isDevLink: p.isDevLink,
-    }))
+    return Array.from(loadedPlugins.values())
+      .map((p) => ({
+        id: p.id,
+        name: p.manifest.name,
+        description: p.manifest.description,
+        icon: p.manifest.icon,
+        state: p.state,
+        isDevLink: p.isDevLink,
+        category: p.manifest.category,
+        showInToolbar: p.manifest.showInToolbar,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name))
   })
 
   return {

@@ -204,6 +204,42 @@ export interface PluginExports {
   monitor?: { series: MonitorSeries[] }
 }
 
+/**
+ * Plugin manifest (`plugin.json`) schema. Mirrors the backend `PluginManifest`.
+ *
+ * `category`, `targets`, and `showInToolbar` are optional metadata used by the
+ * host UI for filtering, sorting, and toolbar visibility.
+ */
+export interface PluginManifest {
+  id: string
+  name: string
+  version: string
+  minAppVersion?: string
+  description?: string
+  icon?: string
+  entry?: string
+  bin?: {
+    mode: string
+    entry?: string
+    entries?: Record<string, string>
+    lifecycle?: {
+      scope?: 'ui' | 'host'
+      stdinLease?: boolean
+      shutdownDeadlineMs?: number
+      forceKillAfterMs?: number
+    }
+  }
+  commands?: Array<{ id: string; title: string }>
+  styles?: string
+  permissions?: string[]
+  /** One of: 'system' | 'dev' | 'ai' | 'files' | 'network' | 'other' */
+  category?: string
+  /** Supported host targets, e.g. ['macos-aarch64', 'linux-x86_64']. Omit = all platforms. */
+  targets?: string[]
+  /** Whether the plugin should appear in the toolbar dropdown by default. Defaults to true. */
+  showInToolbar?: boolean
+}
+
 /** 插件必须导出此函数 */
 export declare function activate(context: PluginContext): PluginExports | void | Promise<PluginExports | void>
 

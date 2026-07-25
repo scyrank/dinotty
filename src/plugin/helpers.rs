@@ -22,6 +22,18 @@ pub fn validate_manifest(manifest: &PluginManifest) -> Result<(), String> {
     if manifest.version.is_empty() {
         return Err("version is required".into());
     }
+    if let Some(category) = &manifest.category {
+        if !is_known_category(category) {
+            return Err(format!("unknown category '{category}'"));
+        }
+    }
+    if let Some(targets) = &manifest.targets {
+        for target in targets {
+            if !is_known_host_target(target) {
+                return Err(format!("unknown host target '{target}'"));
+            }
+        }
+    }
     if let Some(bin) = &manifest.bin {
         if bin.mode != "cli" {
             return Err("bin.mode must be 'cli'".into());
@@ -68,6 +80,34 @@ pub fn validate_manifest(manifest: &PluginManifest) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Categories recognised by the plugin UI. Keep in sync with frontend category list.
+#[must_use]
+pub fn is_known_category(category: &str) -> bool {
+    matches!(category, "system" | "dev" | "ai" | "files" | "network" | "other")
+}
+
+#[must_use]
+pub fn is_known_host_target(target: &str) -> bool {
+    matches!(
+        target,
+        "windows-x86_64" | "linux-x86_64" | "linux-aarch64" | "macos-x86_64" | "macos-aarch64"
+    )
+}
+
+/// Returns true if the plugin's declared `targets` cover the current host.
+/// `None` means "all platforms supported".
+#[must_use]
+pub fn is_compatible(manifest_targets: Option<&[String]>, host: Option<HostTarget>) -> bool {
+    let Some(host) = host else {
+        // Unknown host: don't claim compatibility, but don't block either.
+        return true;
+    };
+    match manifest_targets {
+        None => true,
+        Some(targets) => targets.iter().any(|t| t == host.as_str()),
+    }
 }
 
 #[must_use]
@@ -327,8 +367,8 @@ pub fn version_gt(a: &str, b: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        copy_plugin_dir, extract_tar_gz, extract_zip, require_native_approval, resolve_binary,
-        validate_manifest, validate_min_app_version, LONG_RUNNING_PERMISSION,
+        copy_plugin_dir, extract_tar_gz, extract_zip, is_compatible, require_native_approval,
+        resolve_binary, validate_manifest, validate_min_app_version, LONG_RUNNING_PERMISSION,
         NATIVE_EXECUTE_PERMISSION,
     };
     use crate::plugin::{
@@ -400,6 +440,9 @@ mod tests {
             commands: None,
             styles: None,
             permissions: None,
+            category: None,
+            targets: None,
+            show_in_toolbar: None,
         }
     }
 
@@ -588,5 +631,77 @@ mod tests {
 
         let error = copy_plugin_dir(&src, &dest).unwrap_err();
         assert!(error.contains("symbolic links are not allowed"));
+    }
+
+    fn minimal_manifest() -> PluginManifest {
+        PluginManifest {
+            id: "demo".into(),
+            name: "Demo".into(),
+            version: "0.1.0".into(),
+            min_app_version: None,
+            description: None,
+            icon: None,
+            entry: None,
+            bin: None,
+            commands: None,
+            styles: None,
+            permissions: None,
+            category: None,
+            targets: None,
+            show_in_toolbar: None,
+        }
+    }
+
+    #[test]
+    fn validate_accepts_known_category() {
+        let mut manifest = minimal_manifest();
+        manifest.category = Some("dev".into());
+        assert!(validate_manifest(&manifest).is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_unknown_category() {
+        let mut manifest = minimal_manifest();
+        manifest.category = Some("games".into());
+        let err = validate_manifest(&manifest).unwrap_err();
+        assert!(err.contains("unknown category"));
+    }
+
+    #[test]
+    fn validate_accepts_known_targets() {
+        let mut manifest = minimal_manifest();
+        manifest.targets = Some(vec!["macos-aarch64".into(), "linux-x86_64".into()]);
+        assert!(validate_manifest(&manifest).is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_unknown_target() {
+        let mut manifest = minimal_manifest();
+        manifest.targets = Some(vec!["macos-aarch64".into(), "windows-arm".into()]);
+        let err = validate_manifest(&manifest).unwrap_err();
+        assert!(err.contains("unknown host target"));
+    }
+
+    #[test]
+    fn is_compatible_none_targets_is_universal() {
+        assert!(is_compatible(None, HostTarget::current()));
+    }
+
+    #[test]
+    fn is_compatible_matching_target() {
+        let targets = vec!["macos-aarch64".to_string()];
+        assert!(is_compatible(Some(&targets), Some(HostTarget::MacosAarch64)));
+    }
+
+    #[test]
+    fn is_compatible_mismatching_target() {
+        let targets = vec!["linux-x86_64".to_string()];
+        assert!(!is_compatible(Some(&targets), Some(HostTarget::MacosAarch64)));
+    }
+
+    #[test]
+    fn is_compatible_unknown_host_is_permissive() {
+        let targets = vec!["linux-x86_64".to_string()];
+        assert!(is_compatible(Some(&targets), None));
     }
 }

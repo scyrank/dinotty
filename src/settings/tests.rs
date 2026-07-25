@@ -235,6 +235,30 @@ fn settings_notification_defaults() {
 }
 
 #[test]
+fn settings_plugin_prefs_default_empty() {
+    let settings: Settings = serde_json::from_str(r"{}").unwrap();
+    assert!(settings.plugin_prefs.hidden_toolbar.is_empty());
+    assert!(!settings.plugin_prefs.show_incompatible);
+}
+
+#[test]
+fn settings_plugin_prefs_round_trips() {
+    let json = r#"{
+        "plugin_prefs": {
+            "hidden_toolbar": ["foo", "bar"],
+            "show_incompatible": true
+        }
+    }"#;
+    let settings: Settings = serde_json::from_str(json).unwrap();
+    assert_eq!(settings.plugin_prefs.hidden_toolbar, vec!["foo".to_string(), "bar".to_string()]);
+    assert!(settings.plugin_prefs.show_incompatible);
+
+    let serialized = serde_json::to_string(&settings).unwrap();
+    assert!(serialized.contains("\"hidden_toolbar\""));
+    assert!(serialized.contains("\"show_incompatible\":true"));
+}
+
+#[test]
 fn old_settings_migrate_legacy_upload_dir_once() {
     let mut settings = Settings {
         settings_version: 0,

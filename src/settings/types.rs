@@ -149,6 +149,16 @@ pub struct Settings {
     pub custom_themes: Vec<SavedTheme>,
     #[serde(default)]
     pub hidden_builtins: Vec<String>,
+    #[serde(default)]
+    pub plugin_prefs: PluginPrefsConfig,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct PluginPrefsConfig {
+    #[serde(default)]
+    pub hidden_toolbar: Vec<String>,
+    #[serde(default)]
+    pub show_incompatible: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -829,6 +839,7 @@ impl Default for Settings {
             preview: PreviewConfig::default(),
             custom_themes: vec![],
             hidden_builtins: vec![],
+            plugin_prefs: PluginPrefsConfig::default(),
         }
     }
 }

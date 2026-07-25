@@ -19,6 +19,12 @@ pub struct PluginManifest {
     pub commands: Option<Vec<CommandDef>>,
     pub styles: Option<String>,
     pub permissions: Option<Vec<String>>,
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
+    pub targets: Option<Vec<String>>,
+    #[serde(default, rename = "showInToolbar")]
+    pub show_in_toolbar: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -279,6 +285,12 @@ pub struct RegistryPlugin {
     pub author: Option<String>,
     #[serde(default)]
     pub homepage: Option<String>,
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
+    pub targets: Option<Vec<String>>,
+    #[serde(default, rename = "showInToolbar")]
+    pub show_in_toolbar: Option<bool>,
 }
 
 pub(super) fn default_branch() -> String {
@@ -322,4 +334,11 @@ pub struct MarketPlugin {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub installed_version: Option<String>,
     pub has_update: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub targets: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub show_in_toolbar: Option<bool>,
+    pub compatible: bool,
 }

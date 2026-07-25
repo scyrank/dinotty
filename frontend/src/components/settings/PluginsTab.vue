@@ -28,49 +28,79 @@
           {{ t('settings.plugins.retry') }}
         </button>
       </div>
-      <div v-else-if="marketPlugins.length === 0" class="plugin-empty">
-        {{ t('settings.plugins.noPlugins') }}
-      </div>
-      <div
-        v-for="mp in marketPlugins"
-        :key="mp.id"
-        class="plugin-card plugin-card-clickable"
-        @click="openDetail(mp)"
-      >
-        <div class="plugin-card-header">
-          <span class="plugin-card-name">{{ mp.name }}</span>
-          <span class="plugin-card-version">v{{ mp.version }}</span>
-          <span v-if="mp.installed_version && !mp.has_update" class="plugin-badge installed">
-            {{ t('settings.plugins.installedBadge') }}
-          </span>
-          <span v-if="mp.has_update" class="plugin-badge update">
-            {{ t('settings.plugins.hasUpdate') }}
-          </span>
+      <template v-else>
+        <div class="plugin-filter-bar">
+          <input
+            v-model="marketQuery"
+            type="text"
+            class="plugin-search-input"
+            :placeholder="t('plugin.searchPlaceholder')"
+          />
+          <div class="plugin-category-chips">
+            <button
+              v-for="cat in categoryOptions"
+              :key="cat.value || 'all'"
+              class="plugin-category-chip"
+              :class="{ active: marketCategory === cat.value }"
+              @click="marketCategory = cat.value"
+            >
+              {{ cat.label }}
+            </button>
+          </div>
+          <label class="plugin-toggle-inline">
+            <input type="checkbox" v-model="showIncompatibleModel" />
+            <span>{{ t('plugin.showIncompatible') }}</span>
+          </label>
         </div>
-        <p class="plugin-card-desc">
-          {{ locale === 'zh' && mp.description_zh ? mp.description_zh : mp.description }}
-        </p>
-        <div class="plugin-card-actions">
-          <button
-            v-if="!mp.installed_version"
-            class="plugin-install-btn"
-            @click.stop="onMarketInstall(mp)"
-            :disabled="isBusy(mp.id)"
-          >
-            <span v-if="isBusy(mp.id)" class="plugin-spinner"></span>
-            {{ t('settings.plugins.installFromMarket') }}
-          </button>
-          <button
-            v-else-if="mp.has_update"
-            class="plugin-install-btn"
-            @click.stop="onMarketInstall(mp)"
-            :disabled="isBusy(mp.id)"
-          >
-            <span v-if="isBusy(mp.id)" class="plugin-spinner"></span>
-            {{ t('settings.plugins.updateFromMarket') }}
-          </button>
+        <div v-if="filteredMarketPlugins.length === 0" class="plugin-empty">
+          {{ t('settings.plugins.noPlugins') }}
         </div>
-      </div>
+        <div
+          v-for="mp in filteredMarketPlugins"
+          :key="mp.id"
+          class="plugin-card plugin-card-clickable"
+          :class="{ 'plugin-card-incompatible': !mp.compatible }"
+          @click="openDetail(mp)"
+        >
+          <div class="plugin-card-header">
+            <span class="plugin-card-name">{{ mp.name }}</span>
+            <span v-if="mp.category" class="plugin-badge category">{{ t('plugin.category.' + mp.category) }}</span>
+            <span class="plugin-card-version">v{{ mp.version }}</span>
+            <span v-if="mp.installed_version && !mp.has_update" class="plugin-badge installed">
+              {{ t('settings.plugins.installedBadge') }}
+            </span>
+            <span v-if="mp.has_update" class="plugin-badge update">
+              {{ t('settings.plugins.hasUpdate') }}
+            </span>
+            <span v-if="!mp.compatible" class="plugin-badge incompatible">
+              {{ t('plugin.incompatible') }}
+            </span>
+          </div>
+          <p class="plugin-card-desc">
+            {{ locale === 'zh' && mp.description_zh ? mp.description_zh : mp.description }}
+          </p>
+          <div class="plugin-card-actions">
+            <button
+              v-if="!mp.installed_version && mp.compatible"
+              class="plugin-install-btn"
+              @click.stop="onMarketInstall(mp)"
+              :disabled="isBusy(mp.id)"
+            >
+              <span v-if="isBusy(mp.id)" class="plugin-spinner"></span>
+              {{ t('settings.plugins.installFromMarket') }}
+            </button>
+            <button
+              v-else-if="mp.has_update && mp.compatible"
+              class="plugin-install-btn"
+              @click.stop="onMarketInstall(mp)"
+              :disabled="isBusy(mp.id)"
+            >
+              <span v-if="isBusy(mp.id)" class="plugin-spinner"></span>
+              {{ t('settings.plugins.updateFromMarket') }}
+            </button>
+          </div>
+        </div>
+      </template>
     </div>
 
     <!-- Market Detail View -->
@@ -193,59 +223,92 @@
       <div v-if="settingsPlugins.length === 0" class="plugin-empty">
         {{ t('settings.plugins.none') }}
       </div>
-      <div v-for="p in settingsPlugins" :key="p.id" class="plugin-card">
-        <div class="plugin-card-header">
-          <span class="plugin-card-name">{{ p.name }}</span>
-          <span v-if="p.isDevLink" class="plugin-badge dev">{{
-            t('settings.plugins.devBadge')
-          }}</span>
-          <span v-if="p.state === 'error'" class="plugin-badge error">error</span>
-          <span class="plugin-card-version">v{{ p.version }}</span>
+      <template v-else>
+        <div class="plugin-filter-bar">
+          <input
+            v-model="installedQuery"
+            type="text"
+            class="plugin-search-input"
+            :placeholder="t('plugin.searchPlaceholder')"
+          />
+          <div class="plugin-category-chips">
+            <button
+              v-for="cat in categoryOptions"
+              :key="cat.value || 'all'"
+              class="plugin-category-chip"
+              :class="{ active: installedCategory === cat.value }"
+              @click="installedCategory = cat.value"
+            >
+              {{ cat.label }}
+            </button>
+          </div>
         </div>
-        <p v-if="p.description" class="plugin-card-desc">{{ p.description }}</p>
-        <p v-if="p.error" class="plugin-card-error">{{ p.error }}</p>
-        <div v-if="p.permissions.length" class="plugin-permissions">
-          <span class="plugin-permissions-label">{{ t('settings.plugins.permissions') }}</span>
-          <code v-for="permission in p.permissions" :key="permission">{{ permission }}</code>
+        <div v-if="filteredSettingsPlugins.length === 0" class="plugin-empty">
+          {{ t('settings.plugins.none') }}
         </div>
-        <div class="plugin-card-actions">
-          <button
-            v-if="p.state === 'active' && p.hasComponent"
-            class="plugin-install-btn"
-            :disabled="isBusy(p.id)"
-            @click="emit('open-plugin', p.id)"
-          >
-            {{ t('settings.plugins.openManagement') }}
-          </button>
-          <button
-            v-if="p.marketEntry"
-            class="plugin-install-btn"
-            @click="onUpdateFromRepo(p.marketEntry!)"
-            :disabled="isBusy(p.id)"
-          >
-            <span v-if="isBusy(p.id)" class="plugin-spinner"></span>
-            {{ t('settings.plugins.updateFromMarket') }}
-          </button>
-          <label v-else class="plugin-action-btn" :class="{ disabled: isBusy(`update:${p.id}`) }">
-            <input
-              type="file"
-              accept=".tar.gz,.tgz"
-              hidden
-              @change="onUpdateFile($event, p.id)"
-              :disabled="isBusy(`update:${p.id}`)"
-            />
-            <span v-if="isBusy(`update:${p.id}`)" class="plugin-spinner"></span>
-            <span>{{ t('settings.plugins.update') }}</span>
-          </label>
-          <button
-            class="plugin-action-btn plugin-danger"
-            @click="onUninstall(p.id)"
-            :disabled="isBusy(p.id)"
-          >
-            {{ t('settings.plugins.uninstall') }}
-          </button>
+        <div v-for="p in filteredSettingsPlugins" :key="p.id" class="plugin-card">
+          <div class="plugin-card-header">
+            <span class="plugin-card-name">{{ p.name }}</span>
+            <span v-if="p.category" class="plugin-badge category">{{ t('plugin.category.' + p.category) }}</span>
+            <span v-if="p.isDevLink" class="plugin-badge dev">{{
+              t('settings.plugins.devBadge')
+            }}</span>
+            <span v-if="p.state === 'error'" class="plugin-badge error">error</span>
+            <span class="plugin-card-version">v{{ p.version }}</span>
+          </div>
+          <p v-if="p.description" class="plugin-card-desc">{{ p.description }}</p>
+          <p v-if="p.error" class="plugin-card-error">{{ p.error }}</p>
+          <div v-if="p.permissions.length" class="plugin-permissions">
+            <span class="plugin-permissions-label">{{ t('settings.plugins.permissions') }}</span>
+            <code v-for="permission in p.permissions" :key="permission">{{ permission }}</code>
+          </div>
+          <div class="plugin-card-actions">
+            <label class="plugin-toggle-inline" :title="t('plugin.showInToolbar')">
+              <input
+                type="checkbox"
+                :checked="!hiddenToolbarIncludes(p.id)"
+                @change="toggleToolbarVisible(p.id, ($event.target as HTMLInputElement).checked)"
+              />
+              <span>{{ t('plugin.showInToolbar') }}</span>
+            </label>
+            <button
+              v-if="p.state === 'active' && p.hasComponent"
+              class="plugin-install-btn"
+              :disabled="isBusy(p.id)"
+              @click="emit('open-plugin', p.id)"
+            >
+              {{ t('settings.plugins.openManagement') }}
+            </button>
+            <button
+              v-if="p.marketEntry"
+              class="plugin-install-btn"
+              @click="onUpdateFromRepo(p.marketEntry!)"
+              :disabled="isBusy(p.id)"
+            >
+              <span v-if="isBusy(p.id)" class="plugin-spinner"></span>
+              {{ t('settings.plugins.updateFromMarket') }}
+            </button>
+            <label v-else class="plugin-action-btn" :class="{ disabled: isBusy(`update:${p.id}`) }">
+              <input
+                type="file"
+                accept=".tar.gz,.tgz"
+                hidden
+                @change="onUpdateFile($event, p.id)"
+                :disabled="isBusy(`update:${p.id}`)"
+              />
+              <span v-if="isBusy(`update:${p.id}`)" class="plugin-spinner"></span>
+              <span>{{ t('settings.plugins.update') }}</span>
+            </label>
+            <button
+              class="plugin-action-btn plugin-danger"
+              @click="onUninstall(p.id)"
+              :disabled="isBusy(p.id)"
+            >
+              {{ t('settings.plugins.uninstall') }}
+            </button>
+          </div>
         </div>
-      </div>
+      </template>
     </div>
 
     <FilePickerModal
@@ -277,6 +340,7 @@ import { usePluginLoader } from '../../composables/usePluginLoader'
 import { useMarketplace, type MarketPlugin } from '../../composables/useMarketplace'
 import { describeHttpError, describeRequestError } from '../../utils/httpError'
 import { uiConfirm } from '../../composables/useConfirm'
+import { settings, saveSettings } from '../../composables/useSettings'
 import ConfirmModal from '../ui/ConfirmModal.vue'
 import FilePickerModal from '../preview/FilePickerModal.vue'
 
@@ -316,19 +380,83 @@ const readmeHtmlContent = computed(() => {
 })
 
 const settingsPlugins = computed(() =>
-  Array.from(loadedPlugins.values()).map((p) => ({
-    id: p.id,
-    name: p.manifest.name,
-    version: p.manifest.version,
-    description: p.manifest.description,
-    state: p.state,
-    error: p.error,
-    hasComponent: !!p.exports?.component,
-    permissions: p.manifest.permissions ?? [],
-    isDevLink: p.isDevLink,
-    marketEntry: marketPlugins.value.find((mp) => mp.id === p.id),
-  }))
+  Array.from(loadedPlugins.values())
+    .map((p) => ({
+      id: p.id,
+      name: p.manifest.name,
+      version: p.manifest.version,
+      description: p.manifest.description,
+      state: p.state,
+      error: p.error,
+      hasComponent: !!p.exports?.component,
+      permissions: p.manifest.permissions ?? [],
+      isDevLink: p.isDevLink,
+      category: p.manifest.category,
+      marketEntry: marketPlugins.value.find((mp) => mp.id === p.id),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name))
 )
+
+const PLUGIN_CATEGORY_ORDER = ['system', 'dev', 'ai', 'files', 'network', 'other'] as const
+
+const categoryOptions = computed(() => [
+  { value: '', label: t('plugin.category.all') },
+  ...PLUGIN_CATEGORY_ORDER.map((c) => ({ value: c, label: t(`plugin.category.${c}`) })),
+])
+
+const marketQuery = ref('')
+const marketCategory = ref('')
+const installedQuery = ref('')
+const installedCategory = ref('')
+
+const showIncompatibleModel = computed({
+  get: () => settings.plugin_prefs?.show_incompatible ?? false,
+  set: (v: boolean) => {
+    settings.plugin_prefs = {
+      ...(settings.plugin_prefs ?? { hidden_toolbar: [], show_incompatible: false }),
+      show_incompatible: v,
+    }
+    void saveSettings()
+  },
+})
+
+function matchesQuery(query: string, fields: Array<string | undefined>): boolean {
+  if (!query.trim()) return true
+  const q = query.trim().toLowerCase()
+  return fields.some((f) => f && f.toLowerCase().includes(q))
+}
+
+const filteredMarketPlugins = computed(() => {
+  return marketPlugins.value
+    .filter((mp) => (settings.plugin_prefs?.show_incompatible ? true : mp.compatible))
+    .filter((mp) => !marketCategory.value || mp.category === marketCategory.value)
+    .filter((mp) =>
+      matchesQuery(marketQuery.value, [mp.name, mp.id, mp.description, mp.author])
+    )
+    .sort((a, b) => a.name.localeCompare(b.name))
+})
+
+const filteredSettingsPlugins = computed(() => {
+  return settingsPlugins.value
+    .filter((p) => !installedCategory.value || p.category === installedCategory.value)
+    .filter((p) =>
+      matchesQuery(installedQuery.value, [p.name, p.id, p.description])
+    )
+})
+
+function hiddenToolbarIncludes(id: string): boolean {
+  return (settings.plugin_prefs?.hidden_toolbar ?? []).includes(id)
+}
+
+async function toggleToolbarVisible(id: string, visible: boolean) {
+  const current = settings.plugin_prefs?.hidden_toolbar ?? []
+  const next = visible ? current.filter((x) => x !== id) : [...current, id]
+  settings.plugin_prefs = {
+    ...(settings.plugin_prefs ?? { hidden_toolbar: [], show_incompatible: false }),
+    hidden_toolbar: next,
+  }
+  await saveSettings()
+}
 
 function setStatus(msg: string, ok: boolean) {
   statusMsg.value = msg
@@ -593,6 +721,76 @@ async function onRefresh() {
   align-items: center;
   gap: 8px;
   margin-bottom: 12px;
+}
+.plugin-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.plugin-search-input {
+  flex: 1;
+  min-width: 160px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--fg, #ccc);
+  background: var(--bg-input);
+  border: 1px solid var(--border, #444);
+  border-radius: 5px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.plugin-search-input:focus {
+  border-color: var(--fg-muted, #858585);
+}
+.plugin-category-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.plugin-category-chip {
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--fg-muted, #858585);
+  background: none;
+  border: 1px solid var(--border, #444);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.plugin-category-chip:hover {
+  color: var(--fg, #ccc);
+  border-color: var(--fg-muted, #858585);
+}
+.plugin-category-chip.active {
+  color: var(--bg, #1e1e1e);
+  background: var(--fg-muted, #858585);
+  border-color: var(--fg-muted, #858585);
+}
+.plugin-toggle-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--fg-muted, #858585);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.plugin-toggle-inline input[type='checkbox'] {
+  accent-color: var(--accent, #8a8a8a);
+}
+.plugin-badge.category {
+  color: var(--fg-muted, #858585);
+  background: var(--bg-hover);
+}
+.plugin-badge.incompatible {
+  color: var(--color-red, #ef4444);
+  background: rgba(239, 68, 68, 0.15);
+}
+.plugin-card-incompatible {
+  opacity: 0.7;
 }
 .plugin-toolbar-right {
   display: flex;

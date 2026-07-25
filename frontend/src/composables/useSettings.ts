@@ -23,6 +23,7 @@ export interface SettingsData {
   }
   custom_themes: SavedTheme[]
   hidden_builtins: string[]
+  plugin_prefs: PluginPrefsConfig
   background: {
     mode: string
     color: string | null
@@ -183,6 +184,11 @@ export interface RecentEntry {
   path_or_url: string
   name: string
   visited_at: number
+}
+
+export interface PluginPrefsConfig {
+  hidden_toolbar: string[]
+  show_incompatible: boolean
 }
 
 export interface ActionKey {
@@ -366,6 +372,7 @@ export const settings = reactive<SettingsData>({
   theme: { preset: 'dark', custom: null },
   custom_themes: [],
   hidden_builtins: [],
+  plugin_prefs: { hidden_toolbar: [], show_incompatible: false },
   background: { mode: 'solid', color: null, opacity: 1.0, has_image: false },
   text: {
     font_size: 14,

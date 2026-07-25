@@ -182,7 +182,7 @@
         </div>
       </div>
     </div>
-    <div v-if="plugins.length > 0" class="tab-bar-plugin-wrap" ref="pluginWrapRef">
+    <div v-if="plugins.length > 0 && toolbarPlugins.length > 0" class="tab-bar-plugin-wrap" ref="pluginWrapRef">
       <button
         type="button"
         class="tab-bar-icon-btn"
@@ -193,22 +193,30 @@
         <Puzzle :size="16" />
       </button>
       <div v-if="pluginMenuOpen" class="plugin-dropdown">
-        <div
-          v-for="p in plugins"
-          :key="p.id"
-          class="plugin-dropdown-item"
-          @click="
-            $emit('open-plugin', p.id);
-            pluginMenuOpen = false;
-          "
-          @touchend.prevent="
-            $emit('open-plugin', p.id);
-            pluginMenuOpen = false;
-          "
-        >
-          <span class="plugin-dropdown-name">{{ p.name }}</span>
-          <span v-if="p.description" class="plugin-dropdown-desc">{{ p.description }}</span>
+        <div v-if="toolbarPlugins.length === 0" class="plugin-dropdown-empty">
+          {{ t('plugin.toolbarEmpty') }}
         </div>
+        <template v-for="group in toolbarPluginGroups" :key="group.category">
+          <div v-if="group.items.length > 0" class="plugin-dropdown-group">
+            <div class="plugin-dropdown-group-title">{{ group.label }}</div>
+            <div
+              v-for="p in group.items"
+              :key="p.id"
+              class="plugin-dropdown-item"
+              @click="
+                $emit('open-plugin', p.id);
+                pluginMenuOpen = false;
+              "
+              @touchend.prevent="
+                $emit('open-plugin', p.id);
+                pluginMenuOpen = false;
+              "
+            >
+              <span class="plugin-dropdown-name">{{ p.name }}</span>
+              <span v-if="p.description" class="plugin-dropdown-desc">{{ p.description }}</span>
+            </div>
+          </div>
+        </template>
       </div>
     </div>
     <slot name="right"></slot>
@@ -283,6 +291,8 @@ export interface PluginInfo {
   description?: string
   icon?: string
   state: string
+  category?: string
+  showInToolbar?: boolean
 }
 
 const props = withDefaults(
@@ -317,6 +327,28 @@ const wsBadgeMode = computed(() =>
 )
 const showWsBadge = computed(() => wsBadgeMode.value.showTabBadge)
 const showWsMonogram = computed(() => wsBadgeMode.value.showMonogram)
+
+const PLUGIN_CATEGORY_ORDER = ['system', 'dev', 'ai', 'files', 'network', 'other'] as const
+const toolbarPlugins = computed(() => {
+  const hidden = settingsStore.settings.plugin_prefs?.hidden_toolbar ?? []
+  return props.plugins
+    .filter((p) => p.showInToolbar !== false)
+    .filter((p) => !hidden.includes(p.id))
+    .sort((a, b) => a.name.localeCompare(b.name))
+})
+const toolbarPluginGroups = computed(() => {
+  const groups = new Map<string, PluginInfo[]>()
+  for (const p of toolbarPlugins.value) {
+    const cat = p.category && PLUGIN_CATEGORY_ORDER.includes(p.category as any) ? p.category : 'other'
+    if (!groups.has(cat)) groups.set(cat, [])
+    groups.get(cat)!.push(p)
+  }
+  return PLUGIN_CATEGORY_ORDER.map((category) => ({
+    category,
+    label: t(`plugin.category.${category}`),
+    items: groups.get(category) ?? [],
+  }))
+})
 
 const currentWorkspace = computed(() => {
   const tab = props.tabs.find((t) => t.paneId === props.activePaneId)
@@ -746,12 +778,31 @@ onBeforeUnmount(() => {
   top: 100%;
   right: 0;
   min-width: 160px;
+  max-height: 60vh;
+  overflow-y: auto;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 4px 0;
   z-index: 500;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+.plugin-dropdown-empty {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-muted, #888);
+}
+.plugin-dropdown-group + .plugin-dropdown-group {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 4px;
+}
+.plugin-dropdown-group-title {
+  padding: 4px 12px 2px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted, #888);
 }
 .plugin-dropdown-item {
   padding: 6px 12px;
