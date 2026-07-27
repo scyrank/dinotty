@@ -331,6 +331,14 @@ impl NotificationBroadcast {
                                         severity,
                                         notif_id: None,
                                     });
+                                    self.event_bus.publish(BusEvent::Notify {
+                                        pane_id: pane_id.clone(),
+                                        title: req.title.clone(),
+                                        body: req.body.clone(),
+                                        notification_type: req.notification_type.clone(),
+                                        severity: severity.as_str().into(),
+                                        occurred_at: now,
+                                    });
                                     accepted_hook = Some((
                                         req.notification_type.clone(),
                                         pane_id.clone(),
@@ -359,6 +367,14 @@ impl NotificationBroadcast {
                                     occurred_at: now,
                                     severity,
                                     notif_id: Some(notif_id.clone()),
+                                });
+                                self.event_bus.publish(BusEvent::Notify {
+                                    pane_id: String::new(),
+                                    title: req.title.clone(),
+                                    body: req.body.clone(),
+                                    notification_type: req.notification_type.clone(),
+                                    severity: severity.as_str().into(),
+                                    occurred_at: now,
                                 });
                                 accepted_hook = Some((
                                     req.notification_type.clone(),
