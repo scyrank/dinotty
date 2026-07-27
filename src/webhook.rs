@@ -108,6 +108,10 @@ impl WebhookDispatcher {
             BusEvent::TabClosed { .. } => "tab_closed",
             BusEvent::FileChanged { .. } => "file_changed",
             BusEvent::Custom { .. } => "custom",
+            BusEvent::AuthLoginFailed { .. } => "auth_login_failed",
+            BusEvent::Notify { .. } => "notify",
+            BusEvent::ProcessExited { .. } => "process_exited",
+            BusEvent::PluginChanged { .. } => "plugin_changed",
         };
 
         for config in &self.configs {

@@ -1,6 +1,6 @@
 #![allow(clippy::too_many_lines)]
 use crate::event_bus::BusEvent;
-use crate::platform::shell;
+use crate::platform::shell::{self, ShellSpec};
 use crate::session::{
     CloseReason, Session, SessionBackend, SessionManager, SessionStatus, SyncMsg, SyncState,
 };
@@ -222,6 +222,7 @@ pub fn create_session(
     tauri_on_exit: Option<crate::session::TauriOnExit>,
     cwd: Option<PathBuf>,
     argv: Option<Vec<String>>,
+    shell_spec: Option<ShellSpec>,
 ) -> Result<(Arc<Session>, String), String> {
     if argv.as_ref().is_some_and(Vec::is_empty) {
         return Err("argv must be non-empty when provided".to_string());
@@ -241,7 +242,7 @@ pub fn create_session(
             (cmd, "command".to_string())
         }
         None => {
-            let shell_spec = shell::default_shell();
+            let shell_spec = shell_spec.unwrap_or_else(shell::default_shell);
             let mut cmd = CommandBuilder::new(&shell_spec.program);
             cmd.args(&shell_spec.args);
             (cmd, shell_spec.shell_type.clone())

@@ -20,6 +20,7 @@ pub mod api;
 pub mod attention;
 pub mod audit;
 pub mod auth;
+pub mod event_bridge;
 pub mod event_bus;
 pub mod events;
 pub mod file_watcher;

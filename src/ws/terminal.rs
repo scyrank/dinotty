@@ -291,15 +291,27 @@ async fn handle_socket(
     }
 
     info!("No existing session found for pane={}, creating new PTY session", pane_id);
-    let cwd = settings.read().await.resolved_default_workspace_root();
-    let (session, shell_type) =
-        match crate::pty::create_session(&manager, &pane_id, None, None, cwd, None) {
-            Ok(x) => x,
-            Err(e) => {
-                error!("{}", e);
-                return;
-            }
-        };
+    let (cwd, shell_spec) = {
+        let s = settings.read().await;
+        let cwd = s.resolved_default_workspace_root();
+        let shell_spec = crate::platform::shell::shell_with_preference(&s.shell, &s.shell_path);
+        (cwd, shell_spec)
+    };
+    let (session, shell_type) = match crate::pty::create_session(
+        &manager,
+        &pane_id,
+        None,
+        None,
+        cwd,
+        None,
+        Some(shell_spec),
+    ) {
+        Ok(x) => x,
+        Err(e) => {
+            error!("{}", e);
+            return;
+        }
+    };
     manager.register_singleton_tab(&pane_id, &session, &shell_type);
 
     let (client_id, mut rx) = session.add_client();

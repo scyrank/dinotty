@@ -211,6 +211,7 @@ export interface ProcessHandle {
 export interface PluginExports {
   component?: Component
   dispose?: () => void
+  deactivate?: () => void
   monitor?: { series: MonitorSeries[] }
 }
 
@@ -600,6 +601,11 @@ async function unloadPlugin(id: string, options: { stopUiProcesses?: boolean } =
 
   try {
     plugin.module.deactivate?.()
+  } catch {
+    /* noop */
+  }
+  try {
+    plugin.exports?.deactivate?.()
   } catch {
     /* noop */
   }

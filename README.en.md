@@ -71,6 +71,12 @@ The desktop client delivers a professional experience comparable to iTerm2:
   <img src="docs/images/gif/5-plugin.gif" alt="Plugin system demo" width="600" />
 </p>
 
+**Unified Layout System** - Terminal, plugin, file browser, and web preview are all panes; draggable split, cross-tab move, extract as new tab:
+
+<p align="center">
+  <img src="docs/images/gif/6-layout-sys.gif" alt="Unified layout system demo" width="600" />
+</p>
+
 ## Why Dinotty?
 
 Terminal-based coding agents (Claude Code, opencode, Codex, OpenClaw, etc.) are powerful, but they're locked inside a single terminal window. Dinotty lets you:

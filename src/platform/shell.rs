@@ -23,6 +23,75 @@ pub fn default_shell() -> ShellSpec {
     default_shell_impl()
 }
 
+/// Resolve a shell based on user preference (`settings.shell` + `settings.shell_path`).
+/// - `auto` or empty: falls back to `default_shell()` (system auto-detect).
+/// - `custom`: uses `shell_path` if non-empty, else falls back to `auto`.
+/// - `zsh`/`bash`/`sh`/`fish`/`powershell`/`cmd`: searches common install paths + PATH.
+/// - If the preferred shell cannot be found, falls back to `default_shell()` and
+///   prints a warning to stderr so the user knows why their setting was ignored.
+#[must_use]
+pub fn shell_with_preference(shell_kind: &str, shell_path: &Option<String>) -> ShellSpec {
+    let kind = shell_kind.trim();
+    if kind.is_empty() || kind == "auto" {
+        return default_shell_impl();
+    }
+
+    let program = match kind {
+        "custom" => {
+            let Some(p) = shell_path else {
+                eprintln!("dinotty: shell=custom but shell_path is empty, falling back to auto");
+                return default_shell_impl();
+            };
+            let trimmed = p.trim();
+            if trimmed.is_empty() {
+                eprintln!("dinotty: shell=custom but shell_path is empty, falling back to auto");
+                return default_shell_impl();
+            }
+            trimmed.to_string()
+        }
+        other => {
+            let Some(p) = find_shell_program(other) else {
+                eprintln!(
+                    "dinotty: shell '{other}' not found on this system, falling back to auto"
+                );
+                return default_shell_impl();
+            };
+            p
+        }
+    };
+
+    ShellSpec { args: shell_args(&program), shell_type: shell_type(&program), program }
+}
+
+fn find_shell_program(kind: &str) -> Option<String> {
+    let candidates: &[&str] = match kind {
+        "zsh" => {
+            &["/bin/zsh", "/usr/bin/zsh", "/opt/homebrew/bin/zsh", "/usr/local/bin/zsh", "zsh"]
+        }
+        "bash" => {
+            &["/bin/bash", "/usr/bin/bash", "/opt/homebrew/bin/bash", "/usr/local/bin/bash", "bash"]
+        }
+        "sh" => &["/bin/sh", "/usr/bin/sh", "sh"],
+        "fish" => &["/usr/bin/fish", "/opt/homebrew/bin/fish", "/usr/local/bin/fish", "fish"],
+        "powershell" => &["pwsh", "powershell", "pwsh.exe", "powershell.exe"],
+        "cmd" => &["cmd", "cmd.exe"],
+        _ => return None,
+    };
+    for candidate in candidates {
+        let path = Path::new(candidate);
+        if path.is_absolute() {
+            if path.exists() {
+                return Some((*candidate).to_string());
+            }
+            continue;
+        }
+        if let Some(resolved) = resolve_command(candidate) {
+            return Some(resolved.to_string_lossy().into_owned());
+        }
+    }
+    None
+}
+
 #[must_use]
 pub fn shell_type(program: &str) -> String {
     let lower = Path::new(program)

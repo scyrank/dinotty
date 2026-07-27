@@ -510,13 +510,18 @@ pub fn run_server(
         let monitor_state = MonitorState::new(Arc::clone(&manager.sync_clients));
         monitor_state.clone().start_collector();
 
-        let notifier = Arc::new(NotificationBroadcast::new(Arc::clone(&manager.sync_clients)));
+        let notifier = Arc::new(NotificationBroadcast::new(
+            Arc::clone(&manager.sync_clients),
+            manager.event_bus.clone(),
+        ));
         let settings_state = settings::create_settings_state();
         notifier.set_settings(settings_state.clone());
         // Registering the notifier is independent of starting the reaper: a bind failure or
         // startup-ordering issue here must never suppress the detached-session reaper itself
         // (mirrors src/main.rs server wiring).
         manager.register_notifier(Arc::clone(&notifier));
+        manager.start_cleanup_task();
+        manager.start_event_bridge();
         {
             let notifier = Arc::clone(&notifier);
             tokio::spawn(async move {
@@ -562,7 +567,7 @@ pub fn run_server(
         let state = AppState {
             manager: manager.clone(),
             settings: settings_state,
-            file_watcher: Arc::new(FileWatcherState::new()),
+            file_watcher: Arc::new(FileWatcherState::new(manager.event_bus.clone())),
             monitor: monitor_state,
             notifier,
             history: history_state,

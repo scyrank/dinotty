@@ -71,6 +71,12 @@
   <img src="docs/images/gif/5-plugin.gif" alt="插件系统演示" width="600" />
 </p>
 
+**统一布局系统** - 终端、插件、文件浏览器、网页预览皆为 pane，可拖拽分屏、跨 Tab 移动、提取为新 Tab：
+
+<p align="center">
+  <img src="docs/images/gif/6-layout-sys.gif" alt="统一布局系统演示" width="600" />
+</p>
+
 ## 为什么选择 Dinotty？
 
 终端 Coding Agent（Claude Code、opencode、Codex、OpenClaw 等）功能强大，但它们被束缚在单一终端窗口里。Dinotty 让你：

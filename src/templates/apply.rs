@@ -114,6 +114,7 @@ fn prepare_layout(
                     None,
                     cwd_path,
                     None,
+                    None,
                 ) {
                     Ok((_session, _shell_type)) => {
                         created_pty_ids.push(new_pane_id.clone());

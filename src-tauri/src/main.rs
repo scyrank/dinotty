@@ -244,8 +244,20 @@ fn pty_spawn(
         return Ok(session.shell_type.clone());
     }
 
-    let (session, shell_type) =
-        pty::create_session(&manager, &pane_id, None, Some(Arc::clone(&exit_cb)), None, None)?;
+    let settings = dinotty_server::settings::load_settings();
+    let shell_spec = dinotty_server::platform::shell::shell_with_preference(
+        &settings.shell,
+        &settings.shell_path,
+    );
+    let (session, shell_type) = pty::create_session(
+        &manager,
+        &pane_id,
+        None,
+        Some(Arc::clone(&exit_cb)),
+        None,
+        None,
+        Some(shell_spec),
+    )?;
     manager.register_singleton_tab(&pane_id, &session, &shell_type);
 
     spawn_tauri_output_forwarder(app.clone(), pane_id.clone(), Arc::clone(&session));
