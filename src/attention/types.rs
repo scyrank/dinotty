@@ -35,6 +35,22 @@ pub enum Severity {
     Urgent,
 }
 
+impl Severity {
+    /// Lowercase string matching the serde serialization. Used when bridging to
+    /// `BusEvent::Notify` (which carries `severity: String`) without round-tripping
+    /// through `serde_json` just to get the textual form.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Info => "info",
+            Self::Success => "success",
+            Self::Warning => "warning",
+            Self::Error => "error",
+            Self::Urgent => "urgent",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UnreadEvent {
     pub seq: u64,

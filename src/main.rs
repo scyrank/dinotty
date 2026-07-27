@@ -1,9 +1,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::too_many_lines)]
 
 use dinotty_server::{
-    agent, api::clipboard, audit, auth, events, file_watcher, history, mcp, monitor, notification,
-    openapi, plugin, proxy, session, settings, tabs, templates, token, webhook, workspace,
-    workspace_mgmt, ws,
+    agent, api::clipboard, audit, auth, event_bus, events, file_watcher, history, mcp, monitor,
+    notification, openapi, plugin, proxy, session, settings, tabs, templates, token, webhook,
+    workspace, workspace_mgmt, ws,
 };
 
 use axum::{
@@ -21,6 +21,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use crate::auth::session::SessionStore;
+use crate::event_bus::BusEvent;
 use crate::file_watcher::FileWatcherState;
 use crate::history::HistoryState;
 use crate::monitor::MonitorState;
@@ -456,6 +457,27 @@ async fn login(
         global_max_failures,
         global_lockout_secs,
     ) {
+        let attempt_count = auth::get_fail_count(real_ip);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        state.manager.event_bus.publish(BusEvent::AuthLoginFailed {
+            ip: real_ip.to_string(),
+            reason: "locked_out".into(),
+            attempt_count,
+            locked_until: Some(now.saturating_add(retry_after)),
+        });
+        let () = state.audit.record(
+            "anonymous",
+            "login_failed",
+            "auth",
+            serde_json::json!({
+                "ip": real_ip.to_string(),
+                "reason": "locked_out",
+                "attempt_count": attempt_count,
+            }),
+        );
         return (
             StatusCode::TOO_MANY_REQUESTS,
             [
@@ -468,7 +490,23 @@ async fn login(
     }
 
     if !auth::constant_time_eq(body.token.trim(), &stored) {
-        auth::record_auth_failure(real_ip, global_lockout_secs);
+        let attempt_count = auth::record_auth_failure(real_ip, global_lockout_secs);
+        state.manager.event_bus.publish(BusEvent::AuthLoginFailed {
+            ip: real_ip.to_string(),
+            reason: "token_mismatch".into(),
+            attempt_count,
+            locked_until: None,
+        });
+        let () = state.audit.record(
+            "anonymous",
+            "login_failed",
+            "auth",
+            serde_json::json!({
+                "ip": real_ip.to_string(),
+                "reason": "token_mismatch",
+                "attempt_count": attempt_count,
+            }),
+        );
         return (
             StatusCode::UNAUTHORIZED,
             [(header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
@@ -669,11 +707,15 @@ async fn main() {
     let monitor_state = MonitorState::new(Arc::clone(&manager.sync_clients));
     monitor_state.clone().start_collector();
 
-    let notifier = Arc::new(NotificationBroadcast::new(Arc::clone(&manager.sync_clients)));
+    let notifier = Arc::new(NotificationBroadcast::new(
+        Arc::clone(&manager.sync_clients),
+        manager.event_bus.clone(),
+    ));
     let settings_state = settings::create_settings_state();
     notifier.set_settings(settings_state.clone());
     manager.register_notifier(Arc::clone(&notifier));
     manager.start_cleanup_task();
+    manager.start_event_bridge();
     {
         let notifier = Arc::clone(&notifier);
         tokio::spawn(async move {
@@ -746,10 +788,11 @@ async fn main() {
     let sessions = Arc::new(SessionStore::new(session_ttl_days));
     sessions.clone().start_cleanup_task();
 
+    let file_watcher_event_bus = manager.event_bus.clone();
     let state = AppState {
         manager,
         settings: settings_state,
-        file_watcher: Arc::new(FileWatcherState::new()),
+        file_watcher: Arc::new(FileWatcherState::new(file_watcher_event_bus)),
         monitor: monitor_state,
         notifier,
         history: history_state,

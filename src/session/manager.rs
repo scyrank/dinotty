@@ -595,6 +595,36 @@ impl SessionManager {
         let mut clients =
             self.sync_clients.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         clients.retain(|c| c.tx.send(json.clone()).is_ok());
+        drop(clients);
+        self.publish_bus_event_for_sync_msg(msg);
+    }
+
+    /// Mirror select `SyncMsg` variants onto the event bus so plugins (which
+    /// subscribe via `ctx.events.subscribe`) can observe tab/process/plugin
+    /// lifecycle events. Variants that already have a dedicated `BusEvent`
+    /// publisher (e.g. `SessionCreated`/`SessionClosed`/`CommandFinished`/
+    /// `AuthLoginFailed`) are intentionally not mirrored here - they would
+    /// double-publish.
+    fn publish_bus_event_for_sync_msg(&self, msg: &SyncMsg) {
+        let event = match msg {
+            SyncMsg::TabCreated { tab_id, pane_id, .. } => {
+                Some(BusEvent::TabCreated { tab_id: tab_id.clone(), pane_id: pane_id.clone() })
+            }
+            SyncMsg::TabClosed { pane_id } => Some(BusEvent::TabClosed { tab_id: pane_id.clone() }),
+            SyncMsg::PluginChanged { plugin_id, change } => Some(BusEvent::PluginChanged {
+                plugin_id: plugin_id.clone(),
+                change: change.clone(),
+            }),
+            SyncMsg::ProcessExited { plugin_id, pid, exit_code } => Some(BusEvent::ProcessExited {
+                plugin_id: plugin_id.clone(),
+                pid: *pid,
+                exit_code: *exit_code,
+            }),
+            _ => None,
+        };
+        if let Some(event) = event {
+            self.event_bus.publish(event);
+        }
     }
 
     /// Broadcast to all sync clients except the one with the given ID.
@@ -973,6 +1003,18 @@ impl SessionManager {
     /// unowned-session reaper).
     pub fn register_notifier(&self, notifier: Arc<crate::notification::NotificationBroadcast>) {
         let _ = self.notifier.set(notifier);
+    }
+
+    pub fn start_event_bridge(self: &Arc<Self>) {
+        let manager = Arc::clone(self);
+        let mut rx = self.event_bus.subscribe();
+        tokio::spawn(async move {
+            while let Ok(event) = rx.recv().await {
+                if let Some(sync_msg) = crate::event_bridge::map_bus_event_to_sync_event(&event) {
+                    manager.broadcast_sync(&sync_msg);
+                }
+            }
+        });
     }
 
     pub fn start_cleanup_task(self: &Arc<Self>) {
