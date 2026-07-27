@@ -151,6 +151,10 @@ pub struct Settings {
     pub hidden_builtins: Vec<String>,
     #[serde(default)]
     pub plugin_prefs: PluginPrefsConfig,
+    #[serde(default = "default_shell_kind")]
+    pub shell: String,
+    #[serde(default)]
+    pub shell_path: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -503,6 +507,10 @@ pub(crate) fn default_locale() -> String {
     "zh".into()
 }
 
+pub(crate) fn default_shell_kind() -> String {
+    "auto".into()
+}
+
 #[must_use]
 pub fn default_upload_dir() -> String {
     if cfg!(windows) {
@@ -840,6 +848,8 @@ impl Default for Settings {
             custom_themes: vec![],
             hidden_builtins: vec![],
             plugin_prefs: PluginPrefsConfig::default(),
+            shell: default_shell_kind(),
+            shell_path: None,
         }
     }
 }
