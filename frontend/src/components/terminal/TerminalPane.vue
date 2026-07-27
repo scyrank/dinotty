@@ -19,7 +19,16 @@
       @mousedown.prevent
       @touchstart.stop
     >
-      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+        <path
+          d="M4 6l4 4 4-4"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </svg>
     </button>
     <div
       v-if="showScrollbar"
@@ -204,7 +213,6 @@ let selWordEndCol = -1
 let dragHandle: 'start' | 'end' | null = null
 let selectionTouched = false
 
-
 // Edge auto-scroll during selection drag (A4) — repeating scroll while the
 // finger is held in the top/bottom edge band, so selection can extend past the
 // visible viewport. lastDrag* hold the RAW (unclamped) touch coords: edge
@@ -219,7 +227,10 @@ const EDGE_SCROLL_INTERVAL_MS = 60
 const linkType = ref<'file' | 'link'>()
 const linkTarget = ref<string>()
 
-const DT8_TOUCH_DEBUG = import.meta.env.DEV && (typeof localStorage !== 'undefined') && localStorage.getItem('dt8-touch-select-debug') === '1'
+const DT8_TOUCH_DEBUG =
+  import.meta.env.DEV &&
+  typeof localStorage !== 'undefined' &&
+  localStorage.getItem('dt8-touch-select-debug') === '1'
 
 function debugTouchSelect(branch: string, data: Record<string, unknown>) {
   if (DT8_TOUCH_DEBUG) console.debug('[dt8-touch-select]', branch, data)
@@ -275,7 +286,6 @@ function scrollToBottom() {
   terminal?.xterm?.scrollToBottom()
   scrollPos.value?.kick()
 }
-
 
 function adjustFontSize(delta: number) {
   terminal?.adjustFontSize(delta)
@@ -378,7 +388,9 @@ let cachedScreenRect: DOMRect | null = null
 
 type ScreenCellGeometry = { cellW: number; cellH: number; screenRect: DOMRect }
 
-function getScreenCellGeometry(xt: NonNullable<TerminalInstance['xterm']>): ScreenCellGeometry | null {
+function getScreenCellGeometry(
+  xt: NonNullable<TerminalInstance['xterm']>
+): ScreenCellGeometry | null {
   const screen = xt.element?.querySelector('.xterm-screen') as HTMLElement | null
   if (!screen) {
     debugTouchSelect('geometry:null-screen', { cols: xt.cols, rows: xt.rows })
@@ -446,7 +458,12 @@ function findWordAt(bufferRow: number, col: number): { start: number; length: nu
   return null
 }
 
-function calcSelectionLength(startCol: number, startRow: number, endCol: number, endRow: number): number {
+function calcSelectionLength(
+  startCol: number,
+  startRow: number,
+  endCol: number,
+  endRow: number
+): number {
   const xt = terminal?.xterm
   if (!xt) return 0
   const cols = xt.cols
@@ -510,7 +527,10 @@ function bufferToPixel(col: number, bufferRow: number): { x: number; y: number }
   }
 }
 
-function selectionToPixelCoords(): { start: { x: number; y: number }; end: { x: number; y: number } } {
+function selectionToPixelCoords(): {
+  start: { x: number; y: number }
+  end: { x: number; y: number }
+} {
   const xt = terminal?.xterm
   if (!xt) return { start: { x: 0, y: 0 }, end: { x: 0, y: 0 } }
   const selection = xt.getSelectionPosition()
@@ -575,7 +595,10 @@ function onTouchStart(e: TouchEvent) {
   }, 500)
 }
 
-function buildColumnMaps(line: NonNullable<ReturnType<Terminal['buffer']['active']['getLine']>>, cols: number) {
+function buildColumnMaps(
+  line: NonNullable<ReturnType<Terminal['buffer']['active']['getLine']>>,
+  cols: number
+) {
   const colToStrIdx: number[] = new Array(cols)
   const strIdxToCol: number[] = []
   let strIdx = 0
@@ -597,7 +620,11 @@ function buildColumnMaps(line: NonNullable<ReturnType<Terminal['buffer']['active
   return { colToStrIdx, strIdxToCol }
 }
 
-function selectWordAtTouch(clientX: number, clientY: number, geom: ScreenCellGeometry): { bufferRow: number; startCol: number; endCol: number } | null {
+function selectWordAtTouch(
+  clientX: number,
+  clientY: number,
+  geom: ScreenCellGeometry
+): { bufferRow: number; startCol: number; endCol: number } | null {
   const xterm = terminal?.xterm
   if (!xterm) {
     debugTouchSelect('select:null-xterm', {})
@@ -718,12 +745,21 @@ function applyTouchSelection(clientX: number, clientY: number) {
 
 function autoScrollTick() {
   const xt = terminal?.xterm
-  if (!xt) { stopAutoScroll(); return }
+  if (!xt) {
+    stopAutoScroll()
+    return
+  }
   const dir = edgeScrollDir(lastDragClientY)
-  if (dir === 0) { stopAutoScroll(); return }
+  if (dir === 0) {
+    stopAutoScroll()
+    return
+  }
   const before = xt.buffer.active.viewportY
   xt.scrollLines(dir)
-  if (xt.buffer.active.viewportY === before) { stopAutoScroll(); return } // hit top/bottom
+  if (xt.buffer.active.viewportY === before) {
+    stopAutoScroll()
+    return
+  } // hit top/bottom
   if (dragHandle) {
     applyHandleDrag(lastDragClientX, lastDragClientY)
   } else if (terminal?.inTouchSelection) {
@@ -768,8 +804,8 @@ function onTouchMove(e: TouchEvent) {
     const dy = Math.abs(touch.clientY - longPressStartY)
     if (dy > dx && dy > 15) {
       touchScrolling = true
-      if (terminal) terminal.touchMoved = true;
-      (e.currentTarget as HTMLElement).dispatchEvent(
+      if (terminal) terminal.touchMoved = true
+      ;(e.currentTarget as HTMLElement).dispatchEvent(
         new CustomEvent('terminal-scroll', { bubbles: true })
       )
     }
@@ -792,7 +828,7 @@ function onTouchEnd(e: TouchEvent) {
       target.dispatchEvent(new CustomEvent('terminal-scroll', { bubbles: true }))
       void copyToClipboard(text).then(
         () => debugTouchSelect('copy:touch-end', { success: true }),
-        () => debugTouchSelect('copy:touch-end', { success: false }),
+        () => debugTouchSelect('copy:touch-end', { success: false })
       )
     }
     menuSelectedText.value = text
@@ -822,8 +858,8 @@ function onTouchEnd(e: TouchEvent) {
     longPressTimer = null
   }
   if (touchScrolling) {
-    touchScrolling = false;
-    (e.currentTarget as HTMLElement).dispatchEvent(
+    touchScrolling = false
+    ;(e.currentTarget as HTMLElement).dispatchEvent(
       new CustomEvent('terminal-scroll', { bubbles: true })
     )
   }
@@ -886,7 +922,11 @@ function applyHandleDrag(clientX: number, clientY: number) {
     terminal!.selStartRow = moveRow
     terminal!.selStartCol = moveCol
   } else {
-    xt.select(selAnchorCol, selAnchorRow, calcSelectionLength(selAnchorCol, selAnchorRow, moveCol, moveRow))
+    xt.select(
+      selAnchorCol,
+      selAnchorRow,
+      calcSelectionLength(selAnchorCol, selAnchorRow, moveCol, moveRow)
+    )
     terminal!.selStartRow = selAnchorRow
     terminal!.selStartCol = selAnchorCol
   }
@@ -908,7 +948,7 @@ function onHandleDragEnd(canceled = false) {
     containerRef.value?.dispatchEvent(new CustomEvent('terminal-scroll', { bubbles: true }))
     void copyToClipboard(text).then(
       () => debugTouchSelect('copy:handle-drag-end', { success: true }),
-      () => debugTouchSelect('copy:handle-drag-end', { success: false }),
+      () => debugTouchSelect('copy:handle-drag-end', { success: false })
     )
   }
   menuSelectedText.value = text
@@ -1009,7 +1049,19 @@ onBeforeUnmount(() => {
   terminal = null
 })
 
-defineExpose({ getTerminal, focus, blur, fit, sendData, pasteFromClipboard, setOutputListener, toggleSearch, adjustFontSize, resetFontSize, isComposing })
+defineExpose({
+  getTerminal,
+  focus,
+  blur,
+  fit,
+  sendData,
+  pasteFromClipboard,
+  setOutputListener,
+  toggleSearch,
+  adjustFontSize,
+  resetFontSize,
+  isComposing,
+})
 </script>
 
 <style scoped>
@@ -1023,6 +1075,14 @@ defineExpose({ getTerminal, focus, blur, fit, sendData, pasteFromClipboard, setO
   width: 100%;
   height: 100%;
   overflow: hidden;
+}
+/* Hide xterm's native viewport scrollbar - the custom .terminal-scrollbar
+ * handles scrollback navigation. Without this, mobile browsers render two
+ * scrollbars side-by-side, and the native one steals wheel events that
+ * should drive xterm's own scroll pipeline (and thus the _writePinnedToBottom
+ * flag), so the viewport snaps back to the bottom on every AI output batch. */
+.terminal-pane :deep(.xterm-viewport) {
+  overflow-y: hidden;
 }
 
 .terminal-upload-progress {
@@ -1075,7 +1135,9 @@ defineExpose({ getTerminal, focus, blur, fit, sendData, pasteFromClipboard, setO
   border: 1px solid var(--border);
   color: var(--fg);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
 }
 
 .back-to-bottom-pill:hover {
