@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="./README.en.md">English</a> | 中文
+  中文 | <a href="./docs/README.en.md">English</a> | <a href="./docs/README.ru.md">Русский</a> | <a href="./docs/README.pt.md">Português</a> | <a href="./docs/README.ko.md">한국어</a> | <a href="./docs/README.es.md">Español</a> | <a href="./docs/README.de.md">Deutsch</a> | <a href="./docs/README.fr.md">Français</a>
 </p>
 
 ---
@@ -129,7 +129,7 @@
 - **自包含工作环境** - 内建文件浏览、网页预览、Git 变更、SSH/SFTP、插件系统
 - **免费开源** - 自托管，无订阅无中继
 
-完整方案对比见 [方案对比](docs/comparison.md)。
+完整方案对比见 [方案对比](docs/getting-started/comparison.md)。
 
 ## 安装
 
@@ -239,20 +239,20 @@ cargo run
 
 ## 更多文档
 
-- [方案对比](docs/comparison.md) — 与 ttyd/gotty/Wetty 及其他 AI Coding 远程方案的差异
-- [部署指南](docs/deployment.md) — systemd、Docker、Windows 原生运行、跨平台构建、配置说明
-- [发布指南](docs/releasing.md) — 统一版本管理、版本 PR、`dev` 到 `main` 晋升、Tag 与 GitHub Release
-- [文件编辑器](docs/file-editor.md) — 分屏、多光标编辑、Cursor Group 跨文件同步
-- [通知系统](docs/notifications.md) — HTTP API、Claude Code 集成、Open API
-- [插件系统](docs/plugins.md) — 安装、清单、API、内置插件
-- [插件开发](docs/plugin-development.md) — 完整的插件开发文档
-- [Agent API](docs/agent-api.md) — HTTP/WebSocket 结构化交互，供 AI Agent 与自动化脚本调用
-- [主机剪贴板 API](docs/clipboard-api.md) — 移动端主机粘贴使用的敏感认证接口
-- [MCP Server](docs/mcp-server.md) — 内置 MCP JSON-RPC 服务器，AI 助手直接操作终端会话
-- [Token 权限系统](docs/token-system.md) — 基于 Capability 的多 Token 细粒度访问控制
-- [Event Bus](docs/event-bus.md) — 全局事件总线，模块间事件分发
-- [审计日志与 Webhook](docs/audit-webhook.md) — API 使用追踪与外部通知
-- [贡献指南](docs/contributing.md) — 分支策略、Commit 规范、代码风格
+- [方案对比](docs/getting-started/comparison.md) — 与 ttyd/gotty/Wetty 及其他 AI Coding 远程方案的差异
+- [部署指南](docs/getting-started/deployment.md) — systemd、Docker、Windows 原生运行、跨平台构建、配置说明
+- [发布指南](docs/getting-started/releasing.md) — 统一版本管理、版本 PR、`dev` 到 `main` 晋升、Tag 与 GitHub Release
+- [文件编辑器](docs/features/file-editor.md) — 分屏、多光标编辑、Cursor Group 跨文件同步
+- [通知系统](docs/features/notifications.md) — HTTP API、Claude Code 集成、Open API
+- [插件系统](docs/plugins/plugins.md) — 安装、清单、API、内置插件
+- [插件开发](docs/plugins/plugin-development.md) — 完整的插件开发文档
+- [Agent API](docs/api/agent-api.md) — HTTP/WebSocket 结构化交互，供 AI Agent 与自动化脚本调用
+- [主机剪贴板 API](docs/api/clipboard-api.md) — 移动端主机粘贴使用的敏感认证接口
+- [MCP Server](docs/api/mcp-server.md) — 内置 MCP JSON-RPC 服务器，AI 助手直接操作终端会话
+- [Token 权限系统](docs/internals/token-system.md) — 基于 Capability 的多 Token 细粒度访问控制
+- [Event Bus](docs/internals/event-bus.md) — 全局事件总线，模块间事件分发
+- [审计日志与 Webhook](docs/internals/audit-webhook.md) — API 使用追踪与外部通知
+- [贡献指南](docs/getting-started/contributing.md) — 分支策略、Commit 规范、代码风格
 
 ## 贡献者
 
