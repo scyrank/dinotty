@@ -54,6 +54,7 @@ import FileWorkspacePreview from '../preview/FileWorkspacePreview.vue'
 import WebPreview from '../preview/WebPreview.vue'
 import { usePluginLoader } from '../../composables/usePluginLoader'
 import { useI18n } from '../../composables/useI18n'
+import { workspaceIdFromPaneId } from '../../utils/pluginPaneId'
 
 const props = defineProps<{
   leaf: LeafPane
@@ -89,11 +90,7 @@ const plugin = computed(() =>
 const api = computed(() =>
   props.leaf.pluginId ? getPluginContext(props.leaf.pluginId) : undefined
 )
-const workspaceId = computed(() => {
-  const paneId = props.leaf.paneId
-  if (!paneId.startsWith('plugin:')) return undefined
-  return paneId.split(':').slice(2).join(':') || undefined
-})
+const workspaceId = computed(() => workspaceIdFromPaneId(props.leaf.paneId))
 </script>
 
 <style scoped>
