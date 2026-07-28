@@ -1,9 +1,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::too_many_lines)]
 
 use dinotty_server::{
-    agent, api::clipboard, audit, auth, event_bus, events, file_watcher, history, mcp, monitor,
-    notification, openapi, plugin, proxy, session, settings, tabs, templates, token, webhook,
-    workspace, workspace_mgmt, ws,
+    agent, api::clipboard, audit, auth, event_bus, events, file_watcher, history, mcp,
+    mission_control, monitor, notification, openapi, plugin, proxy, session, settings, tabs,
+    templates, token, webhook, workspace, workspace_mgmt, ws,
 };
 
 use axum::{
@@ -128,6 +128,7 @@ pub struct AppState {
     pub mcp: mcp::transport::McpState,
     pub mcp_sse: Arc<mcp::transport::SseState>,
     pub workspaces: workspace_mgmt::WorkspacesState,
+    pub mc: mission_control::MissionControlState,
     pub sessions: Arc<SessionStore>,
 }
 
@@ -253,6 +254,20 @@ impl axum::extract::FromRef<AppState> for clipboard::ClipboardState {
 impl axum::extract::FromRef<AppState> for workspace_mgmt::WorkspacesState {
     fn from_ref(state: &AppState) -> Self {
         state.workspaces.clone()
+    }
+}
+
+impl axum::extract::FromRef<AppState> for mission_control::MissionControlState {
+    fn from_ref(state: &AppState) -> Self {
+        state.mc.clone()
+    }
+}
+
+impl axum::extract::FromRef<AppState>
+    for (mission_control::MissionControlState, Arc<SessionManager>, workspace_mgmt::WorkspacesState)
+{
+    fn from_ref(state: &AppState) -> Self {
+        (state.mc.clone(), state.manager.clone(), state.workspaces.clone())
     }
 }
 
@@ -783,6 +798,7 @@ async fn main() {
     let mcp_server = Arc::new(mcp::server::McpServer::new(manager.clone(), settings_state.clone()));
     let mcp_sse = Arc::new(mcp::transport::SseState::new());
     let workspaces_state = workspace_mgmt::create_workspaces_state();
+    let mc_state = mission_control::create_mission_control_state();
 
     let session_ttl_days = settings::load_settings().auth.session_ttl_days;
     let sessions = Arc::new(SessionStore::new(session_ttl_days));
@@ -807,6 +823,7 @@ async fn main() {
         mcp: mcp_server,
         mcp_sse,
         workspaces: workspaces_state,
+        mc: mc_state,
         sessions,
     };
 
@@ -833,6 +850,7 @@ async fn main() {
             .route("/api/tabs/ssh/quick", post(tabs::create_ssh_quick_tab))
             .route("/api/tabs/ssh", post(tabs::create_ssh_tab))
             .route("/api/tabs/:tab_id", delete(tabs::close_tab))
+            .route("/api/tabs/:tab_id/rename", post(tabs::rename_tab))
             .route("/api/tabs/:tab_id/pane", post(tabs::split_pane))
             .route("/api/tabs/:tab_id/pane/plugin", post(tabs::create_plugin_pane))
             .route("/api/tabs/:tab_id/pane/files", post(tabs::create_files_pane))

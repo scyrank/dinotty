@@ -102,6 +102,7 @@ export interface SyncTabList {
     active_pane_id?: string
     cwd?: string
     connection_id?: string
+    title?: string
   }[]
   active_pane_id: string | null
 }
@@ -123,6 +124,42 @@ export interface SyncTabClosed {
 export interface SyncTabActivated {
   type: 'tab_activated'
   pane_id: string
+}
+
+export interface SyncTabRenamed {
+  type: 'tab_renamed'
+  tab_id: string
+  title: string
+}
+
+/// Server -> client: MC open/close flipped. Contains the full selection
+/// snapshot so receivers can refresh both `open` and the selected card
+/// atomically. Broadcast includes the sender; the frontend treats it as an
+/// authoritative mirror update (does not re-send).
+export interface SyncMissionControlToggled {
+  type: 'mission_control_toggled'
+  open: boolean
+  selected_workspace_id?: string
+  selected_tab_id?: string
+}
+
+/// Server -> client: selected card inside MC moved (arrow keys / mouse /
+/// jump). `tab_title` is looked up at the server so touchscreen clients
+/// can render the selected tab name without a tab_list round-trip.
+export interface SyncSelectionChanged {
+  type: 'selection_changed'
+  selected_workspace_id?: string
+  selected_tab_id?: string
+  tab_title?: string
+}
+
+/// Server -> client: initial MC snapshot sent on sync WS connect (after
+/// `tab_list` / `workspace_list` so the client can resolve ids).
+export interface SyncMcSnapshot {
+  type: 'mc_snapshot'
+  open: boolean
+  selected_workspace_id?: string
+  selected_tab_id?: string
 }
 
 export interface SyncPluginChanged {
@@ -202,6 +239,12 @@ export interface SyncUpdateLayout {
   pane_id: string
   layout: any
   active_pane_id: string
+}
+
+export interface SyncRenameTab {
+  type: 'rename_tab'
+  tab_id: string
+  title: string
 }
 
 export interface SyncSshAuthResponse {
@@ -324,6 +367,7 @@ export type SyncServerMsg =
   | SyncTabCreated
   | SyncTabClosed
   | SyncTabActivated
+  | SyncTabRenamed
   | SyncPluginChanged
   | SyncLayoutUpdated
   | SyncSshAuthPrompt
@@ -333,6 +377,9 @@ export type SyncServerMsg =
   | SyncWorkspaceActivated
   | SyncWorkspaceReordered
   | SyncWorkspaceList
+  | SyncMissionControlToggled
+  | SyncSelectionChanged
+  | SyncMcSnapshot
   | SyncEvent
   | SyncHello
   | SyncBell
@@ -365,6 +412,33 @@ export interface SyncMarkRead {
   notifs: Array<{ notifId: string }>
 }
 
+export type NavDir = 'up' | 'down' | 'left' | 'right'
+
+/// Client -> server: Mission Control operation from any sync client
+/// (hardware keyboard, desktop frontend, touchscreen). Server holds the
+/// global MC state and broadcasts `mission_control_toggled` /
+/// `selection_changed` to all clients. Tagged union mirrors the Rust
+/// `McOp` enum (`#[serde(tag = "kind", rename_all = "snake_case")]`).
+export type McOp =
+  | { kind: 'toggle' }
+  | { kind: 'navigate'; dir: NavDir }
+  | { kind: 'confirm' }
+  | { kind: 'cancel' }
+  | { kind: 'jump'; workspace_id: string | null }
+
+export interface SyncMissionControlOp {
+  type: 'mission_control_op'
+  op: McOp
+}
+
+/// Client -> server: terminal input from a sync client that has no
+/// `/ws/<paneId>` socket of its own (hardware keyboard). Routed to the
+/// active pane's PTY. Dropped by the server when MC is open.
+export interface SyncInput {
+  type: 'input'
+  data: string
+}
+
 export type SyncClientMsg =
   | SyncCreateTab
   | SyncCloseTab
@@ -373,3 +447,6 @@ export type SyncClientMsg =
   | SyncUpdateLayout
   | SyncSshAuthResponse
   | SyncMarkRead
+  | SyncRenameTab
+  | SyncMissionControlOp
+  | SyncInput

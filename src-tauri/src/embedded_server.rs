@@ -20,6 +20,7 @@ use dinotty_server::events;
 use dinotty_server::file_watcher::{self, FileWatcherState};
 use dinotty_server::history;
 use dinotty_server::history::HistoryState;
+use dinotty_server::mission_control;
 use dinotty_server::monitor::MonitorState;
 use dinotty_server::notification::{self, NotificationBroadcast};
 use dinotty_server::platform::process::CommandNoWindowExt;
@@ -57,6 +58,7 @@ pub struct AppState {
     pub git_info: GitInfo,
     pub sessions: Arc<SessionStore>,
     pub workspaces: workspace_mgmt::WorkspacesState,
+    pub mc: mission_control::MissionControlState,
 }
 
 impl axum::extract::FromRef<AppState> for Arc<SessionManager> {
@@ -148,6 +150,12 @@ impl axum::extract::FromRef<AppState> for clipboard::ClipboardState {
 impl axum::extract::FromRef<AppState> for workspace_mgmt::WorkspacesState {
     fn from_ref(state: &AppState) -> Self {
         state.workspaces.clone()
+    }
+}
+
+impl axum::extract::FromRef<AppState> for mission_control::MissionControlState {
+    fn from_ref(state: &AppState) -> Self {
+        state.mc.clone()
     }
 }
 
@@ -563,6 +571,7 @@ pub fn run_server(
         sessions.clone().start_cleanup_task();
 
         let workspaces_state = workspace_mgmt::create_workspaces_state();
+        let mc_state = mission_control::create_mission_control_state();
 
         let state = AppState {
             manager: manager.clone(),
@@ -577,6 +586,7 @@ pub fn run_server(
             git_info,
             sessions,
             workspaces: workspaces_state,
+            mc: mc_state,
         };
 
         state.plugins.watch_changes(manager);

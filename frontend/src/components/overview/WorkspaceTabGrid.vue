@@ -78,6 +78,7 @@ import { computed, ref } from 'vue'
 import { Motion } from 'motion-v'
 import { ChevronLeft, X, Puzzle, Plus, Pencil, Square } from 'lucide-vue-next'
 import { useI18n } from '../../composables/useI18n'
+import { DEFAULT_WORKSPACE_ID } from '../../composables/useWorkspaces'
 import { uiPrompt } from '../../composables/usePrompt'
 import type { TabCard } from '../../composables/useTabPreview'
 import type { Workspace } from '../../types/workspace'
@@ -104,7 +105,7 @@ const emit = defineEmits<{
 }>()
 
 const workspaceName = computed(() => {
-  if (props.workspaceId === '__all__') return t('workspace.all')
+  if (props.workspaceId === DEFAULT_WORKSPACE_ID) return t('workspace.default')
   return props.workspace?.name ?? t('workspace.ungrouped')
 })
 const workspacePath = computed(() => props.workspace?.path)
