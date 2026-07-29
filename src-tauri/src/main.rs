@@ -528,6 +528,85 @@ async fn tauri_upload(
     Ok(FetchResponse { status, headers, body })
 }
 
+/// macOS-only: read file paths from the drag pasteboard (NSDragPboard).
+/// WKWebView's HTML5 DataTransfer hides non-text types from JS, so we read
+/// the OS pasteboard directly during a drop event to recover file paths
+/// (e.g. VSCode's tree-view drags put `public.file-url` + text here).
+#[cfg(target_os = "macos")]
+#[tauri::command]
+#[allow(deprecated)] // NSFilenamesPboardType is deprecated but still the most reliable Finder signal
+fn tauri_read_drag_pboard() -> Result<Vec<String>, String> {
+    use objc2::rc::Retained;
+    use objc2::runtime::{AnyClass, AnyObject};
+    use objc2::ClassType;
+    use objc2_app_kit::{
+        NSFilenamesPboardType, NSPasteboard, NSPasteboardNameDrag, NSPasteboardTypeString,
+    };
+    use objc2_foundation::{NSArray, NSString, NSURL};
+
+    // SAFETY: extern statics (NSPasteboardNameDrag, NSFilenamesPboardType,
+    // NSPasteboardTypeString) come from AppKit and are valid for the program's
+    // lifetime; `readObjectsForClasses:options:` with `[NSURL]` is a safe read.
+    unsafe {
+        let pb = NSPasteboard::pasteboardWithName(NSPasteboardNameDrag);
+        let mut paths: Vec<String> = Vec::new();
+
+        // 1. NSURL via readObjectsForClasses:options: — works for any app that
+        //    provides public.file-url / public.url items (Finder, VSCode, etc.).
+        let classes: Retained<NSArray<AnyClass>> = NSArray::from_slice(&[NSURL::class()]);
+        if let Some(arr) = pb.readObjectsForClasses_options(&classes, None) {
+            for obj in arr.to_vec() {
+                if let Ok(url) = obj.downcast::<NSURL>() {
+                    if url.isFileURL() {
+                        if let Some(path) = url.to_file_path() {
+                            let s = path.to_string_lossy().into_owned();
+                            if !s.is_empty() {
+                                paths.push(s);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. NSFilenamesPboardType (deprecated but still used by Finder as a
+        //    property list of path strings).
+        if paths.is_empty() {
+            if let Some(plist) = pb.propertyListForType(NSFilenamesPboardType) {
+                if let Ok(arr) = plist.downcast::<NSArray<AnyObject>>() {
+                    for item in arr.to_vec() {
+                        if let Ok(s) = item.downcast::<NSString>() {
+                            let p = s.to_string();
+                            if !p.is_empty() {
+                                paths.push(p);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. text/plain fallback (some apps write the absolute path here and
+        //    nothing else; WKWebView also hides this from JS in some cases).
+        if paths.is_empty() {
+            if let Some(s) = pb.stringForType(NSPasteboardTypeString) {
+                let p = s.to_string();
+                if !p.is_empty() {
+                    paths.push(p);
+                }
+            }
+        }
+
+        Ok(paths)
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn tauri_read_drag_pboard() -> Result<Vec<String>, String> {
+    Ok(Vec::new())
+}
+
 #[tauri::command]
 fn set_window_title(title: String, window: tauri::Window) -> Result<(), String> {
     window.set_title(&title).map_err(|e| e.to_string())
@@ -777,6 +856,7 @@ fn main() {
             tauri_read_file,
             tauri_download,
             tauri_save_text,
+            tauri_read_drag_pboard,
             pick_upload_dir,
             pick_workspace_dir,
             close_window,

@@ -1,9 +1,26 @@
-import { isTauri } from './useTransport'
+import { isTauri, tauriInvoke } from './useTransport'
 import { escapeShellPath } from '../utils/tauriDragDrop'
 
 export interface DropHost {
   sendData(data: string): void
   onFileUpload?(files: File[]): void
+}
+
+/**
+ * On macOS WKWebView, the HTML5 DataTransfer hides non-text drag types from
+ * JS - so a VSCode file-tree drag (which exposes `public.file-url` on
+ * NSDragPboard) shows up with empty `dt.files` and a `text/plain` that
+ * `getData` refuses to return. Drop into Rust and read NSDragPboard
+ * directly. Returns `[]` on non-Tauri or non-macOS.
+ */
+async function readDragPboard(): Promise<string[]> {
+  if (!isTauri()) return []
+  try {
+    const result = await tauriInvoke('tauri_read_drag_pboard')
+    return Array.isArray(result) ? result.filter((p) => typeof p === 'string' && p.length > 0) : []
+  } catch {
+    return []
+  }
 }
 
 /**
@@ -27,7 +44,7 @@ export function setupTerminalDrop(
   target.addEventListener('dragover', dragoverHandler, true)
   cleanups.push(() => target.removeEventListener('dragover', dragoverHandler, true))
 
-  const dropHandler = (e: Event) => {
+  const dropHandler = async (e: Event) => {
     const de = e as DragEvent
     const dt = de.dataTransfer!
     de.preventDefault()
@@ -35,6 +52,19 @@ export function setupTerminalDrop(
     const types = Array.from(dt.types)
     const files = Array.from(dt.files ?? []) as any[]
     const paths: string[] = []
+
+    // 0. Tauri (macOS WKWebView): read NSDragPboard directly. WKWebView's
+    //    DataTransfer sanitizes non-text types, so VSCode's `public.file-url`
+    //    drags show up with empty dt.files and unreachable text/plain. This
+    //    must run BEFORE the text/plain fallback because WKWebView also hides
+    //    text/plain for some drag sources.
+    if (isTauri()) {
+      const pboardPaths = await readDragPboard()
+      if (pboardPaths.length > 0) {
+        host.sendData(pboardPaths.map(escapeShellPath).join(' '))
+        return
+      }
+    }
 
     // 1. Tauri WKWebView 在 File 对象上暴露了非标准的 `path`（绝对路径）。
     //    优先取它，否则在桌面端只会拿到 File.name（仅文件名）。
