@@ -1,6 +1,5 @@
 import { defineComponent, ref, h, onMounted, nextTick } from 'vue'
 import type { VNode } from 'vue'
-import { isTauri } from '../../composables/useTransport'
 import { useI18n } from '../../composables/useI18n'
 import { setInternalDrag, clearInternalDrag } from '../../composables/internalDragState'
 
@@ -51,54 +50,6 @@ export function absJoinWorkspaceRoot(root: string, rel: string): string {
     return r + '\\' + parts.join('\\')
   }
   return r + '/' + parts.join('/')
-}
-
-let lastDragX = 0
-let lastDragY = 0
-
-if (typeof document !== 'undefined') {
-  document.addEventListener(
-    'dragover',
-    (e: DragEvent) => {
-      if (e.clientX !== 0 || e.clientY !== 0) {
-        lastDragX = e.clientX
-        lastDragY = e.clientY
-      }
-    },
-    true
-  )
-}
-
-function dispatchDropToTerminal(ev: DragEvent, path: string) {
-  if (!isTauri()) return
-
-  const cx = ev.clientX || lastDragX
-  const cy = ev.clientY || lastDragY
-  if (!cx && !cy) return
-
-  // Try elementFromPoint first
-  const el = document.elementFromPoint(cx, cy)
-  let termPane = el?.closest('.terminal-pane') as HTMLElement | null
-
-  // Fallback: check all terminal panes by bounding rect
-  if (!termPane) {
-    for (const pane of document.querySelectorAll('.terminal-pane')) {
-      const rect = (pane as HTMLElement).getBoundingClientRect()
-      if (cx >= rect.left && cx <= rect.right && cy >= rect.top && cy <= rect.bottom) {
-        termPane = pane as HTMLElement
-        break
-      }
-    }
-  }
-
-  if (termPane) {
-    termPane.dispatchEvent(
-      new CustomEvent('terminal-drop-path', {
-        detail: { path },
-        bubbles: false,
-      })
-    )
-  }
 }
 
 export const TreeInlineInput = defineComponent({
@@ -339,9 +290,7 @@ export const TreeRows = defineComponent({
                   ev.dataTransfer!.effectAllowed = 'copyMove'
                   setInternalDrag(rel)
                 },
-                onDragend: (ev: DragEvent) => {
-                  const root = p.workspaceRoot as string
-                  if (root) dispatchDropToTerminal(ev, absJoinWorkspaceRoot(root, rel))
+                onDragend: () => {
                   setTimeout(clearInternalDrag, 200)
                 },
                 onDragover: (ev: DragEvent) => {
@@ -516,9 +465,7 @@ export const TreeRows = defineComponent({
                   ev.dataTransfer!.effectAllowed = 'copyMove'
                   setInternalDrag(rel)
                 },
-                onDragend: (ev: DragEvent) => {
-                  const root = p.workspaceRoot as string
-                  if (root) dispatchDropToTerminal(ev, absJoinWorkspaceRoot(root, rel))
+                onDragend: () => {
                   setTimeout(clearInternalDrag, 200)
                 },
                 ...makeLongPressHandlers(rel, false),

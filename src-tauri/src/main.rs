@@ -755,25 +755,6 @@ fn main() {
             Ok(())
         })
         .on_window_event(|window, event| match event {
-            tauri::WindowEvent::DragDrop(drag_event) => match drag_event {
-                tauri::DragDropEvent::Enter { .. } => {
-                    let _ = window.emit("file-drop-active", true);
-                }
-                tauri::DragDropEvent::Leave => {
-                    let _ = window.emit("file-drop-active", false);
-                }
-                tauri::DragDropEvent::Drop { paths, position } => {
-                    let _ = window.emit("file-drop-active", false);
-                    let path_strings: Vec<String> =
-                        paths.iter().map(|p| p.to_string_lossy().into_owned()).collect();
-                    let payload = serde_json::json!({
-                        "paths": path_strings,
-                        "position": { "x": position.x, "y": position.y }
-                    });
-                    let _ = window.emit("file-drop-paths", &payload);
-                }
-                _ => {}
-            },
             tauri::WindowEvent::CloseRequested { api, .. } => {
                 if DESKTOP_SHUTDOWN_STARTED.load(Ordering::SeqCst) {
                     return;
