@@ -11,6 +11,7 @@ import { apiActivatePane, apiCloseTab, apiCreateTab, apiCreateSshTab } from './u
 import { apiApplyTemplate } from './useTemplateApi'
 import type { SshConnectResult } from './useSshConnectFlow'
 import type { MarkReadReason } from './useNotification'
+import type { SyncClientMsg } from '../types/protocol'
 
 export interface TabLifecycleOptions {
   tabs: Ref<Tab[]>
@@ -37,12 +38,14 @@ export interface TabLifecycleOptions {
   persist: () => void
   persistNow: () => void
   onSshConnectRef: ShallowRef<(result: SshConnectResult) => Promise<void>>
+  sendSync: (msg: SyncClientMsg) => void
 }
 
 export interface TabLifecycleState {
   newTab: {
     (cwd?: string): Promise<void>
     (cwd: string, argv: string[], title?: string): Promise<string>
+    (cwd?: string, argv?: string[], title?: string, workspaceId?: string | null): Promise<void>
   }
   applyTemplate: (
     templateId: string,
@@ -84,19 +87,31 @@ export function useTabLifecycle(opts: TabLifecycleOptions): TabLifecycleState {
     persist,
     persistNow,
     onSshConnectRef,
+    sendSync,
   } = opts
 
   function newTab(cwd?: string): Promise<void>
   function newTab(cwd: string, argv: string[], title?: string): Promise<string>
-  async function newTab(cwd?: string, argv?: string[], title?: string): Promise<string | void> {
+  function newTab(cwd?: string, argv?: string[], title?: string, workspaceId?: string | null): Promise<void>
+  async function newTab(cwd?: string, argv?: string[], title?: string, workspaceId?: string | null): Promise<string | void> {
     try {
-      const activeWs = workspaces.value.find((w) => w.id === activeWorkspaceId.value)
-      if (!argv && activeWs?.connection_id) {
+      // When `workspaceId` is provided (e.g. from the MC overview), the
+      // caller has already resolved the target workspace. Skip both the
+      // active-workspace SSH auto-connect and the `activeWorkspacePath`
+      // cwd fallback - otherwise the new tab would be attributed to the
+      // confirmed active workspace instead of the MC-selected one.
+      const useActiveFallback = workspaceId === undefined
+      const activeWs = useActiveFallback
+        ? workspaces.value.find((w) => w.id === activeWorkspaceId.value)
+        : null
+      if (!argv && useActiveFallback && activeWs?.connection_id) {
         const result = await apiCreateSshTab(activeWs.connection_id, activeWs.path)
         await onSshConnectRef.value(result)
         return result.pane_id
       }
-      const effectiveCwd = cwd ?? activeWorkspacePath.value
+      const effectiveCwd = useActiveFallback
+        ? (cwd ?? activeWorkspacePath.value)
+        : cwd
       const result = await apiCreateTab(effectiveCwd, argv, title)
       const existing = tabs.value.find((t) => t.type === 'terminal' && t.paneId === result.tab_id)
       if (existing) {
@@ -373,6 +388,7 @@ export function useTabLifecycle(opts: TabLifecycleOptions): TabLifecycleState {
   function onRenameTab(paneId: string, title: string) {
     session.renameTab(paneId, title)
     persist()
+    sendSync({ type: 'rename_tab', tab_id: paneId, title })
   }
 
   async function requestCloseTab(tabId: string) {

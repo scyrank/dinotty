@@ -15,6 +15,7 @@ use axum::{
 use futures_util::{SinkExt, StreamExt};
 
 use crate::history::HistoryState;
+use crate::mission_control::{MissionControlState, NavDir};
 use crate::monitor::MonitorState;
 use crate::notification::NotificationBroadcast;
 use crate::session::{SessionManager, SyncMsg};
@@ -23,7 +24,7 @@ use crate::workspace_mgmt::WorkspacesState;
 
 use super::types::SyncClientMsg;
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, clippy::too_many_arguments)]
 pub async fn sync_handler(
     ws: WebSocketUpgrade,
     State((manager, workspaces, settings)): State<(
@@ -34,6 +35,7 @@ pub async fn sync_handler(
     State(notifier): State<Arc<NotificationBroadcast>>,
     State(history): State<HistoryState>,
     State(monitor): State<MonitorState>,
+    State(mc): State<MissionControlState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
@@ -46,11 +48,12 @@ pub async fn sync_handler(
         return StatusCode::FORBIDDEN.into_response();
     }
     ws.on_upgrade(move |socket| {
-        handle_sync_socket(socket, manager, workspaces, settings, notifier, history, monitor)
+        handle_sync_socket(socket, manager, workspaces, settings, notifier, history, monitor, mc)
     })
     .into_response()
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn handle_sync_socket(
     socket: WebSocket,
     manager: Arc<SessionManager>,
@@ -59,6 +62,7 @@ async fn handle_sync_socket(
     notifier: Arc<NotificationBroadcast>,
     history: HistoryState,
     monitor: MonitorState,
+    mc: MissionControlState,
 ) {
     let (ws_tx, mut ws_rx) = socket.split();
 
@@ -143,6 +147,20 @@ async fn handle_sync_socket(
         let active_workspace_id = settings.read().await.active_workspace_id.clone();
         let workspace_list = SyncMsg::WorkspaceList { workspaces: ws.clone(), active_workspace_id };
         let msg = serde_json::to_string(&workspace_list).expect("serialization is infallible");
+        let _ = ws_out_tx.send(Message::Text(msg));
+    }
+
+    // Send current Mission Control snapshot. Sent after tab_list/workspace_list
+    // so the client can resolve selected_workspace_id / selected_tab_id against
+    // the just-received catalogues.
+    {
+        let mc_snap = mc.read().await.clone();
+        let snapshot_msg = SyncMsg::McSnapshot {
+            open: mc_snap.open,
+            selected_workspace_id: mc_snap.selected_workspace_id,
+            selected_tab_id: mc_snap.selected_tab_id,
+        };
+        let msg = serde_json::to_string(&snapshot_msg).expect("serialization is infallible");
         let _ = ws_out_tx.send(Message::Text(msg));
     }
 
@@ -296,9 +314,28 @@ async fn handle_sync_socket(
                             // Non-terminal-only tabs have no session close to remove the layout.
                             if manager.remove_tab(&pane_id) {
                                 manager.broadcast_sync_others(
-                                    &SyncMsg::TabClosed { pane_id },
+                                    &SyncMsg::TabClosed { pane_id: pane_id.clone() },
                                     &client_id,
                                 );
+                            }
+                            // If the closed tab was MC's selected one, clear the
+                            // selection so the next Navigate starts fresh.
+                            let selected_changed = {
+                                let mut snap = mc.write().await;
+                                if snap.selected_tab_id.as_deref() == Some(pane_id.as_str()) {
+                                    snap.selected_tab_id = None;
+                                    true
+                                } else {
+                                    false
+                                }
+                            };
+                            if selected_changed {
+                                let snap = mc.read().await.clone();
+                                manager.broadcast_sync(&SyncMsg::SelectionChanged {
+                                    selected_workspace_id: snap.selected_workspace_id,
+                                    selected_tab_id: None,
+                                    tab_title: None,
+                                });
                             }
                         }
                         SyncClientMsg::ClosePane { pane_id } => {
@@ -327,6 +364,40 @@ async fn handle_sync_socket(
                         SyncClientMsg::MarkRead { request } => {
                             notifier.apply_mark_read(&client_id, &request);
                         }
+                        SyncClientMsg::RenameTab { tab_id, title } => {
+                            if manager.rename_tab(&tab_id, &title) {
+                                manager.broadcast_sync_others(
+                                    &SyncMsg::TabRenamed { tab_id, title },
+                                    &client_id,
+                                );
+                            }
+                        }
+                        SyncClientMsg::MissionControlOp { op } => {
+                            handle_mission_control_op(op, &manager, &workspaces, &mc).await;
+                        }
+                        SyncClientMsg::Input { data } => {
+                            // Safety net: if MC is open, drop terminal input so a
+                            // buggy hardware-keyboard firmware cannot leak arrow
+                            // keys into the PTY while the user is in the overview.
+                            let mc_open = mc.read().await.open;
+                            if mc_open {
+                                continue;
+                            }
+                            let active = manager
+                                .active_pane_id
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                .clone();
+                            let Some(pane_id) = active else { continue };
+                            let Some(session) =
+                                manager.sessions.get(&pane_id).map(|e| Arc::clone(e.value()))
+                            else {
+                                continue;
+                            };
+                            tokio::spawn(async move {
+                                let _ = session.write_input_async(data.as_bytes()).await;
+                            });
+                        }
                     }
                 }
             }
@@ -344,4 +415,214 @@ async fn handle_sync_socket(
     writer_task.abort();
     ping_task.abort();
     notifier.unregister_client(&client_id);
+}
+
+/// Tab title for a given tab_id, read from the layout JSON's `title` field.
+/// Returns None if the tab does not exist or has no title.
+fn tab_title_for(manager: &SessionManager, tab_id: &str) -> Option<String> {
+    manager
+        .tab_layouts
+        .get(tab_id)
+        .and_then(|v| v.get("title").and_then(|t| t.as_str()).map(String::from))
+}
+
+/// Resolve the leaf pane id for a tab (the pane that should be activated when
+/// the user confirms this tab in MC). Falls back to the tab_id itself.
+fn tab_leaf_for(manager: &SessionManager, tab_id: &str) -> Option<String> {
+    manager.tab_layouts.get(tab_id).and_then(|v| {
+        v.get("active_pane_id")
+            .and_then(|a| a.as_str())
+            .map(String::from)
+            .or_else(|| v.get("layout").and_then(crate::session::first_leaf_id))
+    })
+}
+
+/// Apply a Mission Control operation. The lock is held only while mutating
+/// `mc`; broadcasts happen after release so a slow WS write cannot block
+/// other clients' mutations.
+#[allow(clippy::too_many_lines)]
+async fn handle_mission_control_op(
+    op: crate::mission_control::McOp,
+    manager: &Arc<SessionManager>,
+    workspaces: &WorkspacesState,
+    mc: &MissionControlState,
+) {
+    use crate::mission_control::McOp;
+
+    match op {
+        McOp::Toggle => {
+            let mut snap = mc.write().await;
+            snap.open = !snap.open;
+            // On open, seed selection from the current active tab so the
+            // highlight lands where the user expects. On close, leave
+            // selected_* intact so re-opening restores the last position.
+            if snap.open {
+                let active = manager
+                    .active_pane_id
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .clone();
+                if let Some(active_id) = active {
+                    // Resolve from active leaf -> tab id by scanning layouts.
+                    let mut found_tab: Option<String> = None;
+                    for entry in &manager.tab_layouts {
+                        let v = entry.value();
+                        let leaf = v
+                            .get("active_pane_id")
+                            .and_then(|a| a.as_str())
+                            .map(String::from)
+                            .or_else(|| v.get("layout").and_then(crate::session::first_leaf_id));
+                        if leaf.as_deref() == Some(active_id.as_str()) || entry.key() == &active_id
+                        {
+                            found_tab = Some(entry.key().clone());
+                            break;
+                        }
+                    }
+                    snap.selected_tab_id = found_tab;
+                    // selected_workspace_id left untouched on toggle-open.
+                }
+            }
+            let open = snap.open;
+            let selected_workspace_id = snap.selected_workspace_id.clone();
+            let selected_tab_id = snap.selected_tab_id.clone();
+            drop(snap);
+            manager.broadcast_sync(&SyncMsg::MissionControlToggled {
+                open,
+                selected_workspace_id,
+                selected_tab_id,
+            });
+        }
+        McOp::Navigate { dir } => {
+            // Snapshot the data we need, then release locks before broadcasting.
+            let (selected_workspace_id, selected_tab_id, tab_title) = {
+                let mut snap = mc.write().await;
+                if !snap.open {
+                    // Navigate while MC is closed is a no-op (hardware keyboard
+                    // should be sending Input instead). Ignore silently.
+                    return;
+                }
+                let (tabs, _) = manager.tab_list();
+                let tab_ids: Vec<String> = tabs.iter().map(|t| t.tab_id.clone()).collect();
+                match dir {
+                    NavDir::Up | NavDir::Down => {
+                        // Cycle through [None (=default workspace), ...workspace ids].
+                        // Up/Down navigates the workspace list because workspaces are
+                        // stacked vertically in the MC dual-panel layout.
+                        let ws_ids: Vec<String> =
+                            workspaces.read().await.iter().map(|w| w.id.clone()).collect();
+                        let all_ids: Vec<Option<String>> =
+                            std::iter::once(None).chain(ws_ids.into_iter().map(Some)).collect();
+                        let cur = snap.selected_workspace_id.clone();
+                        let cur_idx = all_ids
+                            .iter()
+                            .position(|id| id.as_deref() == cur.as_deref())
+                            .unwrap_or(0);
+                        let new_idx = if dir == NavDir::Up {
+                            cur_idx.saturating_sub(1)
+                        } else {
+                            (cur_idx + 1).min(all_ids.len() - 1)
+                        };
+                        snap.selected_workspace_id.clone_from(&all_ids[new_idx]);
+                        // Reset tab selection when crossing workspace boundary
+                        // - the previous tab_id belongs to the old workspace.
+                        snap.selected_tab_id = None;
+                    }
+                    NavDir::Left | NavDir::Right => {
+                        // Left/Right navigates tabs within the current workspace -
+                        // the tab grid is laid out horizontally.
+                        if tab_ids.is_empty() {
+                            snap.selected_tab_id = None;
+                        } else {
+                            let cur_idx = snap
+                                .selected_tab_id
+                                .as_deref()
+                                .and_then(|id| tab_ids.iter().position(|t| t == id));
+                            let new_idx = match cur_idx {
+                                None => 0,
+                                Some(i) => {
+                                    if dir == NavDir::Left {
+                                        i.saturating_sub(1)
+                                    } else {
+                                        (i + 1).min(tab_ids.len() - 1)
+                                    }
+                                }
+                            };
+                            snap.selected_tab_id = Some(tab_ids[new_idx].clone());
+                        }
+                    }
+                }
+                let selected_workspace_id = snap.selected_workspace_id.clone();
+                let selected_tab_id = snap.selected_tab_id.clone();
+                let tab_title =
+                    selected_tab_id.as_deref().and_then(|id| tab_title_for(manager, id));
+                (selected_workspace_id, selected_tab_id, tab_title)
+            };
+            manager.broadcast_sync(&SyncMsg::SelectionChanged {
+                selected_workspace_id,
+                selected_tab_id,
+                tab_title,
+            });
+        }
+        McOp::Jump { workspace_id } => {
+            let (selected_workspace_id, selected_tab_id, tab_title) = {
+                let mut snap = mc.write().await;
+                if !snap.open {
+                    return;
+                }
+                snap.selected_workspace_id = workspace_id;
+                snap.selected_tab_id = None;
+                let selected_workspace_id = snap.selected_workspace_id.clone();
+                let selected_tab_id = snap.selected_tab_id.clone();
+                let tab_title = None;
+                (selected_workspace_id, selected_tab_id, tab_title)
+            };
+            manager.broadcast_sync(&SyncMsg::SelectionChanged {
+                selected_workspace_id,
+                selected_tab_id,
+                tab_title,
+            });
+        }
+        McOp::Confirm => {
+            // Resolve selected -> active, then close MC.
+            let target_leaf = {
+                let snap = mc.read().await;
+                if !snap.open {
+                    return;
+                }
+                snap.selected_tab_id.as_deref().and_then(|id| tab_leaf_for(manager, id))
+            };
+            if let Some(leaf) = target_leaf {
+                manager.set_active_pane_id(Some(leaf.clone()));
+                manager.broadcast_sync(&SyncMsg::TabActivated { pane_id: leaf });
+            }
+            // Close MC.
+            {
+                let mut snap = mc.write().await;
+                snap.open = false;
+                let selected_workspace_id = snap.selected_workspace_id.clone();
+                let selected_tab_id = snap.selected_tab_id.clone();
+                drop(snap);
+                manager.broadcast_sync(&SyncMsg::MissionControlToggled {
+                    open: false,
+                    selected_workspace_id,
+                    selected_tab_id,
+                });
+            }
+        }
+        McOp::Cancel => {
+            let mut snap = mc.write().await;
+            if !snap.open {
+                return;
+            }
+            snap.open = false;
+            let selected_workspace_id = snap.selected_workspace_id.clone();
+            let selected_tab_id = snap.selected_tab_id.clone();
+            drop(snap);
+            manager.broadcast_sync(&SyncMsg::MissionControlToggled {
+                open: false,
+                selected_workspace_id,
+                selected_tab_id,
+            });
+        }
+    }
 }

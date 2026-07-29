@@ -22,7 +22,7 @@ let wsNavGen = 0
 
 export const defaultWorkspace = computed<Workspace>(() => ({
   id: DEFAULT_WORKSPACE_ID,
-  name: settings.default_workspace_name?.trim() || t('workspace.all'),
+  name: settings.default_workspace_name?.trim() || t('workspace.default'),
   path: settings.default_workspace_root?.trim() || '',
   order: 0,
   ...(settings.default_workspace_abbr?.trim()
@@ -116,11 +116,18 @@ export function useWorkspaces() {
 
     if (!cwd) return null
 
-    // Local tab: path-prefix match
+    // Local tab: path-prefix match. Include the default workspace (`__default__`)
+    // in the loop so tabs under its path match it - same rule as any other
+    // workspace. Skip if the default has no path configured (empty path would
+    // match every absolute cwd, which is not the intent).
     let best: Workspace | null = null
     let bestLen = 0
-    for (const ws of workspaces.value) {
+    const candidates = defaultWorkspace.value.path
+      ? [defaultWorkspace.value, ...workspaces.value]
+      : workspaces.value
+    for (const ws of candidates) {
       if (ws.connection_id) continue // skip remote workspaces for path matching
+      if (!ws.path) continue
       if (cwd === ws.path || (cwd.startsWith(ws.path) && cwd[ws.path.length] === '/')) {
         if (ws.path.length > bestLen) {
           best = ws

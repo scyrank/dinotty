@@ -77,6 +77,7 @@ export interface SettingsData {
     lockout_secs: number
     global_lockout_max_failures: number
     global_lockout_secs: number
+    login_method: 'token' | 'verification_code'
   }
   preview: {
     allow_external: boolean
@@ -464,6 +465,7 @@ export const settings = reactive<SettingsData>({
     lockout_secs: 60,
     global_lockout_max_failures: 50,
     global_lockout_secs: 300,
+    login_method: 'token',
   },
   preview: {
     allow_external: false,

@@ -64,6 +64,24 @@ pub enum SyncClientMsg {
         #[serde(flatten)]
         request: crate::notification::MarkReadRequest,
     },
+    RenameTab {
+        tab_id: String,
+        title: String,
+    },
+    /// Mission Control operation from a sync client (hardware keyboard or
+    /// desktop frontend). Server holds the global MC state and broadcasts
+    /// `MissionControlToggled` / `SelectionChanged` to all clients.
+    MissionControlOp {
+        op: crate::mission_control::McOp,
+    },
+    /// Terminal input from a sync client that has no `/ws/<paneId>` socket
+    /// of its own (hardware keyboard). Routed to the active pane's PTY.
+    /// Server-side safety net: if MC is open, Input is dropped to avoid the
+    /// hardware keyboard leaking keystrokes into the terminal while the user
+    /// is navigating the overview.
+    Input {
+        data: String,
+    },
 }
 
 #[derive(Serialize)]

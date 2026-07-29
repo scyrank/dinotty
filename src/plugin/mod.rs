@@ -6,6 +6,7 @@ mod install_git;
 mod manager;
 mod registry;
 mod storage;
+mod subscriptions;
 mod types;
 
 pub use crud::{
@@ -23,4 +24,5 @@ pub use registry::{get_market_readme, get_market_registry};
 pub use storage::{
     plugin_storage_delete, plugin_storage_get, plugin_storage_list, plugin_storage_set,
 };
+pub use subscriptions::{has_subscriber, subscribe, unsubscribe, SubscriptionRegistry};
 pub use types::*;

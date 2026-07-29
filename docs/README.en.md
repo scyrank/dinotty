@@ -227,6 +227,16 @@ $env:RUST_LOG = "debug"
 cargo run
 ```
 
+## Verification Code Login
+
+In addition to the default "Token" login, dinotty supports "Verification Code" login as a **mutually exclusive** alternative: when selected in "Security & Access", remote users receive a 6-digit code generated server-side and pushed to you via a notifier plugin (e.g. `feishu-notify`). Entering the code on the login page creates a session. Codes are valid for 5 minutes, single-use, and invalidated after 5 wrong attempts. This removes the static token from the remote login path, mitigating XSS / screenshot / device theft / social engineering risks to the token itself.
+
+Before enabling, install a messaging notifier plugin and keep it subscribed to the `auth.verification_code` event - otherwise the option is disabled in the UI. While `login_method=verification_code`, uninstalling a plugin currently subscribed to that event is rejected with 409 to prevent accidental lockout.
+
+### Emergency Recovery
+
+If verification code login is stuck (notifier plugin uninstalled, subscription lost, or IM/email not arriving), edit `~/.dinotty/settings.json` (Windows: `%APPDATA%\dinotty\settings.json`) on the server host, set `auth.login_method` back to `"token"`, and restart the dinotty service. This path is only writable by the server host's local user; remote login users cannot modify it.
+
 ## Tech Stack
 
 | Layer | Technology |

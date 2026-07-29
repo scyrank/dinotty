@@ -22,6 +22,17 @@ onEvent((e) => {
   }
 })
 
+function reportPluginSubscription(pluginId: string, eventName: string, kind: 'subscribe' | 'unsubscribe') {
+  void authFetch(apiUrl(`/api/plugins/${encodeURIComponent(pluginId)}/events/${kind}`), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ event_name: eventName }),
+  }).catch(() => {
+    // Best-effort: registry is in-memory on the backend; a missed POST just
+    // means the settings UI / uninstall guard may be momentarily stale.
+  })
+}
+
 export function subscribe<T = unknown>(
   eventName: string,
   handler: EventHandler<T>,
@@ -29,15 +40,31 @@ export function subscribe<T = unknown>(
 ): () => void {
   const entry: HandlerEntry = { handler: handler as EventHandler, pluginId: opts?.pluginId }
   let set = handlers.get(eventName)
+  const wasEmpty = !set || set.size === 0
   if (!set) {
     set = new Set()
     handlers.set(eventName, set)
   }
   set.add(entry)
+  // Notify backend when a plugin's subscription transitions to active so the
+  // settings UI / uninstall guard can reflect it.
+  if (opts?.pluginId && wasEmpty) {
+    reportPluginSubscription(opts.pluginId, eventName, 'subscribe')
+  }
   return () => {
     set?.delete(entry)
-    if (set && set.size === 0) handlers.delete(eventName)
+    if (set && set.size === 0) {
+      handlers.delete(eventName)
+      if (entry.pluginId) {
+        reportPluginSubscription(entry.pluginId, eventName, 'unsubscribe')
+      }
+    }
   }
+}
+
+export function hasSubscriber(eventName: string): boolean {
+  const set = handlers.get(eventName)
+  return !!set && set.size > 0
 }
 
 export function emit(
@@ -60,5 +87,5 @@ export function emit(
 }
 
 if (import.meta.env.DEV) {
-  ;(window as any).__dinotty_eventBridge = { subscribe, emit }
+  ;(window as any).__dinotty_eventBridge = { subscribe, emit, hasSubscriber }
 }

@@ -194,6 +194,45 @@
           <h3>{{ t('security.authConfig') }}</h3>
 
           <div class="settings-row">
+            <label>{{ t('security.loginMethod') }}</label>
+            <SegmentedControl
+              class="login-method-control"
+              data-setting="auth.login_method"
+              :model-value="loginMethodValue"
+              :options="loginMethodOptions"
+              :aria-label="t('security.loginMethod')"
+              @update:model-value="onLoginMethodChange"
+            />
+          </div>
+          <p class="settings-hint" v-if="!hasCodeSubscriber">
+            {{ t('security.loginMethodNoSubscriberHint') }}
+          </p>
+          <p class="settings-hint" v-else>
+            {{ t('security.loginMethodHint') }}
+          </p>
+
+          <div v-if="showConfirmDialog" class="login-method-confirm">
+            <p class="confirm-title">{{ t('security.loginMethodConfirmTitle') }}</p>
+            <p class="confirm-body">{{ t('security.loginMethodConfirmBody') }}</p>
+            <label class="confirm-checkbox">
+              <input type="checkbox" v-model="confirmAcknowledged" />
+              <span>{{ t('security.loginMethodConfirmAck') }}</span>
+            </label>
+            <div class="confirm-actions">
+              <button class="icon-btn" @click="cancelLoginMethodChange">
+                {{ t('security.loginMethodConfirmCancel') }}
+              </button>
+              <button
+                class="icon-btn"
+                :disabled="!confirmAcknowledged"
+                @click="confirmLoginMethodChange"
+              >
+                {{ t('security.loginMethodConfirmApply') }}
+              </button>
+            </div>
+          </div>
+
+          <div class="settings-row" style="margin-top: 12px">
             <label>{{ t('security.lockoutStrategy') }}</label>
             <select v-model="settings.auth.lockout_strategy" @change="saveSettings()">
               <option value="ip">IP</option>
@@ -527,7 +566,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { Eye, EyeOff, Copy, Check, Pencil, RefreshCw, Save, X, FolderOpen } from 'lucide-vue-next'
 import { useSettings } from '../../composables/useSettings'
 import type { WorkspaceBadgeMode } from '../../composables/useSettings'
@@ -538,6 +577,7 @@ import CollapsibleSection from './CollapsibleSection.vue'
 import SegmentedControl from '../ui/SegmentedControl.vue'
 import { useToast } from 'vue-toastification'
 import { isTauri } from '../../composables/useTransport'
+import { authFetch, apiUrl } from '../../composables/apiBase'
 import { useUploadManagement } from '../../composables/useUploadManagement'
 import { useTokenManagement } from '../../composables/useTokenManagement'
 import { useAccessUrl } from '../../composables/useAccessUrl'
@@ -656,6 +696,74 @@ function addIp() {
 function removeIp(idx: number) {
   settings.ip_whitelist.splice(idx, 1)
 }
+
+const hasCodeSubscriber = ref(true)
+const showConfirmDialog = ref(false)
+const confirmAcknowledged = ref(false)
+const pendingLoginMethod = ref<'token' | 'verification_code'>('token')
+const loginMethodValue = ref<'token' | 'verification_code'>('token')
+
+const loginMethodOptions = computed(() => [
+  { value: 'token', label: t('security.loginMethodToken') },
+  { value: 'verification_code', label: t('security.loginMethodVerificationCode') },
+])
+
+async function refreshHasSubscriber() {
+  try {
+    const res = await authFetch(
+      apiUrl('/api/plugins/events/has-subscriber?event=auth.verification_code'),
+    )
+    if (!res.ok) return
+    const data = await res.json()
+    hasCodeSubscriber.value = !!data.has_subscriber
+  } catch {
+    hasCodeSubscriber.value = true
+  }
+}
+
+function onLoginMethodChange(next: string) {
+  const current = settings.auth.login_method
+  if (next === current) return
+  if (next === 'token') {
+    settings.auth.login_method = 'token'
+    loginMethodValue.value = 'token'
+    saveSettings()
+    return
+  }
+  if (next === 'verification_code') {
+    if (!hasCodeSubscriber.value) {
+      toast.error(t('security.loginMethodNoSubscriberHint'))
+      loginMethodValue.value = current
+      return
+    }
+    pendingLoginMethod.value = 'verification_code'
+    confirmAcknowledged.value = false
+    showConfirmDialog.value = true
+    loginMethodValue.value = current
+    return
+  }
+  loginMethodValue.value = current
+}
+
+function cancelLoginMethodChange() {
+  showConfirmDialog.value = false
+  pendingLoginMethod.value = 'token'
+  confirmAcknowledged.value = false
+  loginMethodValue.value = settings.auth.login_method
+}
+
+function confirmLoginMethodChange() {
+  if (!confirmAcknowledged.value) return
+  settings.auth.login_method = pendingLoginMethod.value
+  loginMethodValue.value = pendingLoginMethod.value
+  saveSettings()
+  showConfirmDialog.value = false
+}
+
+onMounted(async () => {
+  loginMethodValue.value = settings.auth.login_method
+  await refreshHasSubscriber()
+})
 </script>
 
 <style scoped>
@@ -879,5 +987,45 @@ function removeIp(idx: number) {
 /* match SettingsPanel .settings-row gap rhythm (10px) removed when the wrapping row was dropped */
 .ws-badge-control {
   margin-bottom: 10px;
+}
+
+.login-method-control {
+  flex: 1;
+  min-width: 0;
+}
+
+.login-method-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  margin-top: 10px;
+}
+.confirm-title {
+  font-weight: 600;
+  margin: 0;
+  color: var(--fg-bright);
+  font-size: 13px;
+}
+.confirm-body {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-muted);
+  line-height: 1.5;
+}
+.confirm-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fg);
+}
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 </style>

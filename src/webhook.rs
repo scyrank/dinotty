@@ -109,6 +109,8 @@ impl WebhookDispatcher {
             BusEvent::FileChanged { .. } => "file_changed",
             BusEvent::Custom { .. } => "custom",
             BusEvent::AuthLoginFailed { .. } => "auth_login_failed",
+            BusEvent::VerificationCode { .. } => "auth_verification_code",
+            BusEvent::VerificationCodeConsumed { .. } => "auth_verification_code_consumed",
             BusEvent::Notify { .. } => "notify",
             BusEvent::ProcessExited { .. } => "process_exited",
             BusEvent::PluginChanged { .. } => "plugin_changed",

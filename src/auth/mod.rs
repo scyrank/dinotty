@@ -19,6 +19,7 @@ use crate::auth::session::SessionStore;
 use crate::settings::SettingsState;
 
 pub mod session;
+pub mod verification_code;
 
 static SESSION_COOKIE_PORT: OnceLock<u16> = OnceLock::new();
 
@@ -206,8 +207,9 @@ pub async fn auth_middleware(
 
     // /api/auth is the login endpoint - exempt from IP whitelist so non-loopback
     // users can authenticate. The login handler does its own token validation
-    // and brute-force accounting.
-    if path == "/api/auth" {
+    // and brute-force accounting. /api/auth/request-code is the verification
+    // code request endpoint - same exemption rationale.
+    if path == "/api/auth" || path == "/api/auth/request-code" {
         return next.run(request).await;
     }
 

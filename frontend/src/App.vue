@@ -260,7 +260,7 @@
       :active-pane-id="activePaneId"
       :term-refs="termRefs"
       :indicators="tabIndicators"
-      @close="overviewOpen = false"
+      @close="closeOverview"
       @activate="onOverviewActivate"
       @close-tab="onOverviewCloseTab"
       @close-tabs="onCloseTabsBulk"
@@ -363,10 +363,12 @@ import { useKeyboardOverlap } from './composables/useKeyboardOverlap'
 import { usePluginLauncher } from './composables/usePluginLauncher'
 import { useSshConnectFlow } from './composables/useSshConnectFlow'
 import { useTabLifecycle } from './composables/useTabLifecycle'
+import { setMcSender } from './composables/useMissionControlState'
 import { clearFileWorkspaceState } from './composables/useFileWorkspaceState'
 import { useSplitPane } from './composables/useSplitPane'
 import { useSuperviseTabs } from './composables/useSuperviseTabs'
 import { useSyncWebSocket } from './composables/useSyncWebSocket'
+import type { SyncClientMsg } from './types/protocol'
 import { isWebPreviewInput } from './utils/previewRouting'
 import { isWindowsClient } from './utils/clientPlatform'
 import { nextRevealNavGen, currentRevealNavGen } from './utils/navGen'
@@ -414,7 +416,7 @@ import {
 import WorkspaceOverview from './components/overview/WorkspaceOverview.vue'
 import { refreshPluginPreview, invalidatePluginPreview } from './composables/useTabPreview'
 import { useIsMobile } from './composables/useIsMobile'
-import { useWorkspaces } from './composables/useWorkspaces'
+import { useWorkspaces, DEFAULT_WORKSPACE_ID } from './composables/useWorkspaces'
 // formatCloseTabMessage moved to ConfirmCloseDialog component
 import LoginPage from './components/LoginPage.vue'
 import SetupPage from './components/SetupPage.vue'
@@ -569,8 +571,12 @@ const visibleTabList = computed(() => {
       // Specific workspace: only tabs matching this workspace
       return ws?.id === activeWorkspaceId.value
     }
-    // Default (无工作区): only tabs not belonging to any workspace
-    return !ws
+    // Default workspace: tabs matching the default workspace's path OR
+    // tabs that don't belong to any workspace. `matchWorkspace` returns
+    // the default workspace (id === DEFAULT_WORKSPACE_ID) for tabs whose
+    // cwd matches its path, and `null` for ungrouped tabs - both belong
+    // in the default view.
+    return !ws || ws.id === DEFAULT_WORKSPACE_ID
   })
   // Reindex: workspace-relative 1-based indices
   return list.map((t, i) => ({ ...t, index: i + 1 }))
@@ -637,6 +643,8 @@ const onSshConnectRef = shallowRef<
   throw new Error('onSshConnect not wired')
 })
 
+let sendSyncFn: (msg: SyncClientMsg) => void = () => {}
+
 const {
   newTab,
   applyTemplate,
@@ -673,11 +681,13 @@ const {
   persist,
   persistNow,
   onSshConnectRef,
+  sendSync: (msg) => sendSyncFn(msg),
 })
 
 const {
   overviewOpen,
   openOverview,
+  closeOverview,
   onOverviewActivate,
   onOverviewCloseTab,
   onCloseTabsBulk,
@@ -697,6 +707,7 @@ const {
   persist,
   commitLocalActivePane,
   focusActive,
+  sendSync: (msg) => sendSyncFn(msg),
 })
 const currentTabIndex = computed(
   () => visibleTabList.value.findIndex((t) => t.paneId === activePaneId.value) + 1
@@ -827,6 +838,10 @@ const syncWs = useSyncWebSocket({
     await newTab()
   },
 })
+sendSyncFn = syncWs.sendSync
+// Wire MC ops from overview components to the sync WS. Components call
+// `sendMcOp` (from useMissionControlState) which routes through this sender.
+setMcSender((op) => sendSyncFn({ type: 'mission_control_op', op }))
 
 const sshAuth = useSshAuth({ syncWs })
 const { sshAuthVisible, sshAuthHost, sshAuthPrompts } = sshAuth
@@ -853,7 +868,7 @@ const splitPane = useSplitPane({
   activePaneId,
   termRefs,
   genPaneId,
-  sendSync: syncWs.sendSync,
+  sendSync: (msg) => sendSyncFn(msg),
   sendLayoutSync: syncWs.sendLayoutSync,
   persist,
 })

@@ -1,9 +1,10 @@
-import { ref } from 'vue'
+import { computed, nextTick } from 'vue'
 import type { Ref } from 'vue'
-import { nextTick } from 'vue'
 import { apiCreateSshTab } from './useTabApi'
 import { ensureSplitRoot } from '../types/pane'
 import type { TerminalTab, Tab } from '../types/pane'
+import type { SyncClientMsg } from '../types/protocol'
+import { useMissionControlState } from './useMissionControlState'
 
 export interface OverviewCallbacksOptions {
   tabs: Ref<Tab[]>
@@ -16,19 +17,21 @@ export interface OverviewCallbacksOptions {
   activateTab: (paneId: string) => Promise<boolean> | boolean
   closeTab: (paneId: string) => Promise<void>
   requestCloseTab: (paneId: string) => Promise<void> | void
-  newTab: (cwd?: string) => Promise<void>
+  newTab: (cwd?: string, argv?: string[], title?: string, workspaceId?: string | null) => Promise<string | void>
   persist: () => void
   commitLocalActivePane: (paneId: string) => void
   focusActive: () => void
+  sendSync: (msg: SyncClientMsg) => void
 }
 
 export interface OverviewCallbacks {
   overviewOpen: Ref<boolean>
   openOverview: () => void
+  closeOverview: () => void
   onOverviewActivate: (paneId: string) => void
   onOverviewCloseTab: (tabId: string) => void
   onCloseTabsBulk: (paneIds: string[]) => Promise<void>
-  onOverviewNewTab: (cwd?: string) => Promise<void>
+  onOverviewNewTab: (cwd?: string, workspaceId?: string | null) => Promise<void>
   onOverviewNewTabSsh: (connectionId: string, initialCwd?: string) => Promise<void>
   onOverviewRenameTab: (paneId: string, title: string) => void
 }
@@ -45,17 +48,29 @@ export function useOverviewCallbacks(opts: OverviewCallbacksOptions): OverviewCa
     persist,
     commitLocalActivePane,
     focusActive,
+    sendSync,
   } = opts
 
-  const overviewOpen = ref(false)
+  const mcState = useMissionControlState()
+  const overviewOpen = computed(() => mcState.open)
 
   function openOverview(): void {
-    overviewOpen.value = true
+    // Toggle only if currently closed - the hardware keyboard / other
+    // client may have opened it; we don't want to flip it back to closed.
+    if (!mcState.open) {
+      sendSync({ type: 'mission_control_op', op: { kind: 'toggle' } })
+    }
+  }
+
+  function closeOverview(): void {
+    if (mcState.open) {
+      sendSync({ type: 'mission_control_op', op: { kind: 'toggle' } })
+    }
   }
 
   function onOverviewActivate(paneId: string): void {
     void activateTab(paneId)
-    overviewOpen.value = false
+    closeOverview()
     nextTick(() => {
       const ref = termRefs[paneId]
       ref?.focus()
@@ -72,13 +87,13 @@ export function useOverviewCallbacks(opts: OverviewCallbacksOptions): OverviewCa
     }
   }
 
-  async function onOverviewNewTab(cwd?: string): Promise<void> {
-    overviewOpen.value = false
-    await newTab(cwd)
+  async function onOverviewNewTab(cwd?: string, workspaceId?: string | null): Promise<void> {
+    closeOverview()
+    await newTab(cwd, undefined, undefined, workspaceId)
   }
 
   async function onOverviewNewTabSsh(connectionId: string, initialCwd?: string): Promise<void> {
-    overviewOpen.value = false
+    closeOverview()
     try {
       const result = await apiCreateSshTab(connectionId, initialCwd)
       const existing = tabs.value.find(
@@ -116,11 +131,13 @@ export function useOverviewCallbacks(opts: OverviewCallbacksOptions): OverviewCa
   function onOverviewRenameTab(paneId: string, title: string): void {
     session.renameTab(paneId, title)
     persist()
+    sendSync({ type: 'rename_tab', tab_id: paneId, title })
   }
 
   return {
     overviewOpen,
     openOverview,
+    closeOverview,
     onOverviewActivate,
     onOverviewCloseTab,
     onCloseTabsBulk,

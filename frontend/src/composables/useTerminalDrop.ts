@@ -1,9 +1,5 @@
-import { isTauri } from './useTransport'
-import {
-  escapeShellPath,
-  setLastFocusedSendData,
-  setupGlobalTauriDragDrop,
-} from '../utils/tauriDragDrop'
+import { isTauri, tauriInvoke } from './useTransport'
+import { escapeShellPath } from '../utils/tauriDragDrop'
 
 export interface DropHost {
   sendData(data: string): void
@@ -11,38 +7,31 @@ export interface DropHost {
 }
 
 /**
- * Wires HTML5 drag/drop, the custom `terminal-drop-path` event (Tauri), the
- * Tauri focus-tracking for global file-drop-paths, and clipboard-paste
- * upload. Returns a single cleanup function that tears all of it down.
+ * On macOS WKWebView, the HTML5 DataTransfer hides non-text drag types from
+ * JS - so a VSCode file-tree drag (which exposes `public.file-url` on
+ * NSDragPboard) shows up with empty `dt.files` and a `text/plain` that
+ * `getData` refuses to return. Drop into Rust and read NSDragPboard
+ * directly. Returns `[]` on non-Tauri or non-macOS.
+ */
+async function readDragPboard(): Promise<string[]> {
+  if (!isTauri()) return []
+  try {
+    const result = await tauriInvoke('tauri_read_drag_pboard')
+    return Array.isArray(result) ? result.filter((p) => typeof p === 'string' && p.length > 0) : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Wires HTML5 drag/drop and clipboard-paste upload. Returns a single cleanup
+ * function that tears all of it down.
  */
 export function setupTerminalDrop(
   wrapper: HTMLElement,
   host: DropHost
 ): () => void {
   const cleanups: Array<() => void> = []
-
-  if (isTauri()) {
-    setLastFocusedSendData((d) => host.sendData(d))
-    const focusinHandler = () => {
-      setLastFocusedSendData((d) => host.sendData(d))
-    }
-    wrapper.addEventListener('focusin', focusinHandler)
-    cleanups.push(() => {
-      wrapper.removeEventListener('focusin', focusinHandler)
-      setLastFocusedSendData(null)
-    })
-    setupGlobalTauriDragDrop()
-  }
-
-  // Custom 'terminal-drop-path' dispatched by the file tree when Tauri's
-  // native layer intercepts HTML5 drop events.
-  const dropPathHandler = ((e: CustomEvent) => {
-    const path = e.detail?.path as string
-    if (!path) return
-    host.sendData(escapeShellPath(path))
-  }) as EventListener
-  wrapper.addEventListener('terminal-drop-path', dropPathHandler)
-  cleanups.push(() => wrapper.removeEventListener('terminal-drop-path', dropPathHandler))
 
   const xtermEl = wrapper.querySelector('.xterm') as HTMLElement
   const target = xtermEl || wrapper
@@ -55,21 +44,75 @@ export function setupTerminalDrop(
   target.addEventListener('dragover', dragoverHandler, true)
   cleanups.push(() => target.removeEventListener('dragover', dragoverHandler, true))
 
-  const dropHandler = (e: Event) => {
+  const dropHandler = async (e: Event) => {
     const de = e as DragEvent
     const dt = de.dataTransfer!
+    de.preventDefault()
+    de.stopPropagation()
+    const types = Array.from(dt.types)
+    const files = Array.from(dt.files ?? []) as any[]
+    const paths: string[] = []
+
+    // 0. Tauri (macOS WKWebView): read NSDragPboard directly. WKWebView's
+    //    DataTransfer sanitizes non-text types, so VSCode's `public.file-url`
+    //    drags show up with empty dt.files and unreachable text/plain. This
+    //    must run BEFORE the text/plain fallback because WKWebView also hides
+    //    text/plain for some drag sources.
+    if (isTauri()) {
+      const pboardPaths = await readDragPboard()
+      if (pboardPaths.length > 0) {
+        host.sendData(pboardPaths.map(escapeShellPath).join(' '))
+        return
+      }
+    }
+
+    // 1. Tauri WKWebView 在 File 对象上暴露了非标准的 `path`（绝对路径）。
+    //    优先取它，否则在桌面端只会拿到 File.name（仅文件名）。
+    //    Web 浏览器里 File.path 不存在，会跳过这一步。
+    for (const f of files) {
+      if (typeof f.path === 'string' && f.path.length > 0) paths.push(f.path)
+    }
+    if (paths.length > 0) {
+      host.sendData(paths.map(escapeShellPath).join(' '))
+      return
+    }
+
+    // 2. text/plain 绝对路径（Web 端 VSCode 等编辑器拖文件树时给出的是绝对路径）。
+    if (types.includes('text/plain')) {
+      const text = dt.getData('text/plain').trim()
+      const absPlain =
+        text &&
+        (text.startsWith('/') ||
+          /^[A-Za-z]:[\\/]/.test(text) ||
+          text.startsWith('\\\\') ||
+          text.startsWith('file://'))
+      if (absPlain) {
+        text.split('\n').forEach((l) => {
+          const t = l.trim()
+          if (!t) return
+          if (t.startsWith('file://')) {
+            try {
+              paths.push(decodeURIComponent(new URL(t).pathname))
+            } catch {}
+          } else {
+            paths.push(t)
+          }
+        })
+      }
+    }
+
+    if (paths.length > 0) {
+      host.sendData(paths.map(escapeShellPath).join(' '))
+      return
+    }
+
+    // 3. 没有可解析的路径，走文件上传（保留原行为：桌面拖文件上传到 workspace）。
     if (!isTauri() && (dt.files?.length ?? 0) > 0) {
-      e.preventDefault()
-      e.stopPropagation()
       host.onFileUpload?.([...dt.files])
       return
     }
 
-    de.preventDefault()
-    de.stopPropagation()
-    const types = Array.from(dt.types)
-    const paths: string[] = []
-
+    // 4. text/uri-list 解析 file:// URI（如从某些应用拖文件链接但浏览器未填 dt.files）。
     if (types.includes('text/uri-list')) {
       const uriList = dt.getData('text/uri-list')
       uriList.split('\n').forEach((u) => {
@@ -79,28 +122,19 @@ export function setupTerminalDrop(
           paths.push(decodeURIComponent(new URL(u).pathname))
         } catch {}
       })
-    }
-
-    if (paths.length === 0 && types.includes('text/plain')) {
-      const text = dt.getData('text/plain').trim()
-      const absPlain =
-        text && (text.startsWith('/') || /^[A-Za-z]:[\\/]/.test(text) || text.startsWith('\\\\'))
-      if (absPlain) {
-        text.split('\n').forEach((l) => {
-          if (l.trim()) paths.push(l.trim())
-        })
+      if (paths.length > 0) {
+        host.sendData(paths.map(escapeShellPath).join(' '))
+        return
       }
     }
 
-    if (paths.length === 0 && dt.files.length > 0) {
-      Array.from(dt.files).forEach((f: any) => {
-        if (f.path) paths.push(f.path)
-        else if (f.name) paths.push(f.name)
-      })
-    }
-
-    if (paths.length > 0) {
-      host.sendData(paths.map(escapeShellPath).join(' '))
+    // 5. 最后 fallback：用 File.name（此时 path/abs path 都拿不到，只能贴文件名）。
+    if (files.length > 0) {
+      const fallback: string[] = []
+      for (const f of files) {
+        if (f.name) fallback.push(f.name)
+      }
+      if (fallback.length) host.sendData(fallback.map(escapeShellPath).join(' '))
     }
   }
   target.addEventListener('drop', dropHandler, true)

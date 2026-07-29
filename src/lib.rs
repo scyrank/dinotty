@@ -26,6 +26,7 @@ pub mod events;
 pub mod file_watcher;
 pub mod history;
 pub mod mcp;
+pub mod mission_control;
 pub mod monitor;
 pub mod notification;
 pub mod openapi;

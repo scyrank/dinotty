@@ -268,19 +268,11 @@ watch(
   }
 )
 
-// Tauri: listen for native file-drop CustomEvent bridged from useFileOperations
 const paneEl = ref<HTMLElement | null>(null)
-
-function onNativeFileDrop(e: Event) {
-  const detail = (e as CustomEvent).detail
-  if (!detail) return
-  emit('file-drop', detail.leafId || props.leafId, detail.rel, detail.position as DropPosition)
-}
 
 const editorEventDisposers: monaco.IDisposable[] = []
 
 onMounted(() => {
-  paneEl.value?.addEventListener('file-drop', onNativeFileDrop)
   whenEditorReady(props.leafId).then((editor) => {
     editorEventDisposers.push(
       editor.onDidChangeModelContent((e) => {
@@ -301,7 +293,6 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  paneEl.value?.removeEventListener('file-drop', onNativeFileDrop)
   for (const d of editorEventDisposers) d.dispose()
   editorEventDisposers.length = 0
 })

@@ -3,8 +3,8 @@
     <div class="mc-ws-list-scroll">
       <button
         class="mc-ws-list-item"
-        :class="{ selected: selectedId === '__all__' }"
-        @click="$emit('select', '__all__')"
+        :class="{ selected: selectedId === DEFAULT_WORKSPACE_ID }"
+        @click="$emit('select', DEFAULT_WORKSPACE_ID)"
         @contextmenu.prevent="openCtx($event, defaultWorkspace)"
       >
         <WorkspaceBadge
@@ -13,7 +13,7 @@
           :size="18"
         />
         <span class="mc-ws-name">{{ defaultWorkspace.name }}</span>
-        <span v-if="allCount" class="mc-ws-count">{{ allCount }}</span>
+        <span v-if="defaultCount" class="mc-ws-count">{{ defaultCount }}</span>
       </button>
 
       <button
@@ -72,7 +72,7 @@ const props = defineProps<{
   selectedId: string | null
   activeId: string | null
   tabCounts: Record<string, number>
-  allCount: number
+  defaultCount: number
 }>()
 
 const emit = defineEmits<{

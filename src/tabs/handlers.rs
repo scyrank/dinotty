@@ -28,6 +28,36 @@ pub async fn list_tabs(State(manager): State<Arc<SessionManager>>) -> impl IntoR
     }))
 }
 
+// ─── POST /api/tabs/:id/rename ────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+pub struct RenameTabRequest {
+    title: String,
+}
+
+#[allow(clippy::unused_async)]
+pub async fn rename_tab(
+    State(manager): State<Arc<SessionManager>>,
+    Path(tab_id): Path<String>,
+    Json(req): Json<RenameTabRequest>,
+) -> impl IntoResponse {
+    let title = req.title.trim();
+    if title.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "title must not be empty" })),
+        )
+            .into_response();
+    }
+    if manager.rename_tab(&tab_id, title) {
+        manager.broadcast_sync(&SyncMsg::TabRenamed { tab_id, title: title.to_string() });
+        Json(serde_json::json!({ "ok": true })).into_response()
+    } else {
+        (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "tab not found" })))
+            .into_response()
+    }
+}
+
 // ─── POST /api/tabs ────────────────────────────────────────────────
 
 #[allow(clippy::unused_async)]
@@ -56,6 +86,12 @@ pub async fn create_tab(
         let shell_spec = crate::platform::shell::shell_with_preference(&s.shell, &s.shell_path);
         (cwd, shell_spec)
     };
+    // String form of the resolved cwd, used for the TabCreated broadcast and
+    // the HTTP response. We must return the *resolved* cwd (not `req.cwd`)
+    // so the frontend can match the tab to the correct workspace - when the
+    // caller omits cwd, `req.cwd` is None but the PTY actually runs in
+    // `resolved_default_workspace_root()`.
+    let cwd_str = cwd.as_deref().and_then(|p| p.to_str()).map(std::string::ToString::to_string);
     let is_argv_command = req.argv.is_some();
 
     // Create PTY session
@@ -105,7 +141,7 @@ pub async fn create_tab(
             tab_id: tab_id.clone(),
             pane_id: pane_id.clone(),
             layout: Some(layout.clone()),
-            cwd: req.cwd.clone(),
+            cwd: cwd_str.clone(),
             connection_id: None,
         });
         if manager.is_current_session(&pane_id, &session) {
@@ -132,7 +168,7 @@ pub async fn create_tab(
         "tab_id": tab_id,
         "pane_id": pane_id,
         "layout": layout,
-        "cwd": req.cwd,
+        "cwd": cwd_str,
     }))
     .into_response()
 }

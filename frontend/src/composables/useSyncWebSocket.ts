@@ -21,6 +21,7 @@ import { handlePluginChanged } from './usePluginLoader'
 import { useWorkspaces } from './useWorkspaces'
 import { apiCreatePluginTab } from './useTabApi'
 import { clearFileWorkspaceState } from './useFileWorkspaceState'
+import { useMissionControlState } from './useMissionControlState'
 import { pickSuccessorTab } from '../utils/tabSuccessor'
 import { currentRevealNavGen, nextRevealNavGen } from '../utils/navGen'
 import { workspaceIdFromPaneId } from '../utils/pluginPaneId'
@@ -105,13 +106,8 @@ export function useSyncWebSocket(opts: {
   const { tabs, activePaneId } = storeToRefs(session)
   const ui = useUiStore()
   const { syncConnected } = storeToRefs(ui)
-  const {
-    workspaces,
-    activeWorkspaceId,
-    activateWorkspace,
-    cancelPendingWorkspaceActivation,
-    matchWorkspace,
-  } = useWorkspaces()
+  const { workspaces, activeWorkspaceId, activateWorkspace, cancelPendingWorkspaceActivation, matchWorkspace } = useWorkspaces()
+  const mcState = useMissionControlState()
 
   function workspaceIdOfTab(tab: Tab): string | null {
     if (tab.type === 'plugin') {
@@ -498,6 +494,34 @@ export function useSyncWebSocket(opts: {
             suppressSync = false
           }
         }
+      } else if (msg.type === 'tab_renamed') {
+        const targetTab = tabs.value.find((t) => t.paneId === msg.tab_id)
+        if (targetTab) {
+          (targetTab as TerminalTab).customTitle = msg.title
+        }
+      } else if (msg.type === 'mission_control_toggled') {
+        // Backend flipped MC open/close. Update local mirror only - never
+        // re-send (the broadcast includes the sender; echo is expected).
+        mcState.open = msg.open
+        if (msg.selected_workspace_id !== undefined) {
+          mcState.selectedWorkspaceId = msg.selected_workspace_id ?? null
+        }
+        if (msg.selected_tab_id !== undefined) {
+          mcState.selectedTabId = msg.selected_tab_id ?? null
+        }
+      } else if (msg.type === 'selection_changed') {
+        if (msg.selected_workspace_id !== undefined) {
+          mcState.selectedWorkspaceId = msg.selected_workspace_id ?? null
+        }
+        if (msg.selected_tab_id !== undefined) {
+          mcState.selectedTabId = msg.selected_tab_id ?? null
+        }
+        mcState.selectedTabTitle = msg.tab_title ?? null
+      } else if (msg.type === 'mc_snapshot') {
+        mcState.open = msg.open
+        mcState.selectedWorkspaceId = msg.selected_workspace_id ?? null
+        mcState.selectedTabId = msg.selected_tab_id ?? null
+        mcState.selectedTabTitle = null
       } else if (msg.type === 'layout_updated') {
         // Two-pass match: prefer paneId, fall back to leaf overlap only if no
         // paneId match. A single-pass `find()` with OR-ed conditions can pick
