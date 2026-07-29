@@ -119,10 +119,34 @@ pub async fn update_plugin(
 pub async fn delete_plugin(
     Path(id): Path<String>,
     Query(query): Query<DeleteQuery>,
-    State(pm): State<PluginManagerState>,
+    State((pm, settings, subscriptions)): State<(
+        PluginManagerState,
+        crate::settings::SettingsState,
+        super::subscriptions::SubscriptionRegistry,
+    )>,
 ) -> Response {
+    // Guard: refuse to uninstall a plugin that currently subscribes to
+    // `auth.verification_code` while `login_method=verification_code`. Removing
+    // the only notifier would silently lock the user out of remote login.
+    let login_method = {
+        let s = settings.read().await;
+        s.auth.login_method.clone()
+    };
+    if login_method == "verification_code"
+        && subscriptions.has_subscriber_in(&id, "auth.verification_code")
+    {
+        return plugin_err(
+            StatusCode::CONFLICT,
+            "当前登录方式为验证码，卸载此插件将导致远程无法登录。请先在设置中切回令牌登录",
+        );
+    }
+
     match pm.delete(&id, query.keep_data).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Ok(()) => {
+            // Best-effort cleanup of subscription state so reinstall starts fresh.
+            subscriptions.unsubscribe_all(&id);
+            StatusCode::NO_CONTENT.into_response()
+        }
         Err(e) => plugin_err(StatusCode::INTERNAL_SERVER_ERROR, &e),
     }
 }
@@ -279,6 +303,7 @@ mod tests {
                 category: None,
                 targets: None,
                 show_in_toolbar: None,
+                events: None,
             },
             install_date: None,
             state: PluginStateValue::Active,

@@ -227,6 +227,16 @@ $env:RUST_LOG = "debug"
 cargo run
 ```
 
+## 验证码登录
+
+除默认的「令牌登录」外，dinotty 支持「验证码登录」作为**互斥替代**选项：在「安全与访问」设置中选择后，远程用户登录时由后端生成 6 位验证码并通过消息通知插件（如 `feishu-notify`）推送到你本人，登录页输入验证码即可建会话。验证码 5 分钟有效、一次性消费、5 次错误后失效。这种方式不依赖静态 token，可降低 token 被 XSS / 截图 / 设备被盗 / 社工后的风险。
+
+启用前需先安装一个消息通知类插件并保持对 `auth.verification_code` 事件的订阅，否则切换选项会置灰。`login_method=verification_code` 时卸载当前订阅了该事件的插件会被后端 409 拒绝，防止误操作导致远程无法登录。
+
+### 紧急恢复
+
+如果验证码登录被卡住（通知插件被卸载、订阅丢失、邮件/IM 收不到消息），可在服务端主机上编辑 `~/.dinotty/settings.json`（Windows 下为 `%APPDATA%\dinotty\settings.json`），将 `auth.login_method` 改回 `"token"`，然后重启 dinotty 服务即可恢复令牌登录。该路径只对服务端主机本机用户可写，远程登录用户无权修改。
+
 ## 技术栈
 
 | 层级 | 技术 |

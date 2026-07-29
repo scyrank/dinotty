@@ -52,6 +52,23 @@ pub fn map_bus_event_to_sync_event(event: &BusEvent) -> Option<SyncMsg> {
                 "locked_until": locked_until,
             }),
         ),
+        BusEvent::VerificationCode { request_id, code, occurred_at } => (
+            "auth.verification_code",
+            serde_json::json!({
+                "request_id": request_id,
+                "code": code,
+                "occurred_at": occurred_at,
+            }),
+        ),
+        BusEvent::VerificationCodeConsumed { request_id, ip, user_agent, occurred_at } => (
+            "auth.verification_code_consumed",
+            serde_json::json!({
+                "request_id": request_id,
+                "ip": ip,
+                "user_agent": user_agent,
+                "occurred_at": occurred_at,
+            }),
+        ),
         BusEvent::TabCreated { tab_id, pane_id } => (
             "tab.created",
             serde_json::json!({
@@ -199,6 +216,63 @@ mod tests {
         match msg {
             SyncMsg::Event { data, .. } => {
                 assert!(data.get("locked_until").is_none() || data["locked_until"].is_null());
+            }
+            _ => panic!("expected SyncMsg::Event"),
+        }
+    }
+
+    #[test]
+    fn verification_code_maps() {
+        let event = BusEvent::VerificationCode {
+            request_id: "req-abc".into(),
+            code: "123456".into(),
+            occurred_at: 1_700_000_000_000,
+        };
+        let msg = map_bus_event_to_sync_event(&event).expect("should map");
+        match msg {
+            SyncMsg::Event { event_name, data, .. } => {
+                assert_eq!(event_name, "auth.verification_code");
+                assert_eq!(data["request_id"], "req-abc");
+                assert_eq!(data["code"], "123456");
+                assert_eq!(data["occurred_at"], serde_json::json!(1_700_000_000_000u64));
+            }
+            _ => panic!("expected SyncMsg::Event"),
+        }
+    }
+
+    #[test]
+    fn verification_code_consumed_maps_with_ua() {
+        let event = BusEvent::VerificationCodeConsumed {
+            request_id: "req-abc".into(),
+            ip: "1.2.3.4".into(),
+            user_agent: Some("Mozilla/5.0".into()),
+            occurred_at: 1_700_000_000_000,
+        };
+        let msg = map_bus_event_to_sync_event(&event).expect("should map");
+        match msg {
+            SyncMsg::Event { event_name, data, .. } => {
+                assert_eq!(event_name, "auth.verification_code_consumed");
+                assert_eq!(data["request_id"], "req-abc");
+                assert_eq!(data["ip"], "1.2.3.4");
+                assert_eq!(data["user_agent"], "Mozilla/5.0");
+                assert_eq!(data["occurred_at"], serde_json::json!(1_700_000_000_000u64));
+            }
+            _ => panic!("expected SyncMsg::Event"),
+        }
+    }
+
+    #[test]
+    fn verification_code_consumed_without_ua_omits_field() {
+        let event = BusEvent::VerificationCodeConsumed {
+            request_id: "req-abc".into(),
+            ip: "1.2.3.4".into(),
+            user_agent: None,
+            occurred_at: 0,
+        };
+        let msg = map_bus_event_to_sync_event(&event).expect("should map");
+        match msg {
+            SyncMsg::Event { data, .. } => {
+                assert!(data.get("user_agent").is_none() || data["user_agent"].is_null());
             }
             _ => panic!("expected SyncMsg::Event"),
         }

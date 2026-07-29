@@ -761,6 +761,7 @@ mod tests {
                     category: None,
                     targets: None,
                     show_in_toolbar: None,
+                    events: None,
                 },
                 install_date: None,
                 state: PluginStateValue::Active,
