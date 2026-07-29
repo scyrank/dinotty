@@ -347,16 +347,16 @@ watch(focusedIndex, () => {
 
 function onKeydown(e: KeyboardEvent) {
   switch (e.key) {
-    case 'ArrowUp':
+    case 'ArrowLeft':
       // Linear tab nav: previous tab. The backend cycles through tab_order
       // and broadcasts `selection_changed` - we never mutate focusedIndex
-      // locally.
+      // locally. Left/Right maps to the horizontal tab grid in MC.
       e.preventDefault()
-      sendMcOp({ kind: 'navigate', dir: 'up' })
+      sendMcOp({ kind: 'navigate', dir: 'left' })
       return
-    case 'ArrowDown':
+    case 'ArrowRight':
       e.preventDefault()
-      sendMcOp({ kind: 'navigate', dir: 'down' })
+      sendMcOp({ kind: 'navigate', dir: 'right' })
       return
     case 'Enter':
       e.preventDefault()
@@ -374,9 +374,9 @@ function onKeydown(e: KeyboardEvent) {
       e.preventDefault()
       sendMcOp({ kind: 'cancel' })
       return
-    case 'ArrowLeft':
-    case 'ArrowRight':
-      // Left/Right are workspace-nav keys - handled by the parent
+    case 'ArrowUp':
+    case 'ArrowDown':
+      // Up/Down are workspace-nav keys - handled by the parent
       // WorkspaceOverview, not TabOverview. Swallow them so the parent's
       // onKeydown doesn't double-fire.
       e.preventDefault()

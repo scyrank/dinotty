@@ -505,6 +505,31 @@ async fn handle_mission_control_op(
                 let tab_ids: Vec<String> = tabs.iter().map(|t| t.tab_id.clone()).collect();
                 match dir {
                     NavDir::Up | NavDir::Down => {
+                        // Cycle through [None (=default workspace), ...workspace ids].
+                        // Up/Down navigates the workspace list because workspaces are
+                        // stacked vertically in the MC dual-panel layout.
+                        let ws_ids: Vec<String> =
+                            workspaces.read().await.iter().map(|w| w.id.clone()).collect();
+                        let all_ids: Vec<Option<String>> =
+                            std::iter::once(None).chain(ws_ids.into_iter().map(Some)).collect();
+                        let cur = snap.selected_workspace_id.clone();
+                        let cur_idx = all_ids
+                            .iter()
+                            .position(|id| id.as_deref() == cur.as_deref())
+                            .unwrap_or(0);
+                        let new_idx = if dir == NavDir::Up {
+                            cur_idx.saturating_sub(1)
+                        } else {
+                            (cur_idx + 1).min(all_ids.len() - 1)
+                        };
+                        snap.selected_workspace_id.clone_from(&all_ids[new_idx]);
+                        // Reset tab selection when crossing workspace boundary
+                        // - the previous tab_id belongs to the old workspace.
+                        snap.selected_tab_id = None;
+                    }
+                    NavDir::Left | NavDir::Right => {
+                        // Left/Right navigates tabs within the current workspace -
+                        // the tab grid is laid out horizontally.
                         if tab_ids.is_empty() {
                             snap.selected_tab_id = None;
                         } else {
@@ -515,7 +540,7 @@ async fn handle_mission_control_op(
                             let new_idx = match cur_idx {
                                 None => 0,
                                 Some(i) => {
-                                    if dir == NavDir::Up {
+                                    if dir == NavDir::Left {
                                         i.saturating_sub(1)
                                     } else {
                                         (i + 1).min(tab_ids.len() - 1)
@@ -524,27 +549,6 @@ async fn handle_mission_control_op(
                             };
                             snap.selected_tab_id = Some(tab_ids[new_idx].clone());
                         }
-                    }
-                    NavDir::Left | NavDir::Right => {
-                        // Cycle through [None (=default workspace), ...workspace ids].
-                        let ws_ids: Vec<String> =
-                            workspaces.read().await.iter().map(|w| w.id.clone()).collect();
-                        let all_ids: Vec<Option<String>> =
-                            std::iter::once(None).chain(ws_ids.into_iter().map(Some)).collect();
-                        let cur = snap.selected_workspace_id.clone();
-                        let cur_idx = all_ids
-                            .iter()
-                            .position(|id| id.as_deref() == cur.as_deref())
-                            .unwrap_or(0);
-                        let new_idx = if dir == NavDir::Left {
-                            cur_idx.saturating_sub(1)
-                        } else {
-                            (cur_idx + 1).min(all_ids.len() - 1)
-                        };
-                        snap.selected_workspace_id.clone_from(&all_ids[new_idx]);
-                        // Reset tab selection when crossing workspace boundary
-                        // - the previous tab_id belongs to the old workspace.
-                        snap.selected_tab_id = None;
                     }
                 }
                 let selected_workspace_id = snap.selected_workspace_id.clone();

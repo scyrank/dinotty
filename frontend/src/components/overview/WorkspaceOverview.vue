@@ -277,21 +277,22 @@ function onNewTabForSelected() {
 function onKeydown(e: KeyboardEvent) {
 
   switch (e.key) {
-    case 'ArrowLeft':
+    case 'ArrowUp':
       // Workspace nav: previous workspace. Backend cycles through
       // [None (=default), ...ws_ids] and resets selected_tab_id.
+      // Up/Down maps to the vertical workspace list in MC.
       e.preventDefault()
-      sendMcOp({ kind: 'navigate', dir: 'left' })
+      sendMcOp({ kind: 'navigate', dir: 'up' })
       return
-    case 'ArrowRight':
-      e.preventDefault()
-      sendMcOp({ kind: 'navigate', dir: 'right' })
-      return
-    case 'ArrowUp':
     case 'ArrowDown':
+      e.preventDefault()
+      sendMcOp({ kind: 'navigate', dir: 'down' })
+      return
+    case 'ArrowLeft':
+    case 'ArrowRight':
     case 'Enter':
-      // Delegate to TabOverview for tab navigation (Up/Down = linear tab
-      // nav, Enter = confirm). TabOverview sends its own sync ops.
+      // Delegate to TabOverview for tab navigation (Left/Right = linear
+      // tab nav, Enter = confirm). TabOverview sends its own sync ops.
       tabOverviewRef.value?.onKeydown(e)
       break
     case 'n':
