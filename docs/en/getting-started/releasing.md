@@ -1,6 +1,6 @@
 # Release Guide
 
-This guide is for Dinotty repository maintainers. It explains how to prepare a version, promote `dev` to `main`, and trigger an official release with a Git tag. See the [Deployment Guide](deployment.en.md) for installing and deploying artifacts, and [Contributing](contributing.en.md) for the regular contribution workflow.
+This guide is for Dinotty repository maintainers. It explains how to prepare a version, promote `dev` to `main`, and trigger an official release with a Git tag. See the [Deployment Guide](deployment.md) for installing and deploying artifacts, and [Contributing](contributing.md) for the regular contribution workflow.
 
 ## Release Model
 

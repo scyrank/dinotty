@@ -14,3 +14,7 @@ AGENTS.md
 src-tauri/gen/schemas/*.json
 ghostty-comparison-optimization.md
 .star-cache
+
+# VitePress build output
+docs/.vitepress/dist/
+docs/.vitepress/cache/
