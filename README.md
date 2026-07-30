@@ -8,6 +8,7 @@
   <a href="https://github.com/xichan96/dinotty/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License"></a>
   <img src="https://img.shields.io/badge/language-Rust-orange" alt="Rust">
   <img src="https://img.shields.io/badge/frontend-Vue%203-brightgreen" alt="Vue 3">
+  <a href="https://xichan96.github.io/dinotty/"><img src="https://img.shields.io/badge/docs-dinotty-8a8a8a" alt="Docs"></a>
   <a href="https://github.com/xichan96/dinotty/stargazers"><img src="https://img.shields.io/github/stars/xichan96/dinotty?style=social" alt="GitHub Stars"></a>
   <a href="https://github.com/xichan96/dinotty/releases"><img src="https://img.shields.io/github/downloads/xichan96/dinotty/total" alt="GitHub Downloads"></a>
   <a href="https://github.com/xichan96/dinotty/issues"><img src="https://img.shields.io/github/issues/xichan96/dinotty" alt="GitHub Issues"></a>
@@ -15,10 +16,6 @@
 
 <p align="center">
   中文 | <a href="./docs/README.en.md">English</a> | <a href="./docs/README.ru.md">Русский</a> | <a href="./docs/README.pt.md">Português</a> | <a href="./docs/README.ko.md">한국어</a> | <a href="./docs/README.es.md">Español</a> | <a href="./docs/README.de.md">Deutsch</a> | <a href="./docs/README.fr.md">Français</a>
-</p>
-
-<p align="center">
-  📚 <a href="https://xichan96.github.io/dinotty/">文档站点 / Docs Site</a>
 </p>
 
 ---
