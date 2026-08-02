@@ -19,6 +19,7 @@ use crate::auth::session::SessionStore;
 use crate::settings::SettingsState;
 
 pub mod session;
+pub mod verification_code;
 
 static SESSION_COOKIE_PORT: OnceLock<u16> = OnceLock::new();
 
@@ -64,12 +65,14 @@ static GLOBAL_FAIL_COUNT: AtomicU32 = AtomicU32::new(0);
 static GLOBAL_FAIL_WINDOW_START: AtomicU64 = AtomicU64::new(0);
 
 /// Record a failed auth attempt for the given IP. Called by the login handler.
-pub fn record_auth_failure(ip: IpAddr, global_lockout_secs: u64) {
+/// Returns the updated per-IP attempt count.
+pub fn record_auth_failure(ip: IpAddr, global_lockout_secs: u64) -> u32 {
     // Per-IP tracking
     let map = fail_map();
     let mut rec = map.entry(ip).or_insert(FailRecord { count: 0, last_fail: Instant::now() });
     rec.count += 1;
     rec.last_fail = Instant::now();
+    let count = rec.count;
 
     // Global tracking
     let now = std::time::SystemTime::now()
@@ -83,6 +86,13 @@ pub fn record_auth_failure(ip: IpAddr, global_lockout_secs: u64) {
     } else {
         GLOBAL_FAIL_COUNT.fetch_add(1, Ordering::Relaxed);
     }
+    count
+}
+
+/// Read the current per-IP failure count without mutating it.
+#[must_use]
+pub fn get_fail_count(ip: IpAddr) -> u32 {
+    fail_map().get(&ip).map_or(0, |r| r.count)
 }
 
 /// Check whether the given IP (or global state) is currently locked out.
@@ -209,8 +219,9 @@ pub async fn auth_middleware(
 
     // /api/auth is the login endpoint - exempt from IP whitelist so non-loopback
     // users can authenticate. The login handler does its own token validation
-    // and brute-force accounting.
-    if path == "/api/auth" {
+    // and brute-force accounting. /api/auth/request-code is the verification
+    // code request endpoint - same exemption rationale.
+    if path == "/api/auth" || path == "/api/auth/request-code" {
         return next.run(request).await;
     }
 

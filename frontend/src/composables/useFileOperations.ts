@@ -2,7 +2,6 @@ import { ref, computed, type Ref } from 'vue'
 import { getApiBase, apiUrl, authFetch, getAuthToken } from './apiBase'
 import { uiConfirm } from './useConfirm'
 import { isTauri, tauriInvoke } from './useTransport'
-import { isInternalDragActive, getInternalDragRel, clearInternalDrag } from './internalDragState'
 import type { DirEntry } from '../components/workspace/TreeRows'
 
 interface ParsedUploadBody {
@@ -18,22 +17,6 @@ function parseUploadBody(body: string): ParsedUploadBody {
   }
 }
 
-// --- Tauri native drag-drop support ---
-// Listener is registered ONCE on first mount and never unregistered - this
-// eliminates the mount/unmount race where listen()'s async unlisten fn
-// resolves after the component has already unmounted, leaking a duplicate
-// listener on each cycle (which caused N concurrent upload requests for a
-// single drop). The listener guards on _activeUploadFn, which
-// clearActiveWorkspace() nulls out, so it's a no-op when no workspace is
-// active.
-let tauriFileDropRegistered = false
-let _activeUploadFn:
-  | ((files: { file: File; path: string }[], targetDir?: string) => Promise<void>)
-  | null = null
-let _workspaceDropHover = false
-let _hoveredDir: string | undefined = undefined
-let _dragCounterRef: { value: number } | null = null
-
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -44,106 +27,6 @@ function fileToBase64(file: File): Promise<string> {
     reader.onerror = reject
     reader.readAsDataURL(file)
   })
-}
-
-function setupTauriFileDrop() {
-  if (tauriFileDropRegistered) return
-  tauriFileDropRegistered = true
-  const w = window as any
-  const listen = w.__TAURI__?.event?.listen
-  if (!listen) return
-
-  // Resolve the drop target directory from the OS-level drop position.
-  // Tauri v2 intercepts native dragover/drop events, so the DOM-side
-  // onDirDragEnter path that sets _hoveredDir never fires - we must compute
-  // the target dir from elementFromPoint at drop time.
-  function resolveDropDir(cx: number, cy: number): string | undefined {
-    const el = document.elementFromPoint(cx, cy)
-    if (!el) return _hoveredDir
-    const dirRow = (el as HTMLElement).closest('.tree-row.dir') as HTMLElement | null
-    if (!dirRow) return _hoveredDir
-    const rel = dirRow.dataset.rel
-    return rel === undefined ? _hoveredDir : rel
-  }
-
-  // Tauri v2 listen() returns Promise<UnlistenFn>
-  const unlistenDrop = listen('file-drop-paths', async (event: any) => {
-    // Internal tree drag → emit on the target EditorPane
-    if (isInternalDragActive()) {
-      const rel = getInternalDragRel()
-      clearInternalDrag()
-      if (rel) {
-        const payload = event.payload || {}
-        const pos = payload.position || { x: 0, y: 0 }
-        // Tauri position is in physical pixels; convert to CSS pixels
-        const dpr = window.devicePixelRatio || 1
-        const cx = (pos.x ?? 0) / dpr
-        const cy = (pos.y ?? 0) / dpr
-        const el = cx && cy ? document.elementFromPoint(cx, cy) : null
-        const pane = el?.closest('.editor-pane') as HTMLElement | null
-        if (pane) {
-          const rect = pane.getBoundingClientRect()
-          const x = cx - rect.left
-          const y = cy - rect.top
-          const w = rect.width
-          const h = rect.height
-          const edge = Math.min(Math.min(w, h) * 0.25, 40)
-          let position: string
-          if (x < edge) position = 'left'
-          else if (x > w - edge) position = 'right'
-          else if (y < edge) position = 'top'
-          else if (y > h - edge) position = 'bottom'
-          else position = 'center'
-          const leafId = pane.dataset.leafId || ''
-          pane.dispatchEvent(
-            new CustomEvent('file-drop', { detail: { leafId, rel, position }, bubbles: true })
-          )
-        }
-      }
-      return
-    }
-    if (!_activeUploadFn) return
-    const payload = event.payload || []
-    const paths: string[] = Array.isArray(payload) ? payload : (payload.paths || [])
-    if (!paths.length) return
-    const pos = (payload && payload.position) || { x: 0, y: 0 }
-    const dpr = window.devicePixelRatio || 1
-    const cx = (pos.x ?? 0) / dpr
-    const cy = (pos.y ?? 0) / dpr
-    const targetDir = cx && cy ? resolveDropDir(cx, cy) : _hoveredDir
-    const files: { file: File; path: string }[] = []
-    for (const p of paths) {
-      try {
-        const b64: string = (await tauriInvoke('tauri_read_file', { path: p })) as string
-        const binary = atob(b64)
-        const bytes = new Uint8Array(binary.length)
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-        const name = p.split('/').pop() || 'file'
-        const file = new File([bytes], name)
-        files.push({ file, path: name })
-      } catch (e) {
-        console.error('[upload] failed to read dropped file:', p, e)
-      }
-    }
-    if (files.length) await _activeUploadFn!(files, targetDir)
-  })
-
-  // Listen for drag-enter/leave to show drop overlay
-  const unlistenActive = listen('file-drop-active', (event: any) => {
-    if (isInternalDragActive()) return // ignore native events for internal tree drags
-    if (!_dragCounterRef) return
-    _dragCounterRef.value = event.payload ? 1 : 0
-  })
-
-  // Swallow the unlisten promises - the listener is intentionally never
-  // removed (see comment on tauriFileDropRegistered above).
-  void unlistenDrop
-  void unlistenActive
-}
-
-function teardownWorkspaceDragDrop() {
-  // No-op: the Tauri listener is registered once and never unregistered.
-  // _activeUploadFn is cleared separately by clearActiveWorkspace().
 }
 
 interface Meta {
@@ -454,36 +337,24 @@ export function useFileOperations(opts: {
     return true
   }
 
-  // --- Tauri native drag-drop wiring ---
-  if (isTauri()) setupTauriFileDrop()
-
-  function setActiveWorkspace() {
-    _activeUploadFn = uploadFiles
-    _dragCounterRef = dragCounter
-  }
-  function clearActiveWorkspace() {
-    if (_activeUploadFn === uploadFiles) _activeUploadFn = null
-    if (_dragCounterRef === dragCounter) _dragCounterRef = null
-  }
-
-  function setHoveredDir(dir: string | undefined) {
-    _hoveredDir = dir
-  }
-  function clearHoveredDir() {
-    _hoveredDir = undefined
-  }
+  // --- Workspace drag-drop wiring ---
+  // With `dragDropEnabled: false` in tauri.conf.json, HTML5 drag/drop events
+  // fire directly on the DOM. These are retained as no-ops for lifecycle
+  // callers; the actual upload path is onDrop / onUploadToDir.
+  function setActiveWorkspace() {}
+  function clearActiveWorkspace() {}
+  function setHoveredDir(_dir: string | undefined) {}
+  function clearHoveredDir() {}
+  function teardownWorkspaceDragDrop() {}
 
   function onWorkspaceDragEnter() {
     dragCounter.value++
-    _workspaceDropHover = true
   }
   function onWorkspaceDragLeave() {
     dragCounter.value = Math.max(0, dragCounter.value - 1)
-    if (dragCounter.value === 0) _workspaceDropHover = false
   }
   function onWorkspaceDrop(ev: DragEvent) {
     dragCounter.value = 0
-    _workspaceDropHover = false
     onDrop(ev)
   }
 

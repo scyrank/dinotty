@@ -191,6 +191,41 @@ pub enum SyncMsg {
     MonitorHistory {
         data: Vec<serde_json::Value>,
     },
+    TabRenamed {
+        tab_id: String,
+        title: String,
+    },
+    /// Mission Control open/close flipped. Contains the full snapshot so
+    /// receivers can refresh both `open` and the selected card atomically.
+    /// Broadcast includes the sender - frontend treats it as the authoritative
+    /// mirror update and does not re-send. `selected_*` are always sent
+    /// (as `null` when cleared) so clients can distinguish "unchanged" from
+    /// "cleared" - critical for the default workspace, which is encoded as
+    /// `selected_workspace_id: null`.
+    MissionControlToggled {
+        open: bool,
+        selected_workspace_id: Option<String>,
+        selected_tab_id: Option<String>,
+    },
+    /// Selected card inside MC moved (arrow keys / mouse). `tab_title` is the
+    /// title of `selected_tab_id` looked up at the server, so touchscreen
+    /// clients can render the name without a separate `tab_list` round-trip.
+    /// `selected_*` are always sent (as `null` when cleared) so the frontend
+    /// can mirror clears, not just sets. `tab_title` is omitted when None
+    /// because it's purely informational.
+    SelectionChanged {
+        selected_workspace_id: Option<String>,
+        selected_tab_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tab_title: Option<String>,
+    },
+    /// Initial MC snapshot sent on sync WS connect (after `tab_list` /
+    /// `workspace_list` so the selected ids can be resolved by the client).
+    McSnapshot {
+        open: bool,
+        selected_workspace_id: Option<String>,
+        selected_tab_id: Option<String>,
+    },
 }
 
 #[derive(Serialize, Clone)]
@@ -206,6 +241,8 @@ pub struct TabInfo {
     /// The `SshProfile.id` if this tab is an SSH session created from a profile.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub connection_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 #[derive(Default)]
@@ -472,6 +509,17 @@ impl SessionManager {
         self.update_layout_locked(tab_id, value, active_pane_id);
     }
 
+    pub fn rename_tab(&self, tab_id: &str, title: &str) -> bool {
+        let _lifecycle = self.lifecycle.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(mut entry) = self.tab_layouts.get_mut(tab_id) {
+            if let Some(obj) = entry.as_object_mut() {
+                obj.insert("title".to_string(), serde_json::Value::String(title.to_string()));
+                return true;
+            }
+        }
+        false
+    }
+
     /// Publish a newly-created tab only if the exact session is still a member.
     pub fn insert_tab_for_session(
         &self,
@@ -595,6 +643,36 @@ impl SessionManager {
         let mut clients =
             self.sync_clients.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         clients.retain(|c| c.tx.send(json.clone()).is_ok());
+        drop(clients);
+        self.publish_bus_event_for_sync_msg(msg);
+    }
+
+    /// Mirror select `SyncMsg` variants onto the event bus so plugins (which
+    /// subscribe via `ctx.events.subscribe`) can observe tab/process/plugin
+    /// lifecycle events. Variants that already have a dedicated `BusEvent`
+    /// publisher (e.g. `SessionCreated`/`SessionClosed`/`CommandFinished`/
+    /// `AuthLoginFailed`) are intentionally not mirrored here - they would
+    /// double-publish.
+    fn publish_bus_event_for_sync_msg(&self, msg: &SyncMsg) {
+        let event = match msg {
+            SyncMsg::TabCreated { tab_id, pane_id, .. } => {
+                Some(BusEvent::TabCreated { tab_id: tab_id.clone(), pane_id: pane_id.clone() })
+            }
+            SyncMsg::TabClosed { pane_id } => Some(BusEvent::TabClosed { tab_id: pane_id.clone() }),
+            SyncMsg::PluginChanged { plugin_id, change } => Some(BusEvent::PluginChanged {
+                plugin_id: plugin_id.clone(),
+                change: change.clone(),
+            }),
+            SyncMsg::ProcessExited { plugin_id, pid, exit_code } => Some(BusEvent::ProcessExited {
+                plugin_id: plugin_id.clone(),
+                pid: *pid,
+                exit_code: *exit_code,
+            }),
+            _ => None,
+        };
+        if let Some(event) = event {
+            self.event_bus.publish(event);
+        }
     }
 
     /// Broadcast to all sync clients except the one with the given ID.
@@ -765,7 +843,8 @@ impl SessionManager {
                     .sessions
                     .get(&pane_id)
                     .and_then(|s| s.ssh_params.as_ref().and_then(|p| p.profile_id.clone()));
-                TabInfo { tab_id, pane_id, layout, active_pane_id, cwd, connection_id }
+                let title = v.get("title").and_then(|v| v.as_str()).map(String::from);
+                TabInfo { tab_id, pane_id, layout, active_pane_id, cwd, connection_id, title }
             })
             .collect();
 
@@ -973,6 +1052,18 @@ impl SessionManager {
     /// unowned-session reaper).
     pub fn register_notifier(&self, notifier: Arc<crate::notification::NotificationBroadcast>) {
         let _ = self.notifier.set(notifier);
+    }
+
+    pub fn start_event_bridge(self: &Arc<Self>) {
+        let manager = Arc::clone(self);
+        let mut rx = self.event_bus.subscribe();
+        tokio::spawn(async move {
+            while let Ok(event) = rx.recv().await {
+                if let Some(sync_msg) = crate::event_bridge::map_bus_event_to_sync_event(&event) {
+                    manager.broadcast_sync(&sync_msg);
+                }
+            }
+        });
     }
 
     pub fn start_cleanup_task(self: &Arc<Self>) {

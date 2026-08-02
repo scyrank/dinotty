@@ -1102,7 +1102,10 @@ mod session_stub_tests {
     #[tokio::test]
     async fn kill_and_remove_notifies_attention_ledger_with_a_single_removal_delta() {
         let manager = Arc::new(SessionManager::new());
-        let notifier = Arc::new(NotificationBroadcast::new(Arc::clone(&manager.sync_clients)));
+        let notifier = Arc::new(NotificationBroadcast::new(
+            Arc::clone(&manager.sync_clients),
+            manager.event_bus.clone(),
+        ));
         manager.register_notifier(Arc::clone(&notifier));
 
         let pane_id = "stub-pane";

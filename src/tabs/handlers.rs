@@ -28,6 +28,36 @@ pub async fn list_tabs(State(manager): State<Arc<SessionManager>>) -> impl IntoR
     }))
 }
 
+// ─── POST /api/tabs/:id/rename ────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+pub struct RenameTabRequest {
+    title: String,
+}
+
+#[allow(clippy::unused_async)]
+pub async fn rename_tab(
+    State(manager): State<Arc<SessionManager>>,
+    Path(tab_id): Path<String>,
+    Json(req): Json<RenameTabRequest>,
+) -> impl IntoResponse {
+    let title = req.title.trim();
+    if title.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "title must not be empty" })),
+        )
+            .into_response();
+    }
+    if manager.rename_tab(&tab_id, title) {
+        manager.broadcast_sync(&SyncMsg::TabRenamed { tab_id, title: title.to_string() });
+        Json(serde_json::json!({ "ok": true })).into_response()
+    } else {
+        (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "tab not found" })))
+            .into_response()
+    }
+}
+
 // ─── POST /api/tabs ────────────────────────────────────────────────
 
 #[allow(clippy::unused_async)]
@@ -46,25 +76,41 @@ pub async fn create_tab(
     let pane_id = uuid::Uuid::new_v4().to_string();
 
     // Resolve CWD: explicit request > configured default workspace root > $HOME.
-    let cwd = match requested_cwd {
-        Some(cwd) => Some(cwd),
-        None => settings.read().await.resolved_default_workspace_root(),
+    // Also resolve user-preferred shell from settings in the same read lock.
+    let (cwd, shell_spec) = {
+        let s = settings.read().await;
+        let cwd = match requested_cwd {
+            Some(cwd) => Some(cwd),
+            None => s.resolved_default_workspace_root(),
+        };
+        let shell_spec = crate::platform::shell::shell_with_preference(&s.shell, &s.shell_path);
+        (cwd, shell_spec)
     };
+    // String form of the resolved cwd, used for the TabCreated broadcast and
+    // the HTTP response. We must return the *resolved* cwd (not `req.cwd`)
+    // so the frontend can match the tab to the correct workspace - when the
+    // caller omits cwd, `req.cwd` is None but the PTY actually runs in
+    // `resolved_default_workspace_root()`.
+    let cwd_str = cwd.as_deref().and_then(|p| p.to_str()).map(std::string::ToString::to_string);
     let is_argv_command = req.argv.is_some();
 
     // Create PTY session
-    let (session, shell_type) =
-        match pty::create_session(&manager, &pane_id, Some(&tab_id), None, cwd, req.argv) {
-            Ok(x) => x,
-            Err(e) => {
-                tracing::error!("Failed to create PTY: {}", e);
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({ "error": e })),
-                )
-                    .into_response();
-            }
-        };
+    let (session, shell_type) = match pty::create_session(
+        &manager,
+        &pane_id,
+        Some(&tab_id),
+        None,
+        cwd,
+        req.argv,
+        Some(shell_spec),
+    ) {
+        Ok(x) => x,
+        Err(e) => {
+            tracing::error!("Failed to create PTY: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": e })))
+                .into_response();
+        }
+    };
 
     // Create initial layout with single leaf
     let title = req.title.as_deref().unwrap_or("Terminal");
@@ -95,7 +141,7 @@ pub async fn create_tab(
             tab_id: tab_id.clone(),
             pane_id: pane_id.clone(),
             layout: Some(layout.clone()),
-            cwd: req.cwd.clone(),
+            cwd: cwd_str.clone(),
             connection_id: None,
         });
         if manager.is_current_session(&pane_id, &session) {
@@ -122,7 +168,7 @@ pub async fn create_tab(
         "tab_id": tab_id,
         "pane_id": pane_id,
         "layout": layout,
-        "cwd": req.cwd,
+        "cwd": cwd_str,
     }))
     .into_response()
 }
@@ -159,7 +205,7 @@ pub async fn close_tab(
 
 #[allow(clippy::unused_async, clippy::too_many_lines)]
 pub async fn split_pane(
-    State(manager): State<Arc<SessionManager>>,
+    State((manager, settings)): State<(Arc<SessionManager>, SettingsState)>,
     Path(tab_id): Path<String>,
     Json(req): Json<SplitPaneRequest>,
 ) -> impl IntoResponse {
@@ -204,10 +250,24 @@ pub async fn split_pane(
         .get(&req.pane_id)
         .and_then(|s| s.cwd_state.lock().ok().map(|state| state.cwd.clone()));
 
+    // Resolve user-preferred shell for local PTY splits.
+    let shell_spec = {
+        let s = settings.read().await;
+        crate::platform::shell::shell_with_preference(&s.shell, &s.shell_path)
+    };
+
     let (session, _shell_type) = if req.force_local {
         // Force local PTY - use explicit cwd if provided, otherwise inherit from source
         let local_cwd = req.cwd.map(std::path::PathBuf::from).or(source_cwd);
-        match pty::create_session(&manager, &new_pane_id, Some(&tab_id), None, local_cwd, None) {
+        match pty::create_session(
+            &manager,
+            &new_pane_id,
+            Some(&tab_id),
+            None,
+            local_cwd,
+            None,
+            Some(shell_spec),
+        ) {
             Ok(x) => x,
             Err(e) => {
                 tracing::error!("Failed to create PTY for force-local split: {}", e);
@@ -233,7 +293,15 @@ pub async fn split_pane(
         }
     } else {
         // Local PTY - inherit CWD from source pane
-        match pty::create_session(&manager, &new_pane_id, Some(&tab_id), None, source_cwd, None) {
+        match pty::create_session(
+            &manager,
+            &new_pane_id,
+            Some(&tab_id),
+            None,
+            source_cwd,
+            None,
+            Some(shell_spec),
+        ) {
             Ok(x) => x,
             Err(e) => {
                 tracing::error!("Failed to create PTY for split: {}", e);

@@ -21,6 +21,10 @@
     :data-plugin-pane-id="leaf.paneId"
     :plugin="plugin"
     :api="api"
+    :pane-id="leaf.paneId"
+    :workspace-id="workspaceId"
+    :is-visible="isVisible"
+    :is-focused="isFocused"
   />
   <FileWorkspacePreview
     v-else-if="kind === 'files'"
@@ -50,9 +54,12 @@ import FileWorkspacePreview from '../preview/FileWorkspacePreview.vue'
 import WebPreview from '../preview/WebPreview.vue'
 import { usePluginLoader } from '../../composables/usePluginLoader'
 import { useI18n } from '../../composables/useI18n'
+import { workspaceIdFromPaneId } from '../../utils/pluginPaneId'
 
 const props = defineProps<{
   leaf: LeafPane
+  isVisible: boolean
+  isFocused: boolean
 }>()
 
 const emit = defineEmits<{
@@ -83,6 +90,7 @@ const plugin = computed(() =>
 const api = computed(() =>
   props.leaf.pluginId ? getPluginContext(props.leaf.pluginId) : undefined
 )
+const workspaceId = computed(() => workspaceIdFromPaneId(props.leaf.paneId))
 </script>
 
 <style scoped>

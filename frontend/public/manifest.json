@@ -5,7 +5,7 @@
   "description": "Mobile-first web terminal for AI coding agents",
   "start_url": "/",
   "scope": "/",
-  "display": "standalone",
+  "display": "fullscreen",
   "orientation": "any",
   "theme_color": "#1E1E1E",
   "background_color": "#1E1E1E",

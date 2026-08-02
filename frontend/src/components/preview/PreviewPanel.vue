@@ -123,7 +123,7 @@ import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import FileWorkspacePreview from './FileWorkspacePreview.vue'
 import DevToolsPanel from './DevToolsPanel.vue'
 import { isWebPreviewInput, normalizeWebUrl, urlToPreviewSrc } from '../../utils/previewRouting'
-import { getApiBase } from '../../composables/apiBase'
+import { getApiBase, apiUrl, authFetch } from '../../composables/apiBase'
 import { useI18n } from '../../composables/useI18n'
 import {
   ChevronLeft,
@@ -351,7 +351,28 @@ watch(
 )
 
 async function restoreFilesPreview() {
-  if (!props.address) return
+  if (!props.address) {
+    // SSH pane with no user-entered address: auto-navigate to the pane's cwd
+    // so the file tree opens at the directory the user is working in, not `/`.
+    if (props.remote && props.paneId) {
+      try {
+        await getApiBase()
+        const q = new URLSearchParams({ pane_id: props.paneId })
+        const res = await authFetch(apiUrl(`/api/workspace/cwd?${q}`))
+        if (res.ok) {
+          const { cwd } = (await res.json()) as { cwd?: string }
+          if (cwd) {
+            await nextTick()
+            await nextTick()
+            filesRef.value?.openFromTerminal(cwd)
+          }
+        }
+      } catch {
+        // best-effort; fall through to default tree (root listing)
+      }
+    }
+    return
+  }
   await nextTick()
   await nextTick()
   filesRef.value?.openFromTerminal(props.address)

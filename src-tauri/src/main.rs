@@ -245,8 +245,20 @@ fn pty_spawn(
         return Ok(session.shell_type.clone());
     }
 
-    let (session, shell_type) =
-        pty::create_session(&manager, &pane_id, None, Some(Arc::clone(&exit_cb)), None, None)?;
+    let settings = dinotty_server::settings::load_settings();
+    let shell_spec = dinotty_server::platform::shell::shell_with_preference(
+        &settings.shell,
+        &settings.shell_path,
+    );
+    let (session, shell_type) = pty::create_session(
+        &manager,
+        &pane_id,
+        None,
+        Some(Arc::clone(&exit_cb)),
+        None,
+        None,
+        Some(shell_spec),
+    )?;
     manager.register_singleton_tab(&pane_id, &session, &shell_type);
 
     spawn_tauri_output_forwarder(app.clone(), pane_id.clone(), Arc::clone(&session));
@@ -538,6 +550,85 @@ async fn tauri_upload(
     Ok(FetchResponse { status, headers, body })
 }
 
+/// macOS-only: read file paths from the drag pasteboard (NSDragPboard).
+/// WKWebView's HTML5 DataTransfer hides non-text types from JS, so we read
+/// the OS pasteboard directly during a drop event to recover file paths
+/// (e.g. VSCode's tree-view drags put `public.file-url` + text here).
+#[cfg(target_os = "macos")]
+#[tauri::command]
+#[allow(deprecated)] // NSFilenamesPboardType is deprecated but still the most reliable Finder signal
+fn tauri_read_drag_pboard() -> Result<Vec<String>, String> {
+    use objc2::rc::Retained;
+    use objc2::runtime::{AnyClass, AnyObject};
+    use objc2::ClassType;
+    use objc2_app_kit::{
+        NSFilenamesPboardType, NSPasteboard, NSPasteboardNameDrag, NSPasteboardTypeString,
+    };
+    use objc2_foundation::{NSArray, NSString, NSURL};
+
+    // SAFETY: extern statics (NSPasteboardNameDrag, NSFilenamesPboardType,
+    // NSPasteboardTypeString) come from AppKit and are valid for the program's
+    // lifetime; `readObjectsForClasses:options:` with `[NSURL]` is a safe read.
+    unsafe {
+        let pb = NSPasteboard::pasteboardWithName(NSPasteboardNameDrag);
+        let mut paths: Vec<String> = Vec::new();
+
+        // 1. NSURL via readObjectsForClasses:options: — works for any app that
+        //    provides public.file-url / public.url items (Finder, VSCode, etc.).
+        let classes: Retained<NSArray<AnyClass>> = NSArray::from_slice(&[NSURL::class()]);
+        if let Some(arr) = pb.readObjectsForClasses_options(&classes, None) {
+            for obj in arr.to_vec() {
+                if let Ok(url) = obj.downcast::<NSURL>() {
+                    if url.isFileURL() {
+                        if let Some(path) = url.to_file_path() {
+                            let s = path.to_string_lossy().into_owned();
+                            if !s.is_empty() {
+                                paths.push(s);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. NSFilenamesPboardType (deprecated but still used by Finder as a
+        //    property list of path strings).
+        if paths.is_empty() {
+            if let Some(plist) = pb.propertyListForType(NSFilenamesPboardType) {
+                if let Ok(arr) = plist.downcast::<NSArray<AnyObject>>() {
+                    for item in arr.to_vec() {
+                        if let Ok(s) = item.downcast::<NSString>() {
+                            let p = s.to_string();
+                            if !p.is_empty() {
+                                paths.push(p);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. text/plain fallback (some apps write the absolute path here and
+        //    nothing else; WKWebView also hides this from JS in some cases).
+        if paths.is_empty() {
+            if let Some(s) = pb.stringForType(NSPasteboardTypeString) {
+                let p = s.to_string();
+                if !p.is_empty() {
+                    paths.push(p);
+                }
+            }
+        }
+
+        Ok(paths)
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn tauri_read_drag_pboard() -> Result<Vec<String>, String> {
+    Ok(Vec::new())
+}
+
 #[tauri::command]
 fn set_window_title(title: String, window: tauri::Window) -> Result<(), String> {
     window.set_title(&title).map_err(|e| e.to_string())
@@ -779,34 +870,14 @@ fn main() {
 
             Ok(())
         })
-        .on_window_event(|window, event| match event {
-            tauri::WindowEvent::DragDrop(drag_event) => match drag_event {
-                tauri::DragDropEvent::Enter { .. } => {
-                    let _ = window.emit("file-drop-active", true);
-                }
-                tauri::DragDropEvent::Leave => {
-                    let _ = window.emit("file-drop-active", false);
-                }
-                tauri::DragDropEvent::Drop { paths, position } => {
-                    let _ = window.emit("file-drop-active", false);
-                    let path_strings: Vec<String> =
-                        paths.iter().map(|p| p.to_string_lossy().into_owned()).collect();
-                    let payload = serde_json::json!({
-                        "paths": path_strings,
-                        "position": { "x": position.x, "y": position.y }
-                    });
-                    let _ = window.emit("file-drop-paths", &payload);
-                }
-                _ => {}
-            },
-            tauri::WindowEvent::CloseRequested { api, .. } => {
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if DESKTOP_SHUTDOWN_STARTED.load(Ordering::SeqCst) {
                     return;
                 }
                 api.prevent_close();
                 let _ = window.emit("window-close-requested", ());
             }
-            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             pty_spawn,
@@ -822,6 +893,7 @@ fn main() {
             tauri_read_file,
             tauri_download,
             tauri_save_text,
+            tauri_read_drag_pboard,
             pick_upload_dir,
             pick_workspace_dir,
             close_window,

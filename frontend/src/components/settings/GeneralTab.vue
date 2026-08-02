@@ -38,6 +38,38 @@
       </section>
 
       <section class="settings-section">
+        <h3>{{ t('settings.shell') }}</h3>
+        <div class="settings-row">
+          <select
+            v-model="settings.shell"
+            class="shortcut-input"
+            style="flex: 1"
+            @change="onShellKindChange"
+          >
+            <option value="auto">{{ t('settings.shellKind.auto') }}</option>
+            <option value="zsh">{{ t('settings.shellKind.zsh') }}</option>
+            <option value="bash">{{ t('settings.shellKind.bash') }}</option>
+            <option value="sh">{{ t('settings.shellKind.sh') }}</option>
+            <option value="fish">{{ t('settings.shellKind.fish') }}</option>
+            <option value="powershell">{{ t('settings.shellKind.powershell') }}</option>
+            <option value="cmd">{{ t('settings.shellKind.cmd') }}</option>
+            <option value="custom">{{ t('settings.shellKind.custom') }}</option>
+          </select>
+        </div>
+        <p class="settings-hint">{{ t('settings.shellHint') }}</p>
+        <div v-if="settings.shell === 'custom'" class="settings-row">
+          <input
+            v-model="shellPathInput"
+            type="text"
+            class="shortcut-input"
+            style="flex: 1"
+            :placeholder="t('settings.shellPathHint')"
+            @blur="commitShellPath"
+          />
+        </div>
+      </section>
+
+      <section class="settings-section">
         <h3>{{ t('settings.virtualKeyboard') }}</h3>
         <div class="settings-row">
           <label>{{ t('settings.virtualKeyboard.show') }}</label>
@@ -139,120 +171,163 @@
       </section>
 
       <CollapsibleSection :title="t('settings.group.advancedSecurity')" level="section">
-      <section class="settings-section">
-        <h3>{{ t('settings.ipWhitelist') }}</h3>
-        <div v-for="(ip, idx) in settings.ip_whitelist" :key="idx" class="ip-row">
-          <span class="ip-text">{{ ip }}</span>
-          <button class="icon-btn danger" @click="removeIp(idx)">✕</button>
-        </div>
-        <div class="ip-row" style="margin-top: 8px">
-          <input
-            v-model="newIp"
-            type="text"
-            class="token-input"
-            :placeholder="t('settings.ipWhitelist.placeholder')"
-            @keydown.enter="addIp"
-          />
-          <button class="icon-btn" @click="addIp">{{ t('settings.ipWhitelist.add') }}</button>
-        </div>
-        <p class="settings-hint">{{ t('settings.ipWhitelist.hint') }}</p>
-      </section>
-
-      <section class="settings-section">
-        <h3>{{ t('security.authConfig') }}</h3>
-
-        <div class="settings-row">
-          <label>{{ t('security.lockoutStrategy') }}</label>
-          <select v-model="settings.auth.lockout_strategy" @change="saveSettings()">
-            <option value="ip">IP</option>
-            <option value="global">Global</option>
-            <option value="off">Off</option>
-          </select>
-        </div>
-
-        <template v-if="settings.auth.lockout_strategy === 'ip'">
-          <div class="settings-row">
-            <label>{{ t('security.lockoutMaxFailures') }}</label>
+        <section class="settings-section">
+          <h3>{{ t('settings.ipWhitelist') }}</h3>
+          <div v-for="(ip, idx) in settings.ip_whitelist" :key="idx" class="ip-row">
+            <span class="ip-text">{{ ip }}</span>
+            <button class="icon-btn danger" @click="removeIp(idx)">✕</button>
+          </div>
+          <div class="ip-row" style="margin-top: 8px">
             <input
-              type="number"
-              v-model.number="settings.auth.lockout_max_failures"
-              @change="saveSettings()"
-              min="1"
-              max="100"
-              class="settings-input-number"
+              v-model="newIp"
+              type="text"
+              class="token-input"
+              :placeholder="t('settings.ipWhitelist.placeholder')"
+              @keydown.enter="addIp"
+            />
+            <button class="icon-btn" @click="addIp">{{ t('settings.ipWhitelist.add') }}</button>
+          </div>
+          <p class="settings-hint">{{ t('settings.ipWhitelist.hint') }}</p>
+        </section>
+
+        <section class="settings-section">
+          <h3>{{ t('security.authConfig') }}</h3>
+
+          <div class="settings-row">
+            <label>{{ t('security.loginMethod') }}</label>
+            <SegmentedControl
+              class="login-method-control"
+              data-setting="auth.login_method"
+              :model-value="loginMethodValue"
+              :options="loginMethodOptions"
+              :aria-label="t('security.loginMethod')"
+              @update:model-value="onLoginMethodChange"
             />
           </div>
-          <div class="settings-row">
-            <label>{{ t('security.lockoutSecs') }}</label>
-            <input
-              type="number"
-              v-model.number="settings.auth.lockout_secs"
-              @change="saveSettings()"
-              min="10"
-              max="3600"
-              class="settings-input-number"
-            />
+          <p class="settings-hint" v-if="!hasCodeSubscriber">
+            {{ t('security.loginMethodNoSubscriberHint') }}
+          </p>
+          <p class="settings-hint" v-else>
+            {{ t('security.loginMethodHint') }}
+          </p>
+
+          <div v-if="showConfirmDialog" class="login-method-confirm">
+            <p class="confirm-title">{{ t('security.loginMethodConfirmTitle') }}</p>
+            <p class="confirm-body">{{ t('security.loginMethodConfirmBody') }}</p>
+            <label class="confirm-checkbox">
+              <input type="checkbox" v-model="confirmAcknowledged" />
+              <span>{{ t('security.loginMethodConfirmAck') }}</span>
+            </label>
+            <div class="confirm-actions">
+              <button class="icon-btn" @click="cancelLoginMethodChange">
+                {{ t('security.loginMethodConfirmCancel') }}
+              </button>
+              <button
+                class="icon-btn"
+                :disabled="!confirmAcknowledged"
+                @click="confirmLoginMethodChange"
+              >
+                {{ t('security.loginMethodConfirmApply') }}
+              </button>
+            </div>
           </div>
-        </template>
 
-        <template v-if="settings.auth.lockout_strategy === 'global'">
-          <div class="settings-row">
-            <label>{{ t('security.globalLockoutMaxFailures') }}</label>
-            <input
-              type="number"
-              v-model.number="settings.auth.global_lockout_max_failures"
-              @change="saveSettings()"
-              min="1"
-              max="1000"
-              class="settings-input-number"
-            />
+          <div class="settings-row" style="margin-top: 12px">
+            <label>{{ t('security.lockoutStrategy') }}</label>
+            <select v-model="settings.auth.lockout_strategy" @change="saveSettings()">
+              <option value="ip">IP</option>
+              <option value="global">Global</option>
+              <option value="off">Off</option>
+            </select>
           </div>
-          <div class="settings-row">
-            <label>{{ t('security.globalLockoutSecs') }}</label>
-            <input
-              type="number"
-              v-model.number="settings.auth.global_lockout_secs"
-              @change="saveSettings()"
-              min="10"
-              max="86400"
-              class="settings-input-number"
-            />
+
+          <template v-if="settings.auth.lockout_strategy === 'ip'">
+            <div class="settings-row">
+              <label>{{ t('security.lockoutMaxFailures') }}</label>
+              <input
+                type="number"
+                v-model.number="settings.auth.lockout_max_failures"
+                @change="saveSettings()"
+                min="1"
+                max="100"
+                class="settings-input-number"
+              />
+            </div>
+            <div class="settings-row">
+              <label>{{ t('security.lockoutSecs') }}</label>
+              <input
+                type="number"
+                v-model.number="settings.auth.lockout_secs"
+                @change="saveSettings()"
+                min="10"
+                max="3600"
+                class="settings-input-number"
+              />
+            </div>
+          </template>
+
+          <template v-if="settings.auth.lockout_strategy === 'global'">
+            <div class="settings-row">
+              <label>{{ t('security.globalLockoutMaxFailures') }}</label>
+              <input
+                type="number"
+                v-model.number="settings.auth.global_lockout_max_failures"
+                @change="saveSettings()"
+                min="1"
+                max="1000"
+                class="settings-input-number"
+              />
+            </div>
+            <div class="settings-row">
+              <label>{{ t('security.globalLockoutSecs') }}</label>
+              <input
+                type="number"
+                v-model.number="settings.auth.global_lockout_secs"
+                @change="saveSettings()"
+                min="10"
+                max="86400"
+                class="settings-input-number"
+              />
+            </div>
+          </template>
+
+          <div class="settings-row" style="margin-top: 8px">
+            <label>{{ t('security.allowedOrigins') }}</label>
           </div>
-        </template>
+          <textarea
+            class="config-textarea"
+            :value="settings.auth.allowed_origins.join('\n')"
+            @input="onAllowedOriginsInput"
+            :placeholder="t('security.allowedOriginsPlaceholder')"
+            rows="3"
+          ></textarea>
+          <p class="settings-hint">{{ t('security.allowedOriginsHint') }}</p>
 
-        <div class="settings-row" style="margin-top: 8px">
-          <label>{{ t('security.allowedOrigins') }}</label>
-        </div>
-        <textarea
-          class="config-textarea"
-          :value="settings.auth.allowed_origins.join('\n')"
-          @input="onAllowedOriginsInput"
-          :placeholder="t('security.allowedOriginsPlaceholder')"
-          rows="3"
-        ></textarea>
-        <p class="settings-hint">{{ t('security.allowedOriginsHint') }}</p>
+          <div class="settings-row" style="margin-top: 8px">
+            <label>{{ t('security.trustedProxies') }}</label>
+          </div>
+          <textarea
+            class="config-textarea"
+            :value="settings.auth.trusted_proxies.join('\n')"
+            @input="onTrustedProxiesInput"
+            :placeholder="t('security.trustedProxiesPlaceholder')"
+            rows="3"
+          ></textarea>
+          <p class="settings-hint">{{ t('security.trustedProxiesHint') }}</p>
 
-        <div class="settings-row" style="margin-top: 8px">
-          <label>{{ t('security.trustedProxies') }}</label>
-        </div>
-        <textarea
-          class="config-textarea"
-          :value="settings.auth.trusted_proxies.join('\n')"
-          @input="onTrustedProxiesInput"
-          :placeholder="t('security.trustedProxiesPlaceholder')"
-          rows="3"
-        ></textarea>
-        <p class="settings-hint">{{ t('security.trustedProxiesHint') }}</p>
-
-        <div class="settings-row" style="margin-top: 8px">
-          <label>{{ t('security.previewAllowExternal') }}</label>
-          <label class="toggle">
-            <input type="checkbox" v-model="settings.preview.allow_external" @change="saveSettings()" />
-            <span class="toggle-track"><span class="toggle-thumb"></span></span>
-          </label>
-        </div>
-        <p class="settings-hint">{{ t('security.previewAllowExternalHint') }}</p>
-      </section>
+          <div class="settings-row" style="margin-top: 8px">
+            <label>{{ t('security.previewAllowExternal') }}</label>
+            <label class="toggle">
+              <input
+                type="checkbox"
+                v-model="settings.preview.allow_external"
+                @change="saveSettings()"
+              />
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            </label>
+          </div>
+          <p class="settings-hint">{{ t('security.previewAllowExternalHint') }}</p>
+        </section>
       </CollapsibleSection>
     </div>
 
@@ -267,12 +342,7 @@
               placeholder="/Users/me/projects"
               @change="saveSettings()"
             />
-            <button
-              v-if="isTauri()"
-              class="icon-btn"
-              type="button"
-              @click="pickDefaultBaseDir()"
-            >
+            <button v-if="isTauri()" class="icon-btn" type="button" @click="pickDefaultBaseDir()">
               <FolderOpen :size="14" />
               {{ t('settings.uploads.pickDir') }}
             </button>
@@ -496,7 +566,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { Eye, EyeOff, Copy, Check, Pencil, RefreshCw, Save, X, FolderOpen } from 'lucide-vue-next'
 import { useSettings } from '../../composables/useSettings'
 import type { WorkspaceBadgeMode } from '../../composables/useSettings'
@@ -507,6 +577,7 @@ import CollapsibleSection from './CollapsibleSection.vue'
 import SegmentedControl from '../ui/SegmentedControl.vue'
 import { useToast } from 'vue-toastification'
 import { isTauri } from '../../composables/useTransport'
+import { authFetch, apiUrl } from '../../composables/apiBase'
 import { useUploadManagement } from '../../composables/useUploadManagement'
 import { useTokenManagement } from '../../composables/useTokenManagement'
 import { useAccessUrl } from '../../composables/useAccessUrl'
@@ -529,6 +600,22 @@ const wsBadgeModeOptions = computed(() => [
 
 function onWsBadgeModeChange(value: string) {
   settings.workspace_badge_mode = value as WorkspaceBadgeMode
+  saveSettings()
+}
+
+const shellPathInput = ref(settings.shell_path ?? '')
+
+function onShellKindChange() {
+  if (settings.shell !== 'custom') {
+    settings.shell_path = null
+    shellPathInput.value = ''
+  }
+  saveSettings()
+}
+
+function commitShellPath() {
+  const trimmed = shellPathInput.value.trim()
+  settings.shell_path = trimmed.length > 0 ? trimmed : null
   saveSettings()
 }
 
@@ -581,13 +668,19 @@ const newIp = ref('')
 
 function onAllowedOriginsInput(e: Event) {
   const val = (e.target as HTMLTextAreaElement).value
-  settings.auth.allowed_origins = val.split('\n').map((s) => s.trim()).filter(Boolean)
+  settings.auth.allowed_origins = val
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean)
   saveSettings()
 }
 
 function onTrustedProxiesInput(e: Event) {
   const val = (e.target as HTMLTextAreaElement).value
-  settings.auth.trusted_proxies = val.split('\n').map((s) => s.trim()).filter(Boolean)
+  settings.auth.trusted_proxies = val
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean)
   saveSettings()
 }
 
@@ -603,6 +696,74 @@ function addIp() {
 function removeIp(idx: number) {
   settings.ip_whitelist.splice(idx, 1)
 }
+
+const hasCodeSubscriber = ref(true)
+const showConfirmDialog = ref(false)
+const confirmAcknowledged = ref(false)
+const pendingLoginMethod = ref<'token' | 'verification_code'>('token')
+const loginMethodValue = ref<'token' | 'verification_code'>('token')
+
+const loginMethodOptions = computed(() => [
+  { value: 'token', label: t('security.loginMethodToken') },
+  { value: 'verification_code', label: t('security.loginMethodVerificationCode') },
+])
+
+async function refreshHasSubscriber() {
+  try {
+    const res = await authFetch(
+      apiUrl('/api/plugins/events/has-subscriber?event=auth.verification_code'),
+    )
+    if (!res.ok) return
+    const data = await res.json()
+    hasCodeSubscriber.value = !!data.has_subscriber
+  } catch {
+    hasCodeSubscriber.value = true
+  }
+}
+
+function onLoginMethodChange(next: string) {
+  const current = settings.auth.login_method
+  if (next === current) return
+  if (next === 'token') {
+    settings.auth.login_method = 'token'
+    loginMethodValue.value = 'token'
+    saveSettings()
+    return
+  }
+  if (next === 'verification_code') {
+    if (!hasCodeSubscriber.value) {
+      toast.error(t('security.loginMethodNoSubscriberHint'))
+      loginMethodValue.value = current
+      return
+    }
+    pendingLoginMethod.value = 'verification_code'
+    confirmAcknowledged.value = false
+    showConfirmDialog.value = true
+    loginMethodValue.value = current
+    return
+  }
+  loginMethodValue.value = current
+}
+
+function cancelLoginMethodChange() {
+  showConfirmDialog.value = false
+  pendingLoginMethod.value = 'token'
+  confirmAcknowledged.value = false
+  loginMethodValue.value = settings.auth.login_method
+}
+
+function confirmLoginMethodChange() {
+  if (!confirmAcknowledged.value) return
+  settings.auth.login_method = pendingLoginMethod.value
+  loginMethodValue.value = pendingLoginMethod.value
+  saveSettings()
+  showConfirmDialog.value = false
+}
+
+onMounted(async () => {
+  loginMethodValue.value = settings.auth.login_method
+  await refreshHasSubscriber()
+})
 </script>
 
 <style scoped>
@@ -826,5 +987,45 @@ function removeIp(idx: number) {
 /* match SettingsPanel .settings-row gap rhythm (10px) removed when the wrapping row was dropped */
 .ws-badge-control {
   margin-bottom: 10px;
+}
+
+.login-method-control {
+  flex: 1;
+  min-width: 0;
+}
+
+.login-method-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  margin-top: 10px;
+}
+.confirm-title {
+  font-weight: 600;
+  margin: 0;
+  color: var(--fg-bright);
+  font-size: 13px;
+}
+.confirm-body {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-muted);
+  line-height: 1.5;
+}
+.confirm-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fg);
+}
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 </style>

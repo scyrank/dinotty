@@ -444,6 +444,7 @@ mod tests {
             category: None,
             targets: None,
             show_in_toolbar: None,
+            events: None,
         }
     }
 
@@ -669,6 +670,7 @@ mod tests {
             category: None,
             targets: None,
             show_in_toolbar: None,
+            events: None,
         }
     }
 

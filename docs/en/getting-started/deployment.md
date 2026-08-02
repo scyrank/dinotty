@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This guide explains how to install and deploy build artifacts. Repository maintainers preparing a version, creating a tag, or monitoring an official release should see the [Release Guide](releasing.en.md).
+This guide explains how to install and deploy build artifacts. Repository maintainers preparing a version, creating a tag, or monitoring an official release should see the [Release Guide](releasing.md).
 
 ## Recommended Release Flow (CI/CD)
 

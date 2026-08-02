@@ -25,6 +25,11 @@ pub struct PluginManifest {
     pub targets: Option<Vec<String>>,
     #[serde(default, rename = "showInToolbar")]
     pub show_in_toolbar: Option<bool>,
+    /// Events this plugin subscribes to (declared in plugin.json). Used by
+    /// `GET /api/plugins/events/has-subscriber` to determine whether a notifier
+    /// is available before the plugin is activated.
+    #[serde(default)]
+    pub events: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -17,8 +17,8 @@ use crate::workspace_mgmt::is_sensitive;
 use super::remote;
 use super::types::{
     CreateEntryBody, CreateEntryQuery, DirEntry, ListResponse, MetaResponse, MoveBody,
-    PanePathQuery, PutFileBody, RenameBody, ResolveQuery, ResolveResponse, SearchResponse,
-    WorkspaceListQuery, WorkspaceSearchBody,
+    PanePathQuery, PaneQuery, PutFileBody, RenameBody, ResolveQuery, ResolveResponse,
+    SearchResponse, WorkspaceListQuery, WorkspaceSearchBody,
 };
 use super::util::{
     detect_language, get_root, json_err, media_kind, normalize_join, office_kind,
@@ -568,4 +568,16 @@ pub async fn workspace_move(
     }
     let rel = rel_from_root(&root, &dest).unwrap_or_default();
     Json(serde_json::json!({ "ok": true, "rel": rel })).into_response()
+}
+
+#[allow(clippy::unused_async)]
+pub async fn workspace_cwd(
+    State(manager): State<Arc<SessionManager>>,
+    Query(q): Query<PaneQuery>,
+) -> Response {
+    let Some(session) = manager.sessions.get(&q.pane_id) else {
+        return json_err(StatusCode::NOT_FOUND, "unknown pane");
+    };
+    let state = session.cwd_state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    Json(serde_json::json!({ "cwd": state.cwd.to_string_lossy() })).into_response()
 }

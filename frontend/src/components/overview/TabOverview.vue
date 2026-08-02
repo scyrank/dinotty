@@ -177,6 +177,7 @@ import type { ContextMenuItem } from '../ui/ContextMenu.vue'
 import { useI18n } from '../../composables/useI18n'
 import { uiConfirm } from '../../composables/useConfirm'
 import { uiPrompt } from '../../composables/usePrompt'
+import { useMissionControlState, sendMcOp } from '../../composables/useMissionControlState'
 
 const { t } = useI18n()
 
@@ -300,12 +301,7 @@ function openCardCtx(e: MouseEvent, card: TabCard) {
   ctxVisible.value = true
 }
 
-const COLS_SM = 2
-const COLS_MD = 3
-const COLS_LG = 4
-const COLS_XL = 5
-
-const focusedIndex = ref(0)
+const mcState = useMissionControlState()
 const cardRefs = ref<(HTMLElement | null)[]>([])
 const backdropRef = ref<any>(null)
 const closing = ref(false)
@@ -314,23 +310,22 @@ function setCardRef(index: number, el: any) {
   cardRefs.value[index] = el?.$el ?? el ?? null
 }
 
-function getCols(): number {
-  const w = window.innerWidth
-  if (w >= 1200) return COLS_XL
-  if (w >= 900) return COLS_LG
-  if (w >= 480) return COLS_MD
-  return COLS_SM
-}
+/// Focused index derives from `mcState.selectedTabId` - the backend is the
+/// single source of truth. Falls back to `cards.length` (the "add" card)
+/// when no tab is selected, so empty workspaces are still keyboard-actionable.
+const focusedIndex = computed(() => {
+  const idx = props.cards.findIndex((c) => c.paneId === mcState.selectedTabId)
+  return idx >= 0 ? idx : props.cards.length
+})
 
-// Reset focused index when overlay opens; mark closing when overlay starts to dismiss
+// Reset closing flag when overlay visibility flips. No local focused-index
+// seeding - the backend seeds selected_tab_id from the active tab on
+// toggle-open and broadcasts it via `selection_changed`.
 watch(
   () => props.visible,
   (v) => {
     if (v) {
       closing.value = false
-      const idx = props.cards.findIndex((c) => c.paneId === props.activePaneId)
-      // Fall back to the "add" card so empty workspaces are still keyboard-actionable
-      focusedIndex.value = idx >= 0 ? idx : props.cards.length
       if (!props.embedded) {
         nextTick(() => backdropRef.value?.$el?.focus?.())
       }
@@ -340,95 +335,55 @@ watch(
   },
 )
 
-// Reset focused index when cards change (workspace switch, tab close, etc.)
-watch(
-  () => props.cards,
-  (cards) => {
-    // "add" card lives at index cards.length; only clamp when beyond that
-    if (focusedIndex.value > cards.length) focusedIndex.value = cards.length
-    if (!cards.length) return
-    // Try to focus the active pane
-    const idx = cards.findIndex((c) => c.paneId === props.activePaneId)
-    if (idx >= 0) focusedIndex.value = idx
-  },
-  { deep: false },
-)
-
-function onKeydown(e: KeyboardEvent) {
-  // Total cells = cards + trailing "add" card
-  const tabCount = props.cards.length
-  const total = tabCount + 1
-  const cols = getCols()
-  const cur = focusedIndex.value
-  const row = Math.floor(cur / cols)
-  const col = cur % cols
-  const lastRow = Math.floor((total - 1) / cols)
-
-  switch (e.key) {
-    case 'ArrowUp':
-      e.preventDefault()
-      if (row > 0) {
-        focusedIndex.value = cur - cols
-      } else {
-        // Wrap to last row, same col (clamp to last cell if col is out of range)
-        const target = lastRow * cols + col
-        focusedIndex.value = target < total ? target : total - 1
-      }
-      break
-    case 'ArrowDown':
-      e.preventDefault()
-      if (row < lastRow) {
-        const target = cur + cols
-        focusedIndex.value = target < total ? target : total - 1
-      } else {
-        // Wrap to first row, same col
-        focusedIndex.value = col < total ? col : 0
-      }
-      break
-    case 'ArrowLeft':
-      e.preventDefault()
-      if (col > 0) {
-        focusedIndex.value = cur - 1
-      } else if (row > 0) {
-        // Wrap to end of previous row
-        focusedIndex.value = row * cols - 1
-      } else {
-        // At the very first cell — wrap to last cell
-        focusedIndex.value = total - 1
-      }
-      break
-    case 'ArrowRight':
-      e.preventDefault()
-      if (col < cols - 1 && cur + 1 < total) {
-        focusedIndex.value = cur + 1
-      } else if (row < lastRow) {
-        // Wrap to start of next row
-        focusedIndex.value = (row + 1) * cols
-      } else {
-        // At the very last cell — wrap to first cell
-        focusedIndex.value = 0
-      }
-      break
-    case 'Enter':
-      e.preventDefault()
-      if (cur < tabCount) {
-        emit('activate', props.cards[cur].paneId)
-      } else {
-        emit('new-tab')
-      }
-      break
-    case 'Escape':
-      e.preventDefault()
-      emit('close')
-      break
-    default:
-      return
-  }
-
+// Keep the focused card scrolled into view whenever the backend-driven
+// focused index changes (e.g. hardware keyboard arrow keys on another
+// client moved the selection).
+watch(focusedIndex, () => {
   nextTick(() => {
     const el = cardRefs.value[focusedIndex.value]
     el?.scrollIntoView({ block: 'nearest' })
   })
+})
+
+function onKeydown(e: KeyboardEvent) {
+  switch (e.key) {
+    case 'ArrowLeft':
+      // Linear tab nav: previous tab. The backend cycles through tab_order
+      // and broadcasts `selection_changed` - we never mutate focusedIndex
+      // locally. Left/Right maps to the horizontal tab grid in MC.
+      e.preventDefault()
+      sendMcOp({ kind: 'navigate', dir: 'left' })
+      return
+    case 'ArrowRight':
+      e.preventDefault()
+      sendMcOp({ kind: 'navigate', dir: 'right' })
+      return
+    case 'Enter':
+      e.preventDefault()
+      // Confirm: if a tab is selected, the backend activates it and closes
+      // MC. If selected_tab_id is None (the "add" card), we emit new-tab
+      // locally because the backend's Confirm op does not (yet) create a
+      // new tab.
+      if (mcState.selectedTabId) {
+        sendMcOp({ kind: 'confirm' })
+      } else {
+        emit('new-tab')
+      }
+      return
+    case 'Escape':
+      e.preventDefault()
+      sendMcOp({ kind: 'cancel' })
+      return
+    case 'ArrowUp':
+    case 'ArrowDown':
+      // Up/Down are workspace-nav keys - handled by the parent
+      // WorkspaceOverview, not TabOverview. Swallow them so the parent's
+      // onKeydown doesn't double-fire.
+      e.preventDefault()
+      return
+    default:
+      return
+  }
 }
 
 defineExpose({

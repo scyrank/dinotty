@@ -39,6 +39,43 @@ pub enum BusEvent {
         event_name: String,
         data: serde_json::Value,
     },
+    AuthLoginFailed {
+        ip: String,
+        reason: String,
+        attempt_count: u32,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        locked_until: Option<u64>,
+    },
+    VerificationCode {
+        request_id: String,
+        code: String,
+        occurred_at: u64,
+    },
+    VerificationCodeConsumed {
+        request_id: String,
+        ip: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        user_agent: Option<String>,
+        occurred_at: u64,
+    },
+    Notify {
+        pane_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
+        body: String,
+        notification_type: String,
+        severity: String,
+        occurred_at: u64,
+    },
+    ProcessExited {
+        plugin_id: String,
+        pid: u32,
+        exit_code: Option<i32>,
+    },
+    PluginChanged {
+        plugin_id: String,
+        change: String,
+    },
 }
 
 /// Global event bus backed by `tokio::broadcast` channel.
@@ -137,5 +174,45 @@ mod tests {
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("command_finished"));
         assert!(json.contains("shell_integration"));
+    }
+
+    #[tokio::test]
+    async fn test_event_bus_verification_code_serialization() {
+        let event = BusEvent::VerificationCode {
+            request_id: "req-abc".into(),
+            code: "123456".into(),
+            occurred_at: 1_700_000_000_000,
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"event\":\"verification_code\""));
+        assert!(json.contains("\"request_id\":\"req-abc\""));
+        assert!(json.contains("\"code\":\"123456\""));
+        assert!(json.contains("\"occurred_at\":1700000000000"));
+    }
+
+    #[tokio::test]
+    async fn test_event_bus_verification_code_consumed_serialization() {
+        let event = BusEvent::VerificationCodeConsumed {
+            request_id: "req-abc".into(),
+            ip: "1.2.3.4".into(),
+            user_agent: Some("Mozilla/5.0".into()),
+            occurred_at: 1_700_000_000_000,
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"event\":\"verification_code_consumed\""));
+        assert!(json.contains("\"ip\":\"1.2.3.4\""));
+        assert!(json.contains("\"user_agent\":\"Mozilla/5.0\""));
+    }
+
+    #[tokio::test]
+    async fn test_event_bus_verification_code_consumed_without_ua_skips_field() {
+        let event = BusEvent::VerificationCodeConsumed {
+            request_id: "req-abc".into(),
+            ip: "1.2.3.4".into(),
+            user_agent: None,
+            occurred_at: 0,
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(!json.contains("user_agent"));
     }
 }

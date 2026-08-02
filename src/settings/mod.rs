@@ -40,9 +40,14 @@ pub fn config_dir() -> PathBuf {
         return PathBuf::from(path);
     }
 
-    dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(format!("dinotty{}", option_env!("DINOTTY_CONFIG_SUFFIX").unwrap_or("")))
+    // Compile-time suffix (set via build script / `DINOTTY_CONFIG_SUFFIX` at
+    // build) takes precedence; otherwise fall back to the runtime env var
+    // (used by integration tests to isolate each server's config dir).
+    let suffix = option_env!("DINOTTY_CONFIG_SUFFIX")
+        .map(str::to_string)
+        .or_else(|| std::env::var("DINOTTY_CONFIG_SUFFIX").ok())
+        .unwrap_or_default();
+    dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")).join(format!("dinotty{suffix}"))
 }
 
 #[cfg(test)]

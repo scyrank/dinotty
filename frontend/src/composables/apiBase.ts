@@ -91,13 +91,18 @@ function parseRetryAfter(value: string | null): number | undefined {
 export async function checkTokenConfigured(): Promise<{
   configured: boolean
   serverMode: boolean
+  loginMethod?: 'token' | 'verification_code'
 }> {
   try {
     await getApiBase()
     const res = await fetch(apiUrl('/api/token-configured'))
     if (!res.ok) return { configured: true, serverMode: true }
     const data = await res.json()
-    return { configured: !!data.configured, serverMode: !!data.server_mode }
+    return {
+      configured: !!data.configured,
+      serverMode: !!data.server_mode,
+      loginMethod: data.login_method === 'verification_code' ? 'verification_code' : 'token',
+    }
   } catch {
     return { configured: true, serverMode: true }
   }
@@ -191,4 +196,79 @@ export function wsUrlWithToken(url: string): string {
   // Browser: same-origin WS sends cookies automatically.
   // Tauri: loopback bypass or Bearer in WS URL is not needed.
   return url
+}
+
+export type RequestCodeResult =
+  | { ok: true; requestId: string }
+  | { ok: false; reason: 'rate_limited' | 'unknown'; retryAfter?: number }
+
+export async function requestCode(): Promise<RequestCodeResult> {
+  try {
+    await getApiBase()
+    const init: RequestInit = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    }
+    if (!isTauri()) {
+      ;(init as RequestInit).credentials = 'include'
+    }
+    const res = await fetch(apiUrl('/api/auth/request-code'), init)
+    if (res.ok) {
+      const data = await res.json()
+      return { ok: true, requestId: String(data.request_id ?? '') }
+    }
+    if (res.status === 429) {
+      return { ok: false, reason: 'rate_limited', retryAfter: parseRetryAfter(res.headers.get('Retry-After')) }
+    }
+    return { ok: false, reason: 'unknown' }
+  } catch {
+    return { ok: false, reason: 'unknown' }
+  }
+}
+
+export type ValidateCodeResult =
+  | { ok: true }
+  | {
+      ok: false
+      reason:
+        | 'invalid'
+        | 'locked'
+        | 'not_found'
+        | 'expired'
+        | 'consumed'
+        | 'too_many_attempts'
+        | 'method_mismatch'
+      retryAfter?: number
+    }
+
+export async function validateCode(requestId: string, code: string): Promise<ValidateCodeResult> {
+  try {
+    await getApiBase()
+    const init: RequestInit = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ request_id: requestId, code }),
+    }
+    if (!isTauri()) {
+      ;(init as RequestInit).credentials = 'include'
+    }
+    const res = await fetch(apiUrl('/api/auth'), init)
+    if (res.ok) {
+      setAuthToken('cookie')
+      return { ok: true }
+    }
+    if (res.status === 429) {
+      return { ok: false, reason: 'locked', retryAfter: parseRetryAfter(res.headers.get('Retry-After')) }
+    }
+    const data = await res.json().catch(() => ({}))
+    const errStr = typeof data.error === 'string' ? data.error : ''
+    if (errStr === 'code not found') return { ok: false, reason: 'not_found' }
+    if (errStr === 'code expired') return { ok: false, reason: 'expired' }
+    if (errStr === 'code already used') return { ok: false, reason: 'consumed' }
+    if (errStr === 'too many attempts') return { ok: false, reason: 'too_many_attempts' }
+    if (errStr === 'login method mismatch') return { ok: false, reason: 'method_mismatch' }
+    return { ok: false, reason: 'invalid' }
+  } catch {
+    return { ok: false, reason: 'invalid' }
+  }
 }

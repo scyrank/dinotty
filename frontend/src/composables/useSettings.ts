@@ -60,6 +60,8 @@ export interface SettingsData {
   windowsAltAsCmd: boolean
   locale: string
   panel_position: 'auto' | 'right' | 'left' | 'top' | 'bottom'
+  shell: string
+  shell_path: string | null
   port?: number | null
   monitor: MonitorConfig
   notification: NotificationConfig
@@ -75,6 +77,7 @@ export interface SettingsData {
     lockout_secs: number
     global_lockout_max_failures: number
     global_lockout_secs: number
+    login_method: 'token' | 'verification_code'
   }
   preview: {
     allow_external: boolean
@@ -219,11 +222,15 @@ export interface ActionKeyboardConfig {
 
 export const DEFAULT_ACTION_BOTTOM: ActionBottomCluster = {
   rows: [
-    [ { label: 'yes',      send: 'yes\r',      grow: 1, shape: 'button' },
-      { label: 'no',       send: 'no\r',       grow: 1, shape: 'button' },
-      { label: '↑',        send: '\x1b[A', repeat: true, grow: 1, shape: 'arrow' } ],
-    [ { label: 'continue', send: 'continue\r', grow: 2, shape: 'button' },
-      { label: '↓',        send: '\x1b[B', repeat: true, grow: 1, shape: 'arrow' } ],
+    [
+      { label: 'yes', send: 'yes\r', grow: 1, shape: 'button' },
+      { label: 'no', send: 'no\r', grow: 1, shape: 'button' },
+      { label: '↑', send: '\x1b[A', repeat: true, grow: 1, shape: 'arrow' },
+    ],
+    [
+      { label: 'continue', send: 'continue\r', grow: 2, shape: 'button' },
+      { label: '↓', send: '\x1b[B', repeat: true, grow: 1, shape: 'arrow' },
+    ],
   ],
   enter: { label: '↵', kind: 'send', send: '\r' },
   enter_width: 0.28,
@@ -283,7 +290,7 @@ function normalizeActionKey(key: ActionKey): void {
 }
 
 export function normalizeActionKeyboard(
-  cfg: ActionKeyboardConfig | null,
+  cfg: ActionKeyboardConfig | null
 ): ActionKeyboardConfig | null {
   if (cfg === null) return null
 
@@ -300,9 +307,10 @@ export function normalizeActionKeyboard(
 
   if (bottom.enter) normalizeActionKey(bottom.enter)
   if (!bottom.enter || bottom.enter.kind !== 'send' || bottom.enter.send !== '\r') {
-    const label = typeof bottom.enter?.label === 'string' && bottom.enter.label.trim() !== ''
-      ? bottom.enter.label
-      : DEFAULT_ACTION_BOTTOM.enter.label
+    const label =
+      typeof bottom.enter?.label === 'string' && bottom.enter.label.trim() !== ''
+        ? bottom.enter.label
+        : DEFAULT_ACTION_BOTTOM.enter.label
     bottom.enter = { ...DEFAULT_ACTION_BOTTOM.enter, label }
   }
 
@@ -410,6 +418,8 @@ export const settings = reactive<SettingsData>({
   windowsAltAsCmd: isWindowsClient,
   locale: 'zh',
   panel_position: 'auto',
+  shell: 'auto',
+  shell_path: null,
   monitor: {
     enabled: true,
     cpu: true,
@@ -455,6 +465,7 @@ export const settings = reactive<SettingsData>({
     lockout_secs: 60,
     global_lockout_max_failures: 50,
     global_lockout_secs: 300,
+    login_method: 'token',
   },
   preview: {
     allow_external: false,
@@ -572,7 +583,7 @@ export async function loadSettings() {
       loadGeneration++
       settings.action_keyboard = normalizeActionKeyboard(settings.action_keyboard)
       settings.action_keyboard_user_default = normalizeActionKeyboard(
-        settings.action_keyboard_user_default ?? null,
+        settings.action_keyboard_user_default ?? null
       )
       restoreActionIcons()
       applyCurrentTheme()
@@ -607,14 +618,21 @@ export async function saveSettings() {
     delete (payload as unknown as Record<string, unknown>).reload_after_supervise_tabs
     const notification = payload.notification as unknown as Record<string, unknown>
     for (const key of [
-      'presentation_enabled', 'channels', 'sounds', 'dnd_level', 'ignore_current_tab',
-      'quiet_hours', 'coalesce_window_ms',
+      'presentation_enabled',
+      'channels',
+      'sounds',
+      'dnd_level',
+      'ignore_current_tab',
+      'quiet_hours',
+      'coalesce_window_ms',
     ]) {
       delete notification[key]
     }
     if (loadedNotificationPresentationEcho) {
       if (Object.prototype.hasOwnProperty.call(loadedNotificationPresentationEcho, 'channels')) {
-        notification.channels = JSON.parse(JSON.stringify(loadedNotificationPresentationEcho.channels))
+        notification.channels = JSON.parse(
+          JSON.stringify(loadedNotificationPresentationEcho.channels)
+        )
       }
       if (Object.prototype.hasOwnProperty.call(loadedNotificationPresentationEcho, 'sounds')) {
         notification.sounds = JSON.parse(JSON.stringify(loadedNotificationPresentationEcho.sounds))

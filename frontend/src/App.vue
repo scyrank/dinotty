@@ -110,6 +110,7 @@
             :broadcast-activity="tab.broadcastActivity"
             :allow-close="getAllLeaves(tab.layout).length > 1"
             :tab-id="tab.paneId"
+            :is-visible="tab.paneId === activePaneId"
             @register="registerTermRef"
             @title-change="onTitleChange"
             @shell-info="onShellInfo"
@@ -122,16 +123,19 @@
             @split-horizontal="splitPane.splitPane('horizontal')"
             @split-vertical="splitPane.splitPane('vertical')"
             @toggle-broadcast="splitPane.toggleBroadcast()"
-            @new-local-terminal="splitPane.splitPane('horizontal', true, activeWorkspacePath ?? undefined)"
+            @new-local-terminal="
+              splitPane.splitPane('horizontal', true, activeWorkspacePath ?? undefined)
+            "
             @reorder="
-              (src: string, tgt: string, pos: DropPosition) =>
-                splitPane.reorderPane(src, tgt, pos)
+              (src: string, tgt: string, pos: DropPosition) => splitPane.reorderPane(src, tgt, pos)
             "
             @drop-on-tab="
               (srcTab: string, srcPane: string, dstTab: string, pos: DropPosition) =>
                 onDropOnTab(srcTab, srcPane, dstTab, pos)
             "
-            @drop-extract="(srcTab: string, srcPane: string, idx: number) => onDropExtract(srcTab, srcPane, idx)"
+            @drop-extract="
+              (srcTab: string, srcPane: string, idx: number) => onDropExtract(srcTab, srcPane, idx)
+            "
             @divider-drag-end="onDividerDragEnd(tab)"
             @reconnect="onSshReconnect"
           />
@@ -233,7 +237,7 @@
 
     <MobileKeyboard
       :visible="kbVisible"
-      :pane-id="activePaneId ?? ''"
+      :pane-id="activeTab?.type === 'terminal' ? activeTab.activePaneId : ''"
       :get-send-fn="getSendFn"
       @update:visible="(v: boolean) => (kbVisible = v)"
       @bookmarks="bookmarksRef?.open()"
@@ -243,7 +247,10 @@
     />
 
     <KbToggleButton
-      v-show="(appSettings.show_virtual_keyboard || hasOpenGuard(appSettings.keyboard_guard_mode)) && !kbVisible"
+      v-show="
+        (appSettings.show_virtual_keyboard || hasOpenGuard(appSettings.keyboard_guard_mode)) &&
+        !kbVisible
+      "
       :visible="kbVisible"
       @toggle="kbVisible = !kbVisible"
     />
@@ -253,7 +260,7 @@
       :active-pane-id="activePaneId"
       :term-refs="termRefs"
       :indicators="tabIndicators"
-      @close="overviewOpen = false"
+      @close="closeOverview"
       @activate="onOverviewActivate"
       @close-tab="onOverviewCloseTab"
       @close-tabs="onCloseTabsBulk"
@@ -356,10 +363,12 @@ import { useKeyboardOverlap } from './composables/useKeyboardOverlap'
 import { usePluginLauncher } from './composables/usePluginLauncher'
 import { useSshConnectFlow } from './composables/useSshConnectFlow'
 import { useTabLifecycle } from './composables/useTabLifecycle'
+import { setMcSender } from './composables/useMissionControlState'
 import { clearFileWorkspaceState } from './composables/useFileWorkspaceState'
 import { useSplitPane } from './composables/useSplitPane'
 import { useSuperviseTabs } from './composables/useSuperviseTabs'
 import { useSyncWebSocket } from './composables/useSyncWebSocket'
+import type { SyncClientMsg } from './types/protocol'
 import { isWebPreviewInput } from './utils/previewRouting'
 import { isWindowsClient } from './utils/clientPlatform'
 import { nextRevealNavGen, currentRevealNavGen } from './utils/navGen'
@@ -393,11 +402,21 @@ import {
   apiListTabs,
   apiCreatePluginTab,
 } from './composables/useTabApi'
-import { Settings, Bell, Monitor, Plus, X, Star, AppWindow, Radar, RefreshCw } from 'lucide-vue-next'
+import {
+  Settings,
+  Bell,
+  Monitor,
+  Plus,
+  X,
+  Star,
+  AppWindow,
+  Radar,
+  RefreshCw,
+} from 'lucide-vue-next'
 import WorkspaceOverview from './components/overview/WorkspaceOverview.vue'
 import { refreshPluginPreview, invalidatePluginPreview } from './composables/useTabPreview'
 import { useIsMobile } from './composables/useIsMobile'
-import { useWorkspaces } from './composables/useWorkspaces'
+import { useWorkspaces, DEFAULT_WORKSPACE_ID } from './composables/useWorkspaces'
 // formatCloseTabMessage moved to ConfirmCloseDialog component
 import LoginPage from './components/LoginPage.vue'
 import SetupPage from './components/SetupPage.vue'
@@ -408,10 +427,7 @@ import { useSettingsStore } from './stores/settingsStore'
 import { shellEscapePath } from './utils/shell'
 import { buildRunCodeCommand } from './utils/runCodeCommand'
 import { resolveAbbr, resolveColor } from './utils/workspaceIcon'
-import {
-  getTerminalSequenceAppAction,
-  isDispatchableAppAction,
-} from './utils/appActionCatalog'
+import { getTerminalSequenceAppAction, isDispatchableAppAction } from './utils/appActionCatalog'
 import { createHostClipboardPasteController } from './utils/hostClipboardPaste'
 import { readHostClipboard } from './utils/clipboard'
 import { hasCollapseGuard, hasOpenGuard } from './utils/keyboardGuardMode'
@@ -422,10 +438,16 @@ const session = useSessionStore()
 const { tabs, activePaneId, tabList, activeTabType, activeTab, isBroadcastActive, canBroadcast } =
   storeToRefs(session)
 
-const { persist, persistNow, flushOnUnload, dispose: disposePersist } = useTabPersistence({ tabs, activePaneId })
+const {
+  persist,
+  persistNow,
+  flushOnUnload,
+  dispose: disposePersist,
+} = useTabPersistence({ tabs, activePaneId })
 
 const ui = useUiStore()
-const { syncConnected, kbVisible, settingsOpen, authenticated, authProbe, needsSetup } = storeToRefs(ui)
+const { syncConnected, kbVisible, settingsOpen, authenticated, authProbe, needsSetup } =
+  storeToRefs(ui)
 
 const settingsStore = useSettingsStore()
 const appSettings = settingsStore.settings
@@ -469,8 +491,7 @@ const hostClipboardPaste = createHostClipboardPasteController({
   },
   clipboardEmpty: () =>
     toast.info(t('mobileKb.clipboardEmpty'), { position: POSITION.BOTTOM_CENTER }),
-  pasteFailed: () =>
-    toast.error(t('mobileKb.pasteFailed'), { position: POSITION.BOTTOM_CENTER }),
+  pasteFailed: () => toast.error(t('mobileKb.pasteFailed'), { position: POSITION.BOTTOM_CENTER }),
   confirmMultiline: (lines) =>
     toast.info(t('mobileKb.confirmMultiline', { n: lines }), {
       position: POSITION.BOTTOM_CENTER,
@@ -482,12 +503,8 @@ const cursorPicker = useCursorPicker({
   toast,
   t,
 })
-const {
-  cursorPickerVisible,
-  cursorPickerItems,
-  triggerAddCursors,
-  onCursorPickerConfirm,
-} = cursorPicker
+const { cursorPickerVisible, cursorPickerItems, triggerAddCursors, onCursorPickerConfirm } =
+  cursorPicker
 const clearToastInstance = setToastInstance(toast)
 const clearActiveReadContext = setActiveReadContext({
   getActiveFocusedPaneId: () =>
@@ -506,7 +523,16 @@ const { loadedPlugins, loadAll, getPluginContext, pluginList, allCommands } = us
 const { isMobile } = useIsMobile()
 
 // Workspace filtering
-const { workspaces, activeWorkspaceId, activeWorkspace, activeWorkspacePath, activeWorkspaceName, matchWorkspace, activateWorkspace, cancelPendingWorkspaceActivation } = useWorkspaces()
+const {
+  workspaces,
+  activeWorkspaceId,
+  activeWorkspace,
+  activeWorkspacePath,
+  activeWorkspaceName,
+  matchWorkspace,
+  activateWorkspace,
+  cancelPendingWorkspaceActivation,
+} = useWorkspaces()
 
 function workspaceIdOfTab(tab: Tab): string | null {
   if (tab.type === 'plugin') {
@@ -535,14 +561,22 @@ const visibleTabList = computed(() => {
     // Terminal tab: match by connectionId (SSH) or cwd (local)
     const ws =
       rawTab.type === 'terminal'
-        ? matchWorkspace(rawTab.cwd ?? '', rawTab.connectionId, rawTab.type === 'terminal' ? rawTab.workspaceId : undefined)
+        ? matchWorkspace(
+            rawTab.cwd ?? '',
+            rawTab.connectionId,
+            rawTab.type === 'terminal' ? rawTab.workspaceId : undefined
+          )
         : null
     if (activeWorkspaceId.value) {
       // Specific workspace: only tabs matching this workspace
       return ws?.id === activeWorkspaceId.value
     }
-    // Default (无工作区): only tabs not belonging to any workspace
-    return !ws
+    // Default workspace: tabs matching the default workspace's path OR
+    // tabs that don't belong to any workspace. `matchWorkspace` returns
+    // the default workspace (id === DEFAULT_WORKSPACE_ID) for tabs whose
+    // cwd matches its path, and `null` for ungrouped tabs - both belong
+    // in the default view.
+    return !ws || ws.id === DEFAULT_WORKSPACE_ID
   })
   // Reindex: workspace-relative 1-based indices
   return list.map((t, i) => ({ ...t, index: i + 1 }))
@@ -553,9 +587,10 @@ const tabIndicators = computed(() => {
   const result: Record<string, string> = {}
   if (!presentationSettings.channels.tab_indicator) return result
   for (const tab of tabs.value) {
-    const paneIds = tab.type === 'terminal'
-      ? [tab.paneId, ...getAllLeaves(tab.layout).map((l) => l.paneId)]
-      : [tab.paneId]
+    const paneIds =
+      tab.type === 'terminal'
+        ? [tab.paneId, ...getAllLeaves(tab.layout).map((l) => l.paneId)]
+        : [tab.paneId]
     const sev = aggregateSeverity(paneIds)
     if (sev) result[tab.paneId] = sev
   }
@@ -590,11 +625,25 @@ const notificationPaneLabels = computed(() => {
 
 const termRefs = shallowReactive<Record<string, InstanceType<typeof TerminalPane>>>({})
 
-const { isLandscape, dispose: disposeViewport } = useViewportResize({ kbVisible, activePaneId, tabs, termRefs })
+const { isLandscape, dispose: disposeViewport } = useViewportResize({
+  kbVisible,
+  activePaneId,
+  tabs,
+  termRefs,
+})
 
-const onSshConnectRef = shallowRef<(result: { tab_id: string; pane_id: string; layout: any; connection_id?: string }) => Promise<void>>(
-  async () => { throw new Error('onSshConnect not wired') },
-)
+const onSshConnectRef = shallowRef<
+  (result: {
+    tab_id: string
+    pane_id: string
+    layout: any
+    connection_id?: string
+  }) => Promise<void>
+>(async () => {
+  throw new Error('onSshConnect not wired')
+})
+
+let sendSyncFn: (msg: SyncClientMsg) => void = () => {}
 
 const {
   newTab,
@@ -632,11 +681,13 @@ const {
   persist,
   persistNow,
   onSshConnectRef,
+  sendSync: (msg) => sendSyncFn(msg),
 })
 
 const {
   overviewOpen,
   openOverview,
+  closeOverview,
   onOverviewActivate,
   onOverviewCloseTab,
   onCloseTabsBulk,
@@ -656,14 +707,16 @@ const {
   persist,
   commitLocalActivePane,
   focusActive,
+  sendSync: (msg) => sendSyncFn(msg),
 })
-const currentTabIndex = computed(() =>
-  visibleTabList.value.findIndex((t) => t.paneId === activePaneId.value) + 1
+const currentTabIndex = computed(
+  () => visibleTabList.value.findIndex((t) => t.paneId === activePaneId.value) + 1
 )
 const currentTabTitle = computed(() => {
   const tab = tabs.value.find((t) => t.paneId === activePaneId.value)
   if (!tab) return ''
-  if (tab.type === 'terminal') return tab.customTitle ?? findLeaf(tab.layout, tab.activePaneId)?.title ?? 'Terminal'
+  if (tab.type === 'terminal')
+    return tab.customTitle ?? findLeaf(tab.layout, tab.activePaneId)?.title ?? 'Terminal'
   return tab.title
 })
 
@@ -688,24 +741,21 @@ watch(
   ([typing, mode]) => {
     setKbTypingLock(isTouchDevice() && typing && hasCollapseGuard(mode))
   },
-  { immediate: true },
+  { immediate: true }
 )
 
 // Capture plugin preview when active tab changes to a plugin tab (handles initial load)
-watch(
-  activePaneId,
-  (paneId) => {
-    const tab = tabs.value.find((t) => t.paneId === paneId)
-    if (!tab) return
-    // Legacy PluginTab or migrated TerminalTab-with-plugin-leaf.
-    if (tab.type === 'plugin') {
-      nextTick(() => refreshPluginPreview(tab.paneId))
-    } else if (tab.type === 'terminal') {
-      const pluginLeaf = getAllLeaves(tab.layout).find((l) => l.kind === 'plugin')
-      if (pluginLeaf) nextTick(() => refreshPluginPreview(pluginLeaf.paneId))
-    }
+watch(activePaneId, (paneId) => {
+  const tab = tabs.value.find((t) => t.paneId === paneId)
+  if (!tab) return
+  // Legacy PluginTab or migrated TerminalTab-with-plugin-leaf.
+  if (tab.type === 'plugin') {
+    nextTick(() => refreshPluginPreview(tab.paneId))
+  } else if (tab.type === 'terminal') {
+    const pluginLeaf = getAllLeaves(tab.layout).find((l) => l.kind === 'plugin')
+    if (pluginLeaf) nextTick(() => refreshPluginPreview(pluginLeaf.paneId))
   }
-)
+})
 
 const resolvedPosition = computed(() => {
   const pos = appSettings.panel_position ?? 'auto'
@@ -721,9 +771,11 @@ const isSingleTerminalTab = computed(() => {
 })
 const hasVerticalPreview = computed(() => {
   const tab = activeTab.value
-  return tab?.type === 'terminal'
-    && tab.previewVisible
-    && (resolvedPosition.value === 'top' || resolvedPosition.value === 'bottom')
+  return (
+    tab?.type === 'terminal' &&
+    tab.previewVisible &&
+    (resolvedPosition.value === 'top' || resolvedPosition.value === 'bottom')
+  )
 })
 const { imeKeyboardOverlapPx } = useDeviceKeyboardSettings()
 useKeyboardOverlap({
@@ -773,7 +825,7 @@ watch(
     const tab = tabs.value.find((t) => t.paneId === activePaneId.value)
     return tab?.type === 'terminal' ? tab.activePaneId : null
   },
-  (paneId) => setActivePaneId(paneId),
+  (paneId) => setActivePaneId(paneId)
 )
 
 const outputListeners = new Set<(paneId: string, data: string) => void>()
@@ -782,37 +834,41 @@ const syncWs = useSyncWebSocket({
   termRefs,
   persist,
   focusActive,
-  newTab: async () => { await newTab() },
+  newTab: async () => {
+    await newTab()
+  },
 })
+sendSyncFn = syncWs.sendSync
+// Wire MC ops from overview components to the sync WS. Components call
+// `sendMcOp` (from useMissionControlState) which routes through this sender.
+setMcSender((op) => sendSyncFn({ type: 'mission_control_op', op }))
 
 const sshAuth = useSshAuth({ syncWs })
-const {
-  sshAuthVisible,
-  sshAuthHost,
-  sshAuthPrompts,
-} = sshAuth
+const { sshAuthVisible, sshAuthHost, sshAuthPrompts } = sshAuth
 
 // Set up SSH keyboard-interactive auth handler
-syncWs.setSshAuthPromptHandler((paneId: string, prompts: Array<{ prompt: string; echo: boolean }>) => {
-  // Find the host info from tabs
-  const tab = tabs.value.find((t) => {
-    if (t.type !== 'terminal') return false
-    return t.paneId === paneId || !!findLeaf(t.layout, paneId)
-  })
-  let host = paneId
-  if (tab && tab.type === 'terminal') {
-    const leaf = findLeaf(tab.layout, paneId)
-    host = leaf?.title || paneId
+syncWs.setSshAuthPromptHandler(
+  (paneId: string, prompts: Array<{ prompt: string; echo: boolean }>) => {
+    // Find the host info from tabs
+    const tab = tabs.value.find((t) => {
+      if (t.type !== 'terminal') return false
+      return t.paneId === paneId || !!findLeaf(t.layout, paneId)
+    })
+    let host = paneId
+    if (tab && tab.type === 'terminal') {
+      const leaf = findLeaf(tab.layout, paneId)
+      host = leaf?.title || paneId
+    }
+    sshAuth.showPrompt(paneId, prompts, host)
   }
-  sshAuth.showPrompt(paneId, prompts, host)
-})
+)
 
 const splitPane = useSplitPane({
   tabs,
   activePaneId,
   termRefs,
   genPaneId,
-  sendSync: syncWs.sendSync,
+  sendSync: (msg) => sendSyncFn(msg),
   sendLayoutSync: syncWs.sendLayoutSync,
   persist,
 })
@@ -847,16 +903,11 @@ function onDividerDragEnd(tab: Tab) {
   }
 }
 
-function onDropOnTab(
-  srcTabId: string,
-  srcPaneId: string,
-  dstTabId: string,
-  pos: DropPosition
-) {
+function onDropOnTab(srcTabId: string, srcPaneId: string, dstTabId: string, pos: DropPosition) {
   // Find the active pane in dst tab as the drop target
   const dstTab = tabs.value.find((t) => t.paneId === dstTabId)
   if (!dstTab || dstTab.type !== 'terminal') return
-  const direction = pos === 'left' || pos === 'right' ? 'left' : 'right' as const
+  const direction = pos === 'left' || pos === 'right' ? 'left' : ('right' as const)
   void splitPane.movePaneToTab(srcTabId, srcPaneId, dstTabId, dstTab.activePaneId, direction)
 }
 
@@ -892,7 +943,6 @@ const DEFAULT_PREVIEW_URL = ''
 
 // Wire up toast notification direct-jump handler
 notif.setGoToPaneHandler((paneId: string) => revealPane(paneId))
-
 
 function onTitleChange(paneId: string, title: string) {
   // Find terminal tab containing this leaf pane
@@ -1008,7 +1058,7 @@ function getSendFn(): SendDataFn | null {
         ? (data: string) => termRefs[recipientId]?.sendData(data)
         : (data: string) => termRefs[recipientId]?.sendData(data, true)
     ),
-    broadcastMode && recipientIds.length > 1 ? () => tab.broadcastActivity++ : undefined,
+    broadcastMode && recipientIds.length > 1 ? () => tab.broadcastActivity++ : undefined
   )
 }
 
@@ -1115,7 +1165,8 @@ function onTerminalTouch(e: TouchEvent) {
     // Don't show keyboard when a scroll gesture was just detected
     if (scrollGestureDetected) {
       scrollGestureDetected = false
-      if (kbVisible.value && !hasCollapseGuard(appSettings.keyboard_guard_mode)) kbVisible.value = false
+      if (kbVisible.value && !hasCollapseGuard(appSettings.keyboard_guard_mode))
+        kbVisible.value = false
       return
     }
     const tab = tabs.value.find((t) => t.paneId === activePaneId.value)
@@ -1123,7 +1174,8 @@ function onTerminalTouch(e: TouchEvent) {
     const term = paneId ? termRefs[paneId]?.getTerminal() : null
     if (term && term.touchMoved) {
       term.touchMoved = false
-      if (kbVisible.value && !hasCollapseGuard(appSettings.keyboard_guard_mode)) kbVisible.value = false
+      if (kbVisible.value && !hasCollapseGuard(appSettings.keyboard_guard_mode))
+        kbVisible.value = false
       return
     }
     if (!hasOpenGuard(appSettings.keyboard_guard_mode)) kbVisible.value = true
@@ -1133,7 +1185,9 @@ function onTerminalTouch(e: TouchEvent) {
 function onTerminalScroll() {
   scrollGestureDetected = true
   clearTimeout(scrollGestureTimer)
-  scrollGestureTimer = window.setTimeout(() => { scrollGestureDetected = false }, 300)
+  scrollGestureTimer = window.setTimeout(() => {
+    scrollGestureDetected = false
+  }, 300)
   // With the collapse guard enabled, scrolling back through history must not
   // dismiss the keyboard the user is typing on.
   if (hasCollapseGuard(appSettings.keyboard_guard_mode)) return
@@ -1145,18 +1199,19 @@ function onTokenChanged() {
   syncWs.connectSyncWS()
 }
 
-const { onServerConnect, onSshConnect, onSshReconnect, onSshAuthSubmit, onSshAuthCancel } = useSshConnectFlow({
-  tabs,
-  activeWorkspaceId,
-  workspaces,
-  syncWs,
-  sshAuth,
-  sshPanelRef,
-  ensureSplitRoot,
-  commitLocalActivePane,
-  persist,
-  focusActive,
-})
+const { onServerConnect, onSshConnect, onSshReconnect, onSshAuthSubmit, onSshAuthCancel } =
+  useSshConnectFlow({
+    tabs,
+    activeWorkspaceId,
+    workspaces,
+    syncWs,
+    sshAuth,
+    sshPanelRef,
+    ensureSplitRoot,
+    commitLocalActivePane,
+    persist,
+    focusActive,
+  })
 
 const { openPlugin } = usePluginLauncher({
   tabs,
@@ -1172,14 +1227,7 @@ const { openPlugin } = usePluginLauncher({
 
 onSshConnectRef.value = onSshConnect
 
-function onNewMenuAction(
-  type:
-    | 'new-tab'
-    | 'split-h'
-    | 'split-v'
-    | 'broadcast'
-    | 'ssh-connect',
-) {
+function onNewMenuAction(type: 'new-tab' | 'split-h' | 'split-v' | 'broadcast' | 'ssh-connect') {
   switch (type) {
     case 'new-tab':
       return newTab()
@@ -1220,13 +1268,15 @@ const templatePickerVisible = ref(false)
 async function onTemplateApplied(
   templateId: string,
   scope: 'workspace' | 'global',
-  workspaceId?: string,
+  workspaceId?: string
 ) {
   try {
     const result = await applyTemplate(templateId, workspaceId)
     if (!result) return
     if (result.warnings.length > 0) {
-      toast?.warning(t('template.applyWarningsToast').replace('{n}', String(result.warnings.length)))
+      toast?.warning(
+        t('template.applyWarningsToast').replace('{n}', String(result.warnings.length))
+      )
     } else {
       toast?.success(t('template.applyToast'))
     }
@@ -1407,24 +1457,34 @@ const paletteCommands = computed<Command[]>(() => {
       action: () => sshPanelRef.value?.open(),
     },
     // Only show "New Local Terminal" when active tab is an SSH session
-    ...(activeTab.value?.type === 'terminal' && activeTab.value.connectionId ? [{
-      icon: '⌂',
-      title: t('palette.newLocalTerminal'),
-      subtitle: t('palette.newLocalTerminalDesc'),
-      action: () => splitPane.splitPane('horizontal', true, activeWorkspacePath.value),
-    }] : []),
+    ...(activeTab.value?.type === 'terminal' && activeTab.value.connectionId
+      ? [
+          {
+            icon: '⌂',
+            title: t('palette.newLocalTerminal'),
+            subtitle: t('palette.newLocalTerminalDesc'),
+            action: () => splitPane.splitPane('horizontal', true, activeWorkspacePath.value),
+          },
+        ]
+      : []),
     // Only show "Save as Template" when active tab is a terminal tab with a layout
-    ...(activeTab.value?.type === 'terminal' ? [{
-      icon: '⎘',
-      title: t('palette.saveAsTemplate'),
-      subtitle: t('palette.saveAsTemplateDesc'),
-      action: () => openSaveTemplateDialog(activeTab.value!.paneId),
-    }] : []),
+    ...(activeTab.value?.type === 'terminal'
+      ? [
+          {
+            icon: '⎘',
+            title: t('palette.saveAsTemplate'),
+            subtitle: t('palette.saveAsTemplateDesc'),
+            action: () => openSaveTemplateDialog(activeTab.value!.paneId),
+          },
+        ]
+      : []),
     {
       icon: '⊷',
       title: t('palette.applyTemplate'),
       subtitle: t('palette.applyTemplateDesc'),
-      action: () => { templatePickerVisible.value = true },
+      action: () => {
+        templatePickerVisible.value = true
+      },
     },
   ]
 
@@ -1622,107 +1682,108 @@ onMounted(async () => {
   window.addEventListener('pane-drag-hover-switch', onPaneDragHoverSwitch)
   try {
     if (authenticated.value) {
-    await getApiBase()
-    await settingsStore.load()
-    void syncWs.connectSyncWS()
-    initMonitorHistory()
-    void loadAll()
-    // Fallback: if sync WS hasn't delivered tabs within 3s, load via REST
-    setTimeout(async () => {
-      if (tabs.value.length === 0 && !syncWs.isConnected()) {
-        try {
-          const data = await apiListTabs()
-          for (const tab of data.tabs) {
-            if (tabs.value.some((t) => t.paneId === tab.tab_id)) continue
-            const layout = tab.layout
-              ? ensureSplitRoot(tab.layout)
-              : ensureSplitRoot({
-                  type: 'leaf',
-                  paneId: tab.pane_id,
-                  title: 'Terminal',
-                  ratio: 1,
-                  zoomed: false,
-                })
-            tabs.value.push({
-              type: 'terminal',
-              paneId: tab.tab_id,
-              layout,
-              activePaneId: tab.active_pane_id ?? tab.pane_id,
-              paneMru: initializePaneMru(
-                getAllLeaves(layout).map((leaf) => leaf.paneId),
-                tab.active_pane_id ?? tab.pane_id
-              ),
-              broadcastMode: false,
-              broadcastActivity: 0,
-              previewVisible: false,
-              previewAddress: '',
-              previewUrl: '',
-              previewKind: 'web',
-              connectionId: tab.connection_id,
-            })
-          }
-          if (data.active_pane_id) {
-            const targetTab = tabs.value.find((t) => {
-              if (t.type !== 'terminal') return false
-              return !!findLeaf(t.layout, data.active_pane_id!)
-            }) as TerminalTab | undefined
-            if (targetTab) {
-              activePaneId.value = targetTab.paneId
+      await getApiBase()
+      await settingsStore.load()
+      void syncWs.connectSyncWS()
+      initMonitorHistory()
+      void loadAll()
+      // Fallback: if sync WS hasn't delivered tabs within 3s, load via REST
+      setTimeout(async () => {
+        if (tabs.value.length === 0 && !syncWs.isConnected()) {
+          try {
+            const data = await apiListTabs()
+            for (const tab of data.tabs) {
+              if (tabs.value.some((t) => t.paneId === tab.tab_id)) continue
+              const layout = tab.layout
+                ? ensureSplitRoot(tab.layout)
+                : ensureSplitRoot({
+                    type: 'leaf',
+                    paneId: tab.pane_id,
+                    title: 'Terminal',
+                    ratio: 1,
+                    zoomed: false,
+                  })
+              tabs.value.push({
+                type: 'terminal',
+                paneId: tab.tab_id,
+                layout,
+                activePaneId: tab.active_pane_id ?? tab.pane_id,
+                paneMru: initializePaneMru(
+                  getAllLeaves(layout).map((leaf) => leaf.paneId),
+                  tab.active_pane_id ?? tab.pane_id
+                ),
+                broadcastMode: false,
+                broadcastActivity: 0,
+                previewVisible: false,
+                previewAddress: '',
+                previewUrl: '',
+                previewKind: 'web',
+                connectionId: tab.connection_id,
+              })
             }
+            if (data.active_pane_id) {
+              const targetTab = tabs.value.find((t) => {
+                if (t.type !== 'terminal') return false
+                return !!findLeaf(t.layout, data.active_pane_id!)
+              }) as TerminalTab | undefined
+              if (targetTab) {
+                activePaneId.value = targetTab.paneId
+              }
+            }
+            if (tabs.value.length > 0 && !activePaneId.value) {
+              activePaneId.value = tabs.value[0].paneId
+            }
+            persist()
+            nextTick(() => focusActive())
+          } catch (e) {
+            console.warn('[sync] REST fallback failed:', e)
           }
-          if (tabs.value.length > 0 && !activePaneId.value) {
-            activePaneId.value = tabs.value[0].paneId
-          }
-          persist()
-          nextTick(() => focusActive())
-        } catch (e) {
-          console.warn('[sync] REST fallback failed:', e)
         }
-      }
-    }, 3000)
-  } else {
-    // Not yet authenticated
-    await getApiBase()
-    const { configured, serverMode } = await checkTokenConfigured()
-    if (!configured) {
-      // First-time setup: show setup page (server mode only)
-      needsSetup.value = true
-    } else if (!serverMode) {
-      if (isTauri()) {
-        // The desktop webview retrieves the DPAPI-backed token through IPC and
-        // keeps it in memory. Do not rely on a generic loopback auth bypass:
-        // local reverse proxies connect from loopback too.
-        const autoToken = await fetchAutoToken()
-        if (autoToken) {
-          const r = await validateToken(autoToken)
-          if (r.ok) {
-            await onLoginSuccess()
+      }, 3000)
+    } else {
+      // Not yet authenticated
+      await getApiBase()
+      const { configured, serverMode } = await checkTokenConfigured()
+      if (!configured) {
+        // First-time setup: show setup page (server mode only)
+        needsSetup.value = true
+      } else if (!serverMode) {
+        // Desktop mode: honor an existing cookie session first (e.g. LAN
+        // access after manual login). Fall back to loopback auto-token only
+        // when the cookie is absent/invalid.
+        let cookieOk = false
+        try {
+          const res = await fetch(apiUrl('/api/settings'), { credentials: 'include' })
+          cookieOk = res.ok
+        } catch {
+          // network error - fall through to auto-token
+        }
+        if (cookieOk) {
+          await onLoginSuccess()
+        } else if (isTauri()) {
+          // Only the privileged desktop webview may retrieve the embedded
+          // DPAPI-backed token. LAN browsers must authenticate normally.
+          const autoToken = await fetchAutoToken()
+          if (autoToken) {
+            const r = await validateToken(autoToken)
+            if (r.ok) {
+              await onLoginSuccess()
+            }
           }
         }
       } else {
-        // Browser access to a desktop server may reuse a prior cookie session.
+        // Server mode: check if session cookie is still valid
         try {
           const res = await fetch(apiUrl('/api/settings'), { credentials: 'include' })
           if (res.ok) {
             await onLoginSuccess()
           }
+          // else: show LoginPage (default state)
         } catch {
-          // Network error — show LoginPage.
+          // Network error — show LoginPage
         }
-      }
-    } else {
-      // Server mode: check if session cookie is still valid
-      try {
-        const res = await fetch(apiUrl('/api/settings'), { credentials: 'include' })
-        if (res.ok) {
-          await onLoginSuccess()
-        }
-        // else: show LoginPage (default state)
-      } catch {
-        // Network error — show LoginPage
       }
     }
-  }
   } finally {
     ui.markAuthProbeDone()
   }
@@ -1763,14 +1824,20 @@ onBeforeUnmount(() => {
   animation: auth-probe-spin 1s linear infinite;
 }
 @keyframes auth-probe-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 #app-root {
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: calc(100% - max(0px, var(--mkb-height, 0px) - var(--kb-overlap, 0px)) - var(--sys-kb-height, 0px));
+  height: calc(
+    100% - max(0px, var(--mkb-height, 0px) - var(--kb-overlap, 0px)) - var(--sys-kb-height, 0px)
+  );
 }
 .tab-page.active.has-preview {
   display: flex;

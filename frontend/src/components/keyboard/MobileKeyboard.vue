@@ -126,7 +126,11 @@
       </button>
     </div>
 
-    <div v-if="toolbarQuickKeyDefs.length" v-show="textInputFocused" class="mkb-toolbar mkb-toolbar-quick-row">
+    <div
+      v-if="toolbarQuickKeyDefs.length"
+      v-show="textInputFocused"
+      class="mkb-toolbar mkb-toolbar-quick-row"
+    >
       <div class="mkb-toolbar-quick-strip">
         <MkbKey
           v-for="(key, i) in toolbarQuickKeyDefs"
@@ -154,9 +158,21 @@
         <!-- Main keyboard panel -->
         <div id="mkb-main-panel">
           <!-- Row 1: ` 1-0 - = ⌫ -->
-          <MkbRow :keys="row1" :state="modState" @key-press="onKeyPress" @app-action="onAppAction" @special="onSpecial" />
+          <MkbRow
+            :keys="row1"
+            :state="modState"
+            @key-press="onKeyPress"
+            @app-action="onAppAction"
+            @special="onSpecial"
+          />
           <!-- Row 2: tab q-p [ ] \ -->
-          <MkbRow :keys="row2" :state="modState" @key-press="onKeyPress" @app-action="onAppAction" @special="onSpecial" />
+          <MkbRow
+            :keys="row2"
+            :state="modState"
+            @key-press="onKeyPress"
+            @app-action="onAppAction"
+            @special="onSpecial"
+          />
           <!-- Row 3: ⌨ a-l ; ' ↵ (stagger) -->
           <MkbRow
             :keys="row3"
@@ -185,7 +201,13 @@
               />
             </div>
             <div class="mkb-arrow-cluster">
-              <MkbKey :k="arrowUp" :state="modState" @key-press="onKeyPress" @app-action="onAppAction" @special="onSpecial" />
+              <MkbKey
+                :k="arrowUp"
+                :state="modState"
+                @key-press="onKeyPress"
+                @app-action="onAppAction"
+                @special="onSpecial"
+              />
               <div class="mkb-arrow-cluster-bot">
                 <MkbKey
                   :k="arrowLeft"
@@ -311,11 +333,7 @@ import SuggestionBar from './SuggestionBar.vue'
 import HistoryPanel from './HistoryPanel.vue'
 import FilePickerModal from '../preview/FilePickerModal.vue'
 import type { AppActionOptions, ModState } from './mkbTypes'
-import {
-  useSettings,
-  onThemeChange,
-  onTextChange,
-} from '../../composables/useSettings'
+import { useSettings, onThemeChange, onTextChange } from '../../composables/useSettings'
 import { useI18n } from '../../composables/useI18n'
 import { useHistory } from '../../composables/useHistory'
 import {
@@ -479,6 +497,10 @@ function dismissSystemKeyboard() {
   // Lift the sticky-typing guard BEFORE blurring so the terminal becomes
   // focusable again the moment the user leaves typing mode.
   emit('typing-change', false)
+  // Hide the toolbar immediately so a quick follow-up tap on the same area
+  // does not fall through to a quick-key button while the 100ms blur debounce
+  // is still holding `textInputFocused` true.
+  textInputFocused.value = false
   textInputRef.value?.blur()
   emit('dismiss')
 }
@@ -858,7 +880,11 @@ watch(
 )
 
 watch(globalSelectedPath, () => {
-  if (globalSelectedPath.value && props.visible && !hasCollapseGuard(settings.keyboard_guard_mode)) {
+  if (
+    globalSelectedPath.value &&
+    props.visible &&
+    !hasCollapseGuard(settings.keyboard_guard_mode)
+  ) {
     emit('update:visible', false)
   }
 })

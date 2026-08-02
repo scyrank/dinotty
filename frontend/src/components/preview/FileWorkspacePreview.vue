@@ -802,7 +802,6 @@ function onToggle(rel: string) {
 // (Extracted to useInlineCreateRename composable)
 
 async function onUploadToDir(dir: string, ev: DragEvent) {
-  if (isTauri()) return // handled by file-drop-paths listener
   const items = ev.dataTransfer?.items
   if (!items) return
   const allFiles: { file: File; path: string }[] = []

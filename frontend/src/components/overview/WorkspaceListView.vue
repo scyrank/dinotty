@@ -17,8 +17,8 @@
     <div class="mc-ws-mobile-items">
       <button
         class="mc-ws-mobile-item"
-        :class="{ active: activeId === '__all__' }"
-        @click="$emit('selectAll')"
+        :class="{ active: activeId === DEFAULT_WORKSPACE_ID }"
+        @click="$emit('selectDefault')"
         @contextmenu.prevent="showCtx(defaultWorkspace, $event.clientX, $event.clientY)"
         @touchstart.passive="onTouchStart($event, defaultWorkspace)"
         @touchend="onTouchEnd"
@@ -33,7 +33,7 @@
           <span class="mc-ws-mobile-name">{{ defaultWorkspace.name }}</span>
           <span class="mc-ws-mobile-path">{{ defaultWorkspace.path }}</span>
         </div>
-        <span v-if="allCount" class="mc-ws-mobile-count">{{ allCount }}</span>
+        <span v-if="defaultCount" class="mc-ws-mobile-count">{{ defaultCount }}</span>
       </button>
       <button
         v-for="ws in workspaces"
@@ -94,13 +94,13 @@ const props = defineProps<{
   workspaces: Workspace[]
   activeId: string | null
   tabCounts: Record<string, number>
-  allCount: number
+  defaultCount: number
 }>()
 
 const emit = defineEmits<{
   close: []
   drilldown: [id: string | null]
-  selectAll: []
+  selectDefault: []
   add: []
   rename: [id: string]
 }>()

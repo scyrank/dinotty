@@ -151,6 +151,10 @@ pub struct Settings {
     pub hidden_builtins: Vec<String>,
     #[serde(default)]
     pub plugin_prefs: PluginPrefsConfig,
+    #[serde(default = "default_shell_kind")]
+    pub shell: String,
+    #[serde(default)]
+    pub shell_path: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -179,6 +183,12 @@ pub struct AuthConfig {
     pub global_lockout_max_failures: u32,
     #[serde(default = "default_global_lockout_secs")]
     pub global_lockout_secs: u64,
+    #[serde(default = "default_login_method")]
+    pub login_method: String,
+    #[serde(default = "default_verification_code_ttl_seconds")]
+    pub verification_code_ttl_seconds: u64,
+    #[serde(default = "default_verification_code_rate_limit_per_minute")]
+    pub verification_code_rate_limit_per_minute: u32,
 }
 
 impl Default for AuthConfig {
@@ -192,6 +202,10 @@ impl Default for AuthConfig {
             lockout_secs: default_lockout_secs(),
             global_lockout_max_failures: default_global_lockout_max_failures(),
             global_lockout_secs: default_global_lockout_secs(),
+            login_method: default_login_method(),
+            verification_code_ttl_seconds: default_verification_code_ttl_seconds(),
+            verification_code_rate_limit_per_minute:
+                default_verification_code_rate_limit_per_minute(),
         }
     }
 }
@@ -218,6 +232,18 @@ pub(crate) fn default_global_lockout_max_failures() -> u32 {
 
 pub(crate) fn default_global_lockout_secs() -> u64 {
     300
+}
+
+pub(crate) fn default_login_method() -> String {
+    "token".into()
+}
+
+pub(crate) fn default_verification_code_ttl_seconds() -> u64 {
+    300
+}
+
+pub(crate) fn default_verification_code_rate_limit_per_minute() -> u32 {
+    5
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -502,6 +528,10 @@ pub(crate) fn default_ip_whitelist() -> Vec<String> {
 
 pub(crate) fn default_locale() -> String {
     "zh".into()
+}
+
+pub(crate) fn default_shell_kind() -> String {
+    "auto".into()
 }
 
 #[must_use]
@@ -841,6 +871,8 @@ impl Default for Settings {
             custom_themes: vec![],
             hidden_builtins: vec![],
             plugin_prefs: PluginPrefsConfig::default(),
+            shell: default_shell_kind(),
+            shell_path: None,
         }
     }
 }

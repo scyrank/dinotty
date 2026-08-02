@@ -22,25 +22,64 @@ export function letterFromPhysicalCode(code: string): string | null {
 export function keyEventToSequence(e: KeyboardEvent): string {
   const ctrl = e.ctrlKey || e.metaKey
   const alt = e.altKey
-  let ch = ''
+  const shift = e.shiftKey
+  const hasMod = ctrl || alt || shift
+
+  // xterm modifier parameter: 1 (no mod) + shift:1, alt:2, ctrl:4
+  const modBit = 1 + (shift ? 1 : 0) + (alt ? 2 : 0) + (ctrl ? 4 : 0)
 
   const fk = FKEY_SEQ[e.key]
-  if (fk) return fk
+  if (fk) {
+    if (!hasMod) return fk
+    // F1-F4: SS3 (O) unmodified -> CSI 1;{mod}{letter} modified
+    // F5-F12: CSI {n}~ unmodified -> CSI {n};{mod}~ modified
+    const fkeyModified: Record<string, string> = {
+      F1: `\x1b[1;${modBit}P`,
+      F2: `\x1b[1;${modBit}Q`,
+      F3: `\x1b[1;${modBit}R`,
+      F4: `\x1b[1;${modBit}S`,
+      F5: `\x1b[15;${modBit}~`,
+      F6: `\x1b[17;${modBit}~`,
+      F7: `\x1b[18;${modBit}~`,
+      F8: `\x1b[19;${modBit}~`,
+      F9: `\x1b[20;${modBit}~`,
+      F10: `\x1b[21;${modBit}~`,
+      F11: `\x1b[23;${modBit}~`,
+      F12: `\x1b[24;${modBit}~`,
+    }
+    return fkeyModified[e.key] ?? fk
+  }
 
+  // CSI special keys: arrows, home/end, pageup/down, insert/delete
+  // Unmodified: omit param-1 for letter suffixes (\x1b[A), keep param for ~ suffixes (\x1b[5~)
+  // Modified: \x1b[{param};{mod}{letter} or \x1b[{param};{mod}~
+  const csiSpecial: Record<string, { param: string; suffix: string }> = {
+    ArrowUp: { param: '1', suffix: 'A' },
+    ArrowDown: { param: '1', suffix: 'B' },
+    ArrowRight: { param: '1', suffix: 'C' },
+    ArrowLeft: { param: '1', suffix: 'D' },
+    Home: { param: '1', suffix: 'H' },
+    End: { param: '1', suffix: 'F' },
+    PageUp: { param: '5', suffix: '~' },
+    PageDown: { param: '6', suffix: '~' },
+    Insert: { param: '2', suffix: '~' },
+    Delete: { param: '3', suffix: '~' },
+  }
+  const csi = csiSpecial[e.key]
+  if (csi) {
+    if (!hasMod) {
+      if (csi.suffix === '~') return `\x1b[${csi.param}~`
+      return `\x1b[${csi.suffix}`
+    }
+    if (csi.suffix === '~') return `\x1b[${csi.param};${modBit}~`
+    return `\x1b[${csi.param};${modBit}${csi.suffix}`
+  }
+
+  let ch = ''
   if (e.key === 'Escape') ch = '\x1b'
   else if (e.key === 'Tab') ch = e.shiftKey ? '\x1b[Z' : '\t'
   else if (e.key === 'Backspace') ch = '\x7f'
   else if (e.key === 'Enter') ch = '\r'
-  else if (e.key === 'ArrowUp') ch = '\x1b[A'
-  else if (e.key === 'ArrowDown') ch = '\x1b[B'
-  else if (e.key === 'ArrowRight') ch = '\x1b[C'
-  else if (e.key === 'ArrowLeft') ch = '\x1b[D'
-  else if (e.key === 'Insert') ch = '\x1b[2~'
-  else if (e.key === 'Delete') ch = '\x1b[3~'
-  else if (e.key === 'Home') ch = '\x1b[H'
-  else if (e.key === 'End') ch = '\x1b[F'
-  else if (e.key === 'PageUp') ch = '\x1b[5~'
-  else if (e.key === 'PageDown') ch = '\x1b[6~'
   else if (e.key.length === 1) {
     ch = e.key
     if (ctrl) {
@@ -84,14 +123,18 @@ export function keyEventToLabel(e: KeyboardEvent): string {
   else if (key === 'ArrowLeft') key = '←'
   else if (key === 'ArrowRight') key = '->'
   else if (key.length === 1) key = key.toLowerCase()
-  else return key
+  // F1-F12 / PageUp / PageDown / Insert / Delete / Home / End: keep as-is
 
-  if (parts.length && !['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
-    parts.push(key)
-  } else if (!parts.length) {
-    return key
+  // Modifier-only events (Ctrl/Alt/Shift/Meta alone) return just the modifier list
+  if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
+    return parts.join('+')
   }
-  return parts.join('+')
+
+  if (parts.length) {
+    parts.push(key)
+    return parts.join('+')
+  }
+  return key
 }
 
 export function escapeForDisplay(s: string | undefined): string {

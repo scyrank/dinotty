@@ -1,9 +1,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::too_many_lines)]
 
 use dinotty_server::{
-    agent, api::clipboard, audit, auth, events, file_watcher, history, mcp, monitor, notification,
-    openapi, plugin, proxy, session, settings, tabs, templates, token, webhook, workspace,
-    workspace_mgmt, ws,
+    agent, api::clipboard, audit, auth, event_bus, events, file_watcher, history, mcp,
+    mission_control, monitor, notification, openapi, plugin, proxy, session, settings, tabs,
+    templates, token, webhook, workspace, workspace_mgmt, ws,
 };
 
 use axum::{
@@ -21,6 +21,8 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
 use crate::auth::session::SessionStore;
+use crate::auth::verification_code::CodeStore;
+use crate::event_bus::BusEvent;
 use crate::file_watcher::FileWatcherState;
 use crate::history::HistoryState;
 use crate::monitor::MonitorState;
@@ -131,7 +133,10 @@ pub struct AppState {
     pub mcp: mcp::transport::McpState,
     pub mcp_sse: Arc<mcp::transport::SseState>,
     pub workspaces: workspace_mgmt::WorkspacesState,
+    pub mc: mission_control::MissionControlState,
     pub sessions: Arc<SessionStore>,
+    pub code_store: Arc<CodeStore>,
+    pub subscriptions: plugin::SubscriptionRegistry,
 }
 
 // Allow extracting Arc<SessionManager> from AppState for ws handlers
@@ -188,6 +193,26 @@ impl axum::extract::FromRef<AppState> for HistoryState {
 impl axum::extract::FromRef<AppState> for PluginManagerState {
     fn from_ref(state: &AppState) -> Self {
         state.plugins.clone()
+    }
+}
+
+impl axum::extract::FromRef<AppState> for plugin::SubscriptionRegistry {
+    fn from_ref(state: &AppState) -> Self {
+        state.subscriptions.clone()
+    }
+}
+
+impl axum::extract::FromRef<AppState> for (PluginManagerState, plugin::SubscriptionRegistry) {
+    fn from_ref(state: &AppState) -> Self {
+        (state.plugins.clone(), state.subscriptions.clone())
+    }
+}
+
+impl axum::extract::FromRef<AppState>
+    for (PluginManagerState, SettingsState, plugin::SubscriptionRegistry)
+{
+    fn from_ref(state: &AppState) -> Self {
+        (state.plugins.clone(), state.settings.clone(), state.subscriptions.clone())
     }
 }
 
@@ -256,6 +281,20 @@ impl axum::extract::FromRef<AppState> for clipboard::ClipboardState {
 impl axum::extract::FromRef<AppState> for workspace_mgmt::WorkspacesState {
     fn from_ref(state: &AppState) -> Self {
         state.workspaces.clone()
+    }
+}
+
+impl axum::extract::FromRef<AppState> for mission_control::MissionControlState {
+    fn from_ref(state: &AppState) -> Self {
+        state.mc.clone()
+    }
+}
+
+impl axum::extract::FromRef<AppState>
+    for (mission_control::MissionControlState, Arc<SessionManager>, workspace_mgmt::WorkspacesState)
+{
+    fn from_ref(state: &AppState) -> Self {
+        (state.mc.clone(), state.manager.clone(), state.workspaces.clone())
     }
 }
 
@@ -415,8 +454,10 @@ struct UpdateTokenRequest {
 }
 
 #[derive(serde::Deserialize)]
-struct LoginRequest {
-    token: String,
+#[serde(untagged)]
+enum LoginBody {
+    Token { token: String },
+    Code { request_id: String, code: String },
 }
 
 fn build_session_cookie(session_id: &str, ttl_days: u64, port: u16) -> String {
@@ -435,13 +476,16 @@ fn clear_session_cookie(port: u16) -> String {
     )
 }
 
-/// Login endpoint: validate the posted token, create a session, set cookie.
-/// Brute-force accounting is done here (the middleware exempts /api/auth).
+/// Login endpoint. Dispatches to either token login or verification-code login
+/// based on the `login_method` setting. The two modes are mutually exclusive:
+/// `login_method=token` rejects `{request_id, code}` bodies; `verification_code`
+/// rejects `{token}`. Brute-force lockout is enforced here (the middleware
+/// exempts /api/auth).
 async fn login(
     State(state): State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: axum::http::HeaderMap,
-    Json(body): Json<LoginRequest>,
+    Json(body): Json<LoginBody>,
 ) -> impl IntoResponse {
     let stored = state.auth_token.read().await.clone();
     if stored.is_empty() {
@@ -460,6 +504,7 @@ async fn login(
         lockout_secs,
         global_max_failures,
         global_lockout_secs,
+        login_method,
     ) = {
         let s = state.settings.read().await;
         (
@@ -469,12 +514,13 @@ async fn login(
             s.auth.lockout_secs,
             s.auth.global_lockout_max_failures,
             s.auth.global_lockout_secs,
+            s.auth.login_method.clone(),
         )
     };
 
-    // Brute-force lockout check before token validation. The login endpoint is
-    // exempt from the middleware's check (so unauthenticated users can reach
-    // it), so we must enforce it here.
+    // Brute-force lockout check before credential validation. The login
+    // endpoint is exempt from the middleware's check (so unauthenticated
+    // users can reach it), so we must enforce it here.
     if let Some(retry_after) = auth::check_lockout(
         real_ip,
         &lockout_strategy,
@@ -483,6 +529,27 @@ async fn login(
         global_max_failures,
         global_lockout_secs,
     ) {
+        let attempt_count = auth::get_fail_count(real_ip);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        state.manager.event_bus.publish(BusEvent::AuthLoginFailed {
+            ip: real_ip.to_string(),
+            reason: "locked_out".into(),
+            attempt_count,
+            locked_until: Some(now.saturating_add(retry_after)),
+        });
+        let () = state.audit.record(
+            "anonymous",
+            "login_failed",
+            "auth",
+            serde_json::json!({
+                "ip": real_ip.to_string(),
+                "reason": "locked_out",
+                "attempt_count": attempt_count,
+            }),
+        );
         return (
             StatusCode::TOO_MANY_REQUESTS,
             [
@@ -494,15 +561,75 @@ async fn login(
             .into_response();
     }
 
-    if !auth::constant_time_eq(body.token.trim(), &stored) {
-        auth::record_auth_failure(real_ip, global_lockout_secs);
-        return (
-            StatusCode::UNAUTHORIZED,
-            [(header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
-            Json(serde_json::json!({"error": "unauthorized"})),
-        )
-            .into_response();
+    // Reject empty payloads early so we return 400 (bad request) rather than
+    // 401 (login method mismatch) for malformed submissions.
+    match &body {
+        LoginBody::Token { token } if token.trim().is_empty() => {
+            return (
+                StatusCode::BAD_REQUEST,
+                [(header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+                Json(serde_json::json!({"error": "token cannot be empty"})),
+            )
+                .into_response();
+        }
+        LoginBody::Code { request_id, code }
+            if request_id.trim().is_empty() || code.trim().is_empty() =>
+        {
+            return (
+                StatusCode::BAD_REQUEST,
+                [(header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+                Json(serde_json::json!({"error": "request_id and code are required"})),
+            )
+                .into_response();
+        }
+        _ => {}
     }
+
+    match (login_method.as_str(), body) {
+        ("token", LoginBody::Token { token }) => {
+            handle_token_login(&state, real_ip, &headers, &token, &stored, global_lockout_secs)
+                .await
+        }
+        ("verification_code", LoginBody::Code { request_id, code }) => {
+            handle_code_login(&state, real_ip, &headers, request_id, code).await
+        }
+        (_, _) => {
+            // Cross-case: login_method does not match the body shape. Account as
+            // a brute-force attempt to discourage probing.
+            let attempt_count = auth::record_auth_failure(real_ip, global_lockout_secs);
+            state.manager.event_bus.publish(BusEvent::AuthLoginFailed {
+                ip: real_ip.to_string(),
+                reason: "wrong_login_method".into(),
+                attempt_count,
+                locked_until: None,
+            });
+            let () = state.audit.record(
+                "anonymous",
+                "login_failed",
+                "auth",
+                serde_json::json!({
+                    "ip": real_ip.to_string(),
+                    "reason": "wrong_login_method",
+                    "attempt_count": attempt_count,
+                }),
+            );
+            (
+                StatusCode::UNAUTHORIZED,
+                [(header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+                Json(serde_json::json!({"error": "login method mismatch"})),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Build the success response (session cookie + audit + 200 body) shared by
+/// token and code login paths.
+async fn create_session_response(
+    state: &AppState,
+    real_ip: IpAddr,
+    headers: &axum::http::HeaderMap,
+) -> axum::response::Response {
     let ua = headers
         .get(header::USER_AGENT)
         .and_then(|v| v.to_str().ok())
@@ -513,15 +640,12 @@ async fn login(
         s.auth.session_ttl_days
     };
     let cookie = build_session_cookie(&session_id, ttl_days, state.port);
-
-    // Audit log
     let () = state.audit.record(
         &session_id,
         "login",
         "session",
         serde_json::json!({ "ip": real_ip.to_string() }),
     );
-
     (
         StatusCode::OK,
         [
@@ -529,6 +653,169 @@ async fn login(
             (header::CACHE_CONTROL, HeaderValue::from_static("no-store")),
         ],
         Json(serde_json::json!({"ok": true})),
+    )
+        .into_response()
+}
+
+/// Token login: constant-time compare the posted token against the stored
+/// master token. Records a brute-force attempt on mismatch.
+async fn handle_token_login(
+    state: &AppState,
+    real_ip: IpAddr,
+    headers: &axum::http::HeaderMap,
+    token: &str,
+    stored: &str,
+    global_lockout_secs: u64,
+) -> axum::response::Response {
+    if !auth::constant_time_eq(token.trim(), stored) {
+        let attempt_count = auth::record_auth_failure(real_ip, global_lockout_secs);
+        state.manager.event_bus.publish(BusEvent::AuthLoginFailed {
+            ip: real_ip.to_string(),
+            reason: "token_mismatch".into(),
+            attempt_count,
+            locked_until: None,
+        });
+        let () = state.audit.record(
+            "anonymous",
+            "login_failed",
+            "auth",
+            serde_json::json!({
+                "ip": real_ip.to_string(),
+                "reason": "token_mismatch",
+                "attempt_count": attempt_count,
+            }),
+        );
+        return (
+            StatusCode::UNAUTHORIZED,
+            [(header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+            Json(serde_json::json!({"error": "unauthorized"})),
+        )
+            .into_response();
+    }
+    create_session_response(state, real_ip, headers).await
+}
+
+/// Verification-code login: delegate to `CodeStore::verify`. Per-request
+/// attempt counting is handled inside `CodeEntry`; we do NOT call
+/// `record_auth_failure` here, since the rate limit / attempt cap on the code
+/// itself is the relevant gate (code is bound to `request_id`, not IP).
+async fn handle_code_login(
+    state: &AppState,
+    real_ip: IpAddr,
+    headers: &axum::http::HeaderMap,
+    request_id: String,
+    code: String,
+) -> axum::response::Response {
+    let outcome = state.code_store.verify(&request_id, &code);
+    match outcome {
+        crate::auth::verification_code::VerifyOutcome::Ok => {
+            let ua = headers
+                .get(header::USER_AGENT)
+                .and_then(|v| v.to_str().ok())
+                .map(std::string::ToString::to_string);
+            let occurred_at: u64 = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+                .try_into()
+                .unwrap_or_default();
+            state.manager.event_bus.publish(BusEvent::VerificationCodeConsumed {
+                request_id: request_id.clone(),
+                ip: real_ip.to_string(),
+                user_agent: ua,
+                occurred_at,
+            });
+            let () = state.audit.record(
+                "anonymous",
+                "login",
+                "verification_code",
+                serde_json::json!({
+                    "request_id": request_id,
+                    "ip": real_ip.to_string(),
+                }),
+            );
+            create_session_response(state, real_ip, headers).await
+        }
+        crate::auth::verification_code::VerifyOutcome::NotFound => (
+            StatusCode::UNAUTHORIZED,
+            [(header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+            Json(serde_json::json!({"error": "code not found"})),
+        )
+            .into_response(),
+        crate::auth::verification_code::VerifyOutcome::Expired => (
+            StatusCode::UNAUTHORIZED,
+            [(header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+            Json(serde_json::json!({"error": "code expired"})),
+        )
+            .into_response(),
+        crate::auth::verification_code::VerifyOutcome::Consumed => (
+            StatusCode::UNAUTHORIZED,
+            [(header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+            Json(serde_json::json!({"error": "code already used"})),
+        )
+            .into_response(),
+        crate::auth::verification_code::VerifyOutcome::TooManyAttempts => (
+            StatusCode::UNAUTHORIZED,
+            [(header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+            Json(serde_json::json!({"error": "too many attempts"})),
+        )
+            .into_response(),
+        crate::auth::verification_code::VerifyOutcome::Mismatch => (
+            StatusCode::UNAUTHORIZED,
+            [(header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+            Json(serde_json::json!({"error": "code mismatch"})),
+        )
+            .into_response(),
+    }
+}
+
+/// Request a verification code. Public endpoint (exempt from auth middleware
+/// alongside /api/auth). Generates a 6-digit code, emits `auth.verification_code`
+/// event so subscribers (e.g. feishu-notify) can push it to the user, and
+/// returns only the `request_id` (never the code itself).
+async fn request_code(
+    State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    let real_ip = {
+        let s = state.settings.read().await;
+        auth::real_client_ip(&headers, addr.ip(), &s.auth.trusted_proxies)
+    };
+
+    let Ok((request_id, code)) = state.code_store.create(real_ip) else {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            [(header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+            Json(serde_json::json!({"error": "rate limited, try again later"})),
+        )
+            .into_response();
+    };
+
+    let occurred_at: u64 = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .try_into()
+        .unwrap_or_default();
+
+    state.manager.event_bus.publish(BusEvent::VerificationCode {
+        request_id: request_id.clone(),
+        code,
+        occurred_at,
+    });
+
+    let () = state.audit.record(
+        "anonymous",
+        "request_verification_code",
+        "auth",
+        serde_json::json!({ "ip": real_ip.to_string() }),
+    );
+
+    (
+        StatusCode::OK,
+        [(header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+        Json(serde_json::json!({"request_id": request_id})),
     )
         .into_response()
 }
@@ -624,9 +911,14 @@ async fn get_token(State(state): State<AppState>) -> impl IntoResponse {
 
 async fn token_configured(State(state): State<AppState>) -> impl IntoResponse {
     let token = state.auth_token.read().await;
+    let login_method = {
+        let s = state.settings.read().await;
+        s.auth.login_method.clone()
+    };
     Json(serde_json::json!({
         "configured": !token.is_empty(),
         "server_mode": cfg!(feature = "server"),
+        "login_method": login_method,
     }))
 }
 
@@ -720,11 +1012,15 @@ async fn main() {
     let monitor_state = MonitorState::new(Arc::clone(&manager.sync_clients));
     monitor_state.clone().start_collector();
 
-    let notifier = Arc::new(NotificationBroadcast::new(Arc::clone(&manager.sync_clients)));
+    let notifier = Arc::new(NotificationBroadcast::new(
+        Arc::clone(&manager.sync_clients),
+        manager.event_bus.clone(),
+    ));
     let settings_state = settings::create_settings_state();
     notifier.set_settings(settings_state.clone());
     manager.register_notifier(Arc::clone(&notifier));
     manager.start_cleanup_task();
+    manager.start_event_bridge();
     {
         let notifier = Arc::clone(&notifier);
         tokio::spawn(async move {
@@ -773,15 +1069,24 @@ async fn main() {
     let mcp_server = Arc::new(mcp::server::McpServer::new(manager.clone(), settings_state.clone()));
     let mcp_sse = Arc::new(mcp::transport::SseState::new());
     let workspaces_state = workspace_mgmt::create_workspaces_state();
+    let mc_state = mission_control::create_mission_control_state();
 
     let session_ttl_days = settings::load_settings().auth.session_ttl_days;
     let sessions = Arc::new(SessionStore::new(session_ttl_days));
     sessions.clone().start_cleanup_task();
 
+    let (verification_code_ttl, verification_code_rate_limit) = {
+        let s = settings::load_settings();
+        (s.auth.verification_code_ttl_seconds, s.auth.verification_code_rate_limit_per_minute)
+    };
+    let code_store = Arc::new(CodeStore::new(verification_code_ttl, verification_code_rate_limit));
+    code_store.clone().start_cleanup_task();
+
+    let file_watcher_event_bus = manager.event_bus.clone();
     let state = AppState {
         manager,
         settings: settings_state,
-        file_watcher: Arc::new(FileWatcherState::new()),
+        file_watcher: Arc::new(FileWatcherState::new(file_watcher_event_bus)),
         monitor: monitor_state,
         notifier,
         history: history_state,
@@ -796,7 +1101,10 @@ async fn main() {
         mcp: mcp_server,
         mcp_sse,
         workspaces: workspaces_state,
+        mc: mc_state,
         sessions,
+        code_store,
+        subscriptions: plugin::SubscriptionRegistry::new(),
     };
 
     state.plugins.watch_changes(state.manager.clone());
@@ -822,6 +1130,7 @@ async fn main() {
             .route("/api/tabs/ssh/quick", post(tabs::create_ssh_quick_tab))
             .route("/api/tabs/ssh", post(tabs::create_ssh_tab))
             .route("/api/tabs/:tab_id", delete(tabs::close_tab))
+            .route("/api/tabs/:tab_id/rename", post(tabs::rename_tab))
             .route("/api/tabs/:tab_id/pane", post(tabs::split_pane))
             .route("/api/tabs/:tab_id/pane/plugin", post(tabs::create_plugin_pane))
             .route("/api/tabs/:tab_id/pane/files", post(tabs::create_files_pane))
@@ -833,6 +1142,7 @@ async fn main() {
             .route("/api/tabs/:tab_id/pane/:pane_id/activate", put(tabs::activate_pane))
             .route("/api/tabs/:tab_id/layout", put(tabs::update_layout))
             .route("/api/auth", post(login))
+            .route("/api/auth/request-code", post(request_code))
             .route("/api/auth/check", get(check_auth))
             .route("/api/auth/logout", post(logout))
             .route("/api/auth/sessions", get(list_sessions).delete(revoke_other_sessions))
@@ -885,6 +1195,7 @@ async fn main() {
             .route("/api/workspace/git-status", get(workspace::workspace_git_status))
             .route("/api/workspace/git-diff", get(workspace::workspace_git_diff))
             .route("/api/workspace/reveal", get(workspace::workspace_reveal))
+            .route("/api/workspace/cwd", get(workspace::workspace_cwd))
             .route("/api/workspace/git-stage-lines", post(workspace::workspace_git_stage_lines))
             .route("/api/workspace/git-revert-lines", post(workspace::workspace_git_revert_lines))
             .route("/api/workspace/syntax-check", post(workspace::workspace_syntax_check))
@@ -937,6 +1248,9 @@ async fn main() {
             )
             .route("/api/plugins/:id/crypto/hash", post(plugin::plugin_crypto_hash))
             .route("/api/plugins/:id/crypto/hmac", post(plugin::plugin_crypto_hmac))
+            .route("/api/plugins/:id/events/subscribe", post(plugin::subscribe))
+            .route("/api/plugins/:id/events/unsubscribe", post(plugin::unsubscribe))
+            .route("/api/plugins/events/has-subscriber", get(plugin::has_subscriber))
             .route("/api/plugins/:id/*path", get(plugin::plugin_asset))
             // Agent API + Token management + MCP — protected by agent token middleware
             .merge(

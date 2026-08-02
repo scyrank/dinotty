@@ -8,6 +8,7 @@ use crate::attention::{
     evaluate_ingest_gate, AttentionLedger, DedupOutcome, IngestGateResult, IngestSource,
     MarkReadResult, ProducerOutcome, ReserveResult, Severity,
 };
+use crate::event_bus::{BusEvent, EventBus};
 use crate::platform::{process::CommandNoWindowExt, shell};
 use crate::session::{SyncClient, SyncMsg};
 use crate::settings::{NotificationConfig, SettingsState};
@@ -21,16 +22,18 @@ pub struct NotificationBroadcast {
     sync_clients: std::sync::Arc<Mutex<Vec<SyncClient>>>,
     bell_debounce: Mutex<HashMap<String, Instant>>,
     settings: Mutex<Option<SettingsState>>,
+    event_bus: EventBus,
 }
 
 impl NotificationBroadcast {
     #[must_use]
-    pub fn new(sync_clients: std::sync::Arc<Mutex<Vec<SyncClient>>>) -> Self {
+    pub fn new(sync_clients: std::sync::Arc<Mutex<Vec<SyncClient>>>, event_bus: EventBus) -> Self {
         Self {
             ledger: Mutex::new(AttentionLedger::new()),
             sync_clients,
             bell_debounce: Mutex::new(HashMap::new()),
             settings: Mutex::new(None),
+            event_bus,
         }
     }
 
@@ -93,6 +96,14 @@ impl NotificationBroadcast {
             severity: Severity::Info,
             notif_id: None,
         });
+        self.event_bus.publish(BusEvent::Notify {
+            pane_id: pane_id.to_string(),
+            title: None,
+            body: "Bell".into(),
+            notification_type: "bell".into(),
+            severity: Severity::Info.as_str().into(),
+            occurred_at,
+        });
         self.run_hooks("bell", pane_id, None, "Bell");
     }
 
@@ -128,6 +139,14 @@ impl NotificationBroadcast {
             occurred_at,
             severity,
             notif_id: None,
+        });
+        self.event_bus.publish(BusEvent::Notify {
+            pane_id: pane_id.to_string(),
+            title: title.map(String::from),
+            body: body.to_string(),
+            notification_type: notification_type.to_string(),
+            severity: severity.as_str().into(),
+            occurred_at,
         });
         self.run_hooks(notification_type, pane_id, title, body);
     }
@@ -312,6 +331,14 @@ impl NotificationBroadcast {
                                         severity,
                                         notif_id: None,
                                     });
+                                    self.event_bus.publish(BusEvent::Notify {
+                                        pane_id: pane_id.clone(),
+                                        title: req.title.clone(),
+                                        body: req.body.clone(),
+                                        notification_type: req.notification_type.clone(),
+                                        severity: severity.as_str().into(),
+                                        occurred_at: now,
+                                    });
                                     accepted_hook = Some((
                                         req.notification_type.clone(),
                                         pane_id.clone(),
@@ -340,6 +367,14 @@ impl NotificationBroadcast {
                                     occurred_at: now,
                                     severity,
                                     notif_id: Some(notif_id.clone()),
+                                });
+                                self.event_bus.publish(BusEvent::Notify {
+                                    pane_id: String::new(),
+                                    title: req.title.clone(),
+                                    body: req.body.clone(),
+                                    notification_type: req.notification_type.clone(),
+                                    severity: severity.as_str().into(),
+                                    occurred_at: now,
                                 });
                                 accepted_hook = Some((
                                     req.notification_type.clone(),

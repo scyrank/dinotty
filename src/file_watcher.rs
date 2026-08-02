@@ -19,6 +19,7 @@ use std::{
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tracing::{error, info};
 
+use crate::event_bus::{BusEvent, EventBus};
 use crate::session::SessionManager;
 
 #[derive(Debug, Clone, Serialize)]
@@ -35,6 +36,19 @@ pub enum FileEventKind {
     Deleted,
 }
 
+impl FileEventKind {
+    /// Lowercase tag matching the serde serialization. Used when bridging to
+    /// `BusEvent::FileChanged.change_type` without round-tripping through serde.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Changed => "changed",
+            Self::Created => "created",
+            Self::Deleted => "deleted",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type")]
 pub enum WatchMessage {
@@ -46,18 +60,13 @@ pub enum WatchMessage {
 
 pub struct FileWatcherState {
     watchers: Arc<RwLock<HashMap<String, broadcast::Sender<WatchMessage>>>>,
-}
-
-impl Default for FileWatcherState {
-    fn default() -> Self {
-        Self::new()
-    }
+    event_bus: EventBus,
 }
 
 impl FileWatcherState {
     #[must_use]
-    pub fn new() -> Self {
-        Self { watchers: Arc::new(RwLock::new(HashMap::new())) }
+    pub fn new(event_bus: EventBus) -> Self {
+        Self { watchers: Arc::new(RwLock::new(HashMap::new())), event_bus }
     }
 
     pub async fn subscribe(&self, key: &str) -> broadcast::Receiver<WatchMessage> {
@@ -71,9 +80,10 @@ impl FileWatcherState {
 
         let key_owned = key.to_string();
         let watchers_clone = self.watchers.clone();
+        let event_bus = self.event_bus.clone();
 
         tokio::spawn(async move {
-            if let Err(e) = Self::run_watcher(key_owned, tx, watchers_clone).await {
+            if let Err(e) = Self::run_watcher(key_owned, tx, watchers_clone, event_bus).await {
                 error!("File watcher error: {}", e);
             }
         });
@@ -92,6 +102,7 @@ impl FileWatcherState {
         key: String,
         tx: broadcast::Sender<WatchMessage>,
         watchers: Arc<RwLock<HashMap<String, broadcast::Sender<WatchMessage>>>>,
+        event_bus: EventBus,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let (tx_notify, mut rx_notify) = mpsc::unbounded_channel();
 
@@ -135,6 +146,12 @@ impl FileWatcherState {
                     };
 
                     for msg in events {
+                        if let WatchMessage::FileEvent(ref fe) = msg {
+                            event_bus.publish(BusEvent::FileChanged {
+                                path: fe.path.clone(),
+                                change_type: fe.kind.as_str().into(),
+                            });
+                        }
                         if tx.send(msg).is_err() {
                             return Ok(());
                         }
