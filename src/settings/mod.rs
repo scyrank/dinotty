@@ -36,6 +36,10 @@ pub(crate) use types::default_scroll_acceleration;
 
 #[must_use]
 pub fn config_dir() -> PathBuf {
+    if let Some(path) = std::env::var_os("DINOTTY_CONFIG_DIR").filter(|path| !path.is_empty()) {
+        return PathBuf::from(path);
+    }
+
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(format!("dinotty{}", option_env!("DINOTTY_CONFIG_SUFFIX").unwrap_or("")))

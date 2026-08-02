@@ -173,11 +173,27 @@ $env:DINOTTY_SHELL = "pwsh.exe"
 
 Windows 默认 shell 检测顺序为 `DINOTTY_SHELL` → `pwsh.exe` → `powershell.exe` → `%ComSpec%` / `cmd.exe`。
 
-默认监听端口 **8999**，启动后访问 `http://<your-ip>:8999`。可通过 `-p` 参数指定端口：
+默认仅监听 `127.0.0.1` 的 **8999** 端口，启动后访问
+`http://127.0.0.1:8999`。可通过 `-p` 参数指定端口：
 
 ```bash
 dinotty-server -p 3000
 ```
+
+需要从局域网访问时，必须显式使用 `--bind 0.0.0.0`（或设置
+`DINOTTY_BIND_ADDR=0.0.0.0`），并配置强 Token 和主机防火墙：
+
+```powershell
+.\dinotty-server.exe --bind 0.0.0.0 -p 8999
+```
+
+首次启动会在接受连接前生成随机 Token。可由同一系统用户运行
+`.\dinotty-server.exe --print-token` 查看；也可在启动前设置
+`DINOTTY_TOKEN`。
+
+出于安全原因，内置 SSH 私钥认证支持 Ed25519/ECDSA，不编译存在已知时序
+侧信道且尚无上游修复的 Rust RSA 实现。旧的 `id_rsa` 配置请迁移为
+`id_ed25519`，或使用密码认证。
 
 ## 快速开始
 

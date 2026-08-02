@@ -8,11 +8,9 @@ import type { SyncEvent } from '../types/protocol'
 import { useI18n, type Locale } from './useI18n'
 import { describeHttpError } from '../utils/httpError'
 
-// Bypass Vite's static analysis of import()
-// eslint-disable-next-line no-new-func
-const dynamicImport: (url: string) => Promise<any> = new Function('url', 'return import(url)') as (
-  url: string
-) => Promise<any>
+// Plugin modules are verified by the server, then loaded from a short-lived
+// blob URL. @vite-ignore keeps the URL dynamic without requiring unsafe-eval.
+const dynamicImport = (url: string): Promise<any> => import(/* @vite-ignore */ url)
 
 // ─── Binary helpers for ctx.crypto ──────────────────────────────────────────
 

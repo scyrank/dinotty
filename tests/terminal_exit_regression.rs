@@ -117,6 +117,7 @@ fn spawn_server(
         .env("HOME", userprofile)
         .env("XDG_CONFIG_HOME", tmp.path().join("xdg-config"))
         .env("XDG_DATA_HOME", tmp.path().join("xdg-data"))
+        .env("DINOTTY_CONFIG_DIR", tmp.path().join("config"))
         .env("DINOTTY_SHELL", shell)
         .env("DINOTTY_TOKEN", "regression-token")
         .stdout(Stdio::from(stdout))
@@ -369,7 +370,13 @@ async fn shell_exit_notifies_ws_and_removes_tab() -> TestResult {
     ws.send(Message::Text(serde_json::json!({ "type": "input", "data": "exit\r" }).to_string()))
         .await?;
 
-    wait_for_session_exit(&mut ws).await?;
+    if let Err(error) = wait_for_session_exit(&mut ws).await {
+        return Err(test_error(format!(
+            "{error}; server stderr:\n{}\nserver stdout:\n{}",
+            read_log(tmp.path(), "server.err.log"),
+            read_log(tmp.path(), "server.out.log")
+        )));
+    }
     wait_until_tab_removed(&client, &base, &tab_id).await?;
 
     Ok(())

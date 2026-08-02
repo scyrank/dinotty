@@ -7,6 +7,7 @@ use dinotty_server::session::{
 };
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, OnceLock,
@@ -353,6 +354,27 @@ fn embedded_http_origin() -> String {
     format!("http://127.0.0.1:{port}")
 }
 
+fn is_trusted_app_navigation(url: &tauri::Url) -> bool {
+    match url.scheme() {
+        "tauri" => url.host_str() == Some("localhost"),
+        "http" | "https" if url.host_str() == Some("tauri.localhost") => true,
+        "http" if cfg!(debug_assertions) => {
+            url.host_str() == Some("localhost") && url.port() == Some(5173)
+        }
+        "about" => url.as_str() == "about:blank",
+        _ => false,
+    }
+}
+
+#[tauri::command]
+fn embedded_auth_token() -> Result<String, String> {
+    dinotty_server::settings::load_token()
+        .or_else(|| std::env::var("DINOTTY_TOKEN").ok())
+        .map(|token| token.trim().to_string())
+        .filter(|token| !token.is_empty())
+        .ok_or_else(|| "desktop authentication token is unavailable".to_string())
+}
+
 #[derive(Serialize)]
 struct FetchResponse {
     status: u16,
@@ -625,6 +647,7 @@ fn main() {
 
     let args: Vec<String> = std::env::args().collect();
     let requested_port = parse_port(&args);
+    let bind_ip = parse_bind_ip(&args);
     let port = if requested_port == 0 {
         let port = match default_port() {
             0 => BUILT_IN_DEFAULT_PORT,
@@ -644,7 +667,7 @@ fn main() {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let mgr = Arc::clone(&manager);
         rt.block_on(async move {
-            let listener = embedded_server::bind_listener(port)
+            let listener = embedded_server::bind_listener(port, bind_ip)
                 .unwrap_or_else(|e| panic!("failed to bind embedded server on port {port}: {e}"));
             // The reaper must run unconditionally — a bind failure or notifier-registration
             // ordering issue must never suppress it. Notification GC simply no-ops until
@@ -662,6 +685,20 @@ fn main() {
     let run_manager = Arc::clone(&manager);
 
     tauri::Builder::default()
+        // Custom IPC commands include terminal and filesystem capabilities.
+        // Keep the main webview on the bundled/dev origin even if content
+        // attempts a top-level navigation.
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry>::new("navigation-guard")
+                .on_navigation(|_webview, url| {
+                    let allowed = is_trusted_app_navigation(url);
+                    if !allowed {
+                        tracing::warn!("Blocked desktop webview navigation to {}", url);
+                    }
+                    allowed
+                })
+                .build(),
+        )
         // Keep one desktop instance so a second launch focuses the hidden/tray window instead
         // of racing the first process for the same port and global shortcut.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -674,7 +711,7 @@ fn main() {
         .manage(manager.clone())
         .setup(move |app| {
             let mgr = Arc::clone(&manager);
-            match embedded_server::bind_listener(port) {
+            match embedded_server::bind_listener(port, bind_ip) {
                 Ok(listener) => {
                     let actual = listener.local_addr().expect("bound listener").port();
                     // Redundant-by-design: run_server() also sets notify_port from its own
@@ -779,6 +816,7 @@ fn main() {
             pty_kill,
             pty_detach,
             embedded_http_origin,
+            embedded_auth_token,
             tauri_fetch,
             tauri_upload,
             tauri_read_file,
@@ -827,4 +865,41 @@ fn parse_port(args: &[String]) -> u16 {
         i += 1;
     }
     default_port()
+}
+
+fn parse_bind_ip(args: &[String]) -> IpAddr {
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--bind" => {
+                if let Some(value) = args.get(i + 1) {
+                    return value.parse().expect("--bind must be a literal IP address");
+                }
+            }
+            value if value.starts_with("--bind=") => {
+                return value[7..].parse().expect("--bind must be a literal IP address");
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    std::env::var("DINOTTY_BIND_ADDR")
+        .ok()
+        .map(|value| value.parse().expect("DINOTTY_BIND_ADDR must be a literal IP address"))
+        .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST))
+}
+
+#[cfg(test)]
+mod security_tests {
+    use super::is_trusted_app_navigation;
+
+    #[test]
+    fn desktop_navigation_guard_rejects_remote_origins() {
+        assert!(is_trusted_app_navigation(&"http://tauri.localhost/".parse().unwrap()));
+        assert!(is_trusted_app_navigation(&"tauri://localhost/".parse().unwrap()));
+        assert!(!is_trusted_app_navigation(&"https://evil.example/".parse().unwrap()));
+        assert!(!is_trusted_app_navigation(
+            &"http://tauri.localhost.evil.example/".parse().unwrap()
+        ));
+    }
 }

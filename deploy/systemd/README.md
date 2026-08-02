@@ -55,7 +55,7 @@ sudo systemctl restart dinotty.service
 个人开发终端模式下，Dinotty web 端拥有你账户的完整权限。如果服务暴露在公网：
 
 1. **设置认证 Token** — 编辑 `/etc/dinotty/env`，填写 `DINOTTY_TOKEN=<强密码>`
-2. **或限制监听地址** — 只监听 `127.0.0.1`，通过 SSH 隧道或反向代理访问
+2. **限制监听地址** — 默认保持 `DINOTTY_BIND_ADDR=127.0.0.1`，通过 SSH 隧道或反向代理访问
 
 ## 环境变量配置
 
@@ -68,6 +68,7 @@ sudo vim /etc/dinotty/env
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
+| `DINOTTY_BIND_ADDR` | `127.0.0.1` | 监听地址；局域网访问需显式改为 `0.0.0.0` |
 | `DINOTTY_PORT` | `8999` | 服务端口 |
 | `DINOTTY_TOKEN` | （空，自动生成） | 认证 Token |
 | `RUST_LOG` | `info` | 日志级别 |

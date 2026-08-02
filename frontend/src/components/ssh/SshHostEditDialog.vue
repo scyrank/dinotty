@@ -59,7 +59,7 @@
 
           <div v-if="authType === 'key_file'" class="ssh-field">
             <label>{{ t('ssh.keyPath') }}</label>
-            <input v-model="keyPath" placeholder="~/.ssh/id_rsa" class="ssh-edit-input" />
+            <input v-model="keyPath" placeholder="~/.ssh/id_ed25519" class="ssh-edit-input" />
           </div>
 
           <div v-if="authType === 'key_inline'" class="ssh-field">

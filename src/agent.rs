@@ -549,8 +549,7 @@ pub async fn agent_ws_handler(
     let allowed_origins = s.auth.allowed_origins.clone();
     let trusted_proxies = s.auth.trusted_proxies.clone();
     drop(s);
-    let real_ip = crate::auth::real_client_ip(&headers, addr.ip(), &trusted_proxies);
-    if !crate::auth::check_ws_origin(&headers, &allowed_origins, real_ip, &trusted_proxies) {
+    if !crate::auth::check_ws_origin(&headers, &allowed_origins, addr.ip(), &trusted_proxies) {
         return StatusCode::FORBIDDEN.into_response();
     }
     ws.on_upgrade(move |socket| handle_agent_ws(socket, state)).into_response()

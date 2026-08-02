@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' customprotocol: asset:; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* ws://127.0.0.1:* http://localhost:* ws://localhost:* https: wss:; img-src 'self' asset: http://asset.localhost data: blob: http: https:; font-src 'self' data:; media-src 'self' data: blob: http: https:; worker-src 'self' blob:; frame-src http: https:; object-src 'none'; base-uri 'self'; form-action 'self'"
     }
   },
   "bundle": {

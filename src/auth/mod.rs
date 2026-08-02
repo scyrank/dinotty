@@ -7,7 +7,7 @@
 use axum::{
     body::Body,
     extract::Request,
-    http::{header, HeaderMap, StatusCode},
+    http::{header, uri::Authority, HeaderMap, StatusCode, Uri},
     middleware::Next,
     response::Response,
 };
@@ -144,11 +144,6 @@ pub async fn auth_middleware(
 ) -> Response {
     let path = request.uri().path();
 
-    // No token configured - first-time setup, allow all requests
-    if token.is_empty() {
-        return next.run(request).await;
-    }
-
     if path == "/"
         || path == "/api/token-configured"
         || path == "/manifest.json"
@@ -157,6 +152,19 @@ pub async fn auth_middleware(
         || path.starts_with("/icons/")
     {
         return next.run(request).await;
+    }
+
+    // Never fail open. Both server entry points generate and persist a token
+    // before accepting connections; this guard also protects embedders and
+    // partially migrated installations.
+    if token.is_empty() {
+        tracing::error!("auth: refusing protected request because no token is configured");
+        return Response::builder()
+            .status(StatusCode::SERVICE_UNAVAILABLE)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(header::CACHE_CONTROL, "no-store")
+            .body(Body::from(r#"{"error":"authentication is not configured"}"#))
+            .unwrap();
     }
 
     // Agent WS has its own agent-token middleware; skip main auth so agent
@@ -190,8 +198,12 @@ pub async fn auth_middleware(
             .unwrap();
     }
 
-    // IP whitelist (loopback bypass) check - uses real IP, not direct peer.
-    if is_ip_whitelisted(real_ip, &ip_whitelist) {
+    // Explicit non-loopback whitelist entries retain their bypass semantics.
+    // Loopback is special: desktop defaults include it for the Tauri webview,
+    // but a local reverse proxy also connects from loopback. Only the built-in
+    // Tauri origin may use the loopback bypass; scripts and proxies must
+    // authenticate normally.
+    if can_bypass_ip_auth(request.headers(), client_ip, real_ip, &ip_whitelist) {
         return next.run(request).await;
     }
 
@@ -310,19 +322,136 @@ pub fn real_client_ip(headers: &HeaderMap, conn_ip: IpAddr, trusted_proxies: &[S
     conn_ip
 }
 
-/// 暂时关闭：反代（极空间等 NAS）默认不带 X-Forwarded-Host，Host 被改写为内部
-/// 地址，导致 Origin 与 Host 比对失配，所有非 /ws 的 WS 端点（监控、sync、
-/// watch、notify、history 等）全部 403。cookie session 鉴权仍在 `auth_middleware`
-/// 生效，跨站 WS CSRF 风险有限。后续修复 `trusted_proxies` 语义 bug（应用直连
-/// peer 判断而非 `real_ip`）并加拒绝日志后再恢复。
+#[derive(Debug, PartialEq, Eq)]
+struct ParsedOrigin {
+    scheme: String,
+    host: String,
+    port: Option<u16>,
+}
+
+fn default_origin_port(scheme: &str) -> Option<u16> {
+    match scheme {
+        "http" => Some(80),
+        "https" => Some(443),
+        _ => None,
+    }
+}
+
+fn parse_origin(value: &str) -> Option<ParsedOrigin> {
+    let uri = value.parse::<Uri>().ok()?;
+    let scheme = uri.scheme_str()?.to_ascii_lowercase();
+    if !matches!(scheme.as_str(), "http" | "https") {
+        return None;
+    }
+    let authority = uri.authority()?;
+    let path_and_query = uri.path_and_query().map_or("", |value| value.as_str());
+    if !matches!(path_and_query, "" | "/") {
+        return None;
+    }
+    Some(ParsedOrigin {
+        scheme: scheme.clone(),
+        host: authority.host().to_ascii_lowercase(),
+        port: authority.port_u16().or_else(|| default_origin_port(&scheme)),
+    })
+}
+
+fn origin_matches_authority(origin: &ParsedOrigin, authority: &str) -> bool {
+    let Ok(authority) = authority.trim().parse::<Authority>() else {
+        return false;
+    };
+    if !origin.host.eq_ignore_ascii_case(authority.host()) {
+        return false;
+    }
+    authority.port_u16().is_none() || authority.port_u16() == origin.port
+}
+
+fn is_allowed_desktop_origin(origin: &ParsedOrigin, direct_client_ip: IpAddr) -> bool {
+    if !direct_client_ip.is_loopback() {
+        return false;
+    }
+    if origin.host == "tauri.localhost" {
+        return true;
+    }
+    cfg!(debug_assertions)
+        && origin.scheme == "http"
+        && origin.host == "localhost"
+        && origin.port == Some(5173)
+}
+
+fn can_bypass_ip_auth(
+    headers: &HeaderMap,
+    direct_client_ip: IpAddr,
+    real_client_ip: IpAddr,
+    ip_whitelist: &[String],
+) -> bool {
+    if !is_ip_whitelisted(real_client_ip, ip_whitelist) {
+        return false;
+    }
+    if !real_client_ip.is_loopback() {
+        return true;
+    }
+    let Some(origin) =
+        headers.get(header::ORIGIN).and_then(|value| value.to_str().ok()).and_then(parse_origin)
+    else {
+        return false;
+    };
+    is_allowed_desktop_origin(&origin, direct_client_ip)
+}
+
+/// Validate the browser Origin for WebSocket upgrades and CORS requests.
+///
+/// A missing Origin is accepted for native/non-browser clients. Browser
+/// origins must match Host, an explicit allowed origin, or the built-in Tauri
+/// origin on a direct loopback connection. Forwarded Host is trusted only when
+/// the direct peer itself is listed in `trusted_proxies`.
 #[must_use]
 pub fn check_ws_origin(
-    _headers: &HeaderMap,
-    _allowed_origins: &[String],
-    _client_ip: std::net::IpAddr,
-    _trusted_proxies: &[String],
+    headers: &HeaderMap,
+    allowed_origins: &[String],
+    direct_client_ip: IpAddr,
+    trusted_proxies: &[String],
 ) -> bool {
-    true
+    let Some(origin_header) = headers.get(header::ORIGIN) else {
+        return true;
+    };
+    let Ok(origin_value) = origin_header.to_str() else {
+        return false;
+    };
+    let Some(origin) = parse_origin(origin_value) else {
+        return false;
+    };
+
+    if is_allowed_desktop_origin(&origin, direct_client_ip) {
+        return true;
+    }
+
+    if allowed_origins
+        .iter()
+        .filter_map(|allowed| parse_origin(allowed.trim()))
+        .any(|allowed| allowed == origin)
+    {
+        return true;
+    }
+
+    if let Some(host) = headers.get(header::HOST).and_then(|value| value.to_str().ok()) {
+        if origin_matches_authority(&origin, host) {
+            return true;
+        }
+    }
+
+    if is_ip_whitelisted(direct_client_ip, trusted_proxies) {
+        if let Some(forwarded_host) =
+            headers.get("x-forwarded-host").and_then(|value| value.to_str().ok())
+        {
+            if let Some(first_host) = forwarded_host.split(',').next() {
+                if origin_matches_authority(&origin, first_host) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
 }
 
 fn is_ip_whitelisted(ip: IpAddr, whitelist: &[String]) -> bool {

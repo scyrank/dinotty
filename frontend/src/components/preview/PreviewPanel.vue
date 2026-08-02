@@ -90,7 +90,7 @@
         <div v-show="kind === 'web'" class="preview-web">
           <iframe
             :src="resolvedIframeSrc"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation-by-user-activation"
+            sandbox="allow-scripts allow-forms allow-popups"
           ></iframe>
         </div>
         <FileWorkspacePreview

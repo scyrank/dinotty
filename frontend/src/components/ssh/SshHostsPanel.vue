@@ -376,22 +376,6 @@ async function quickConnect() {
     }
     const result = await apiCreateSshQuickTab(req, abortController.signal)
 
-    // Auto-save to profiles
-    const existingIdx = settings.ssh_profiles.findIndex(
-      (p) => p.host === req.host && p.port === req.port && p.username === req.username
-    )
-    if (existingIdx < 0) {
-      settings.ssh_profiles.push({
-        id: crypto.randomUUID(),
-        name: `${req.username}@${req.host}`,
-        host: req.host,
-        port: req.port,
-        username: req.username,
-        auth_method: { type: 'password', password: req.auth.password },
-      })
-      saveSettings()
-    }
-
     emit('connect', result)
     close()
   } catch (e: any) {

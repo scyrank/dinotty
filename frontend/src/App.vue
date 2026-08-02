@@ -1688,25 +1688,26 @@ onMounted(async () => {
       // First-time setup: show setup page (server mode only)
       needsSetup.value = true
     } else if (!serverMode) {
-      // Desktop mode: honor an existing cookie session first (e.g. LAN
-      // access after manual login). Fall back to loopback auto-token only
-      // when the cookie is absent/invalid.
-      let cookieOk = false
-      try {
-        const res = await fetch(apiUrl('/api/settings'), { credentials: 'include' })
-        cookieOk = res.ok
-      } catch {
-        // network error - fall through to auto-token
-      }
-      if (cookieOk) {
-        await onLoginSuccess()
-      } else {
+      if (isTauri()) {
+        // The desktop webview retrieves the DPAPI-backed token through IPC and
+        // keeps it in memory. Do not rely on a generic loopback auth bypass:
+        // local reverse proxies connect from loopback too.
         const autoToken = await fetchAutoToken()
         if (autoToken) {
           const r = await validateToken(autoToken)
           if (r.ok) {
             await onLoginSuccess()
           }
+        }
+      } else {
+        // Browser access to a desktop server may reuse a prior cookie session.
+        try {
+          const res = await fetch(apiUrl('/api/settings'), { credentials: 'include' })
+          if (res.ok) {
+            await onLoginSuccess()
+          }
+        } catch {
+          // Network error — show LoginPage.
         }
       }
     } else {

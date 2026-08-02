@@ -28,7 +28,7 @@
         <iframe
           ref="iframeRef"
           :src="resolvedSrc"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+          sandbox="allow-scripts allow-forms allow-popups"
         ></iframe>
       </div>
     </div>

@@ -1,13 +1,20 @@
 import { isTauri, tauriInvoke } from './useTransport'
 
-const STORAGE_KEY = 'dinotty_auth_token'
+const LEGACY_STORAGE_KEY = 'dinotty_auth_token'
 
 // Browser mode: cookie-based session (no token in localStorage).
-// Tauri mode: Bearer token in localStorage (tauri_fetch has no cookie jar).
+// Tauri mode: keep the Bearer token in memory only. The Rust command reads it
+// from the OS-protected settings location when the desktop app starts.
 let loggedIn = false
-// Session-authenticated with no bearer token: Tauri loopback-bypass, or a
-// desktop/web cookie session. setAuthToken() is never called on these paths,
-// so hasAuthToken() must not depend on a stored token alone.
+let desktopAuthToken = ''
+if (typeof localStorage !== 'undefined') {
+  // One-time cleanup for versions that persisted the raw token in WebView
+  // localStorage.
+  localStorage.removeItem(LEGACY_STORAGE_KEY)
+}
+// Session-authenticated with no bearer token: a desktop/web cookie session.
+// setAuthToken() is never called on this path, so hasAuthToken() must not
+// depend on a stored token alone.
 let sessionAuthed = false
 
 let cached = ''
@@ -15,8 +22,7 @@ let inflight: Promise<string> | null = null
 
 export function getAuthToken(): string {
   if (!isTauri()) return loggedIn ? 'cookie' : ''
-  const stored = localStorage.getItem(STORAGE_KEY)
-  return stored || ''
+  return desktopAuthToken
 }
 
 export function setAuthToken(token: string): void {
@@ -24,7 +30,7 @@ export function setAuthToken(token: string): void {
     loggedIn = true
     return
   }
-  localStorage.setItem(STORAGE_KEY, token)
+  desktopAuthToken = token
 }
 
 export function markCookieAuthenticated(): void {
@@ -38,13 +44,13 @@ export function clearAuthToken(): void {
     loggedIn = false
     return
   }
-  localStorage.removeItem(STORAGE_KEY)
+  desktopAuthToken = ''
 }
 
 export function hasAuthToken(): boolean {
   if (sessionAuthed) return true
   if (!isTauri()) return loggedIn
-  return !!localStorage.getItem(STORAGE_KEY)
+  return !!desktopAuthToken
 }
 
 export type ValidateTokenResult =
@@ -99,6 +105,9 @@ export async function checkTokenConfigured(): Promise<{
 
 export async function fetchAutoToken(): Promise<string> {
   try {
+    if (isTauri()) {
+      return String(await tauriInvoke('embedded_auth_token'))
+    }
     await getApiBase()
     const res = await fetch(apiUrl('/api/auto-token'))
     if (!res.ok) return ''

@@ -16,7 +16,7 @@ use axum::{
     Json, Router,
 };
 use rust_embed::Embed;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use std::sync::Arc;
 
@@ -30,10 +30,11 @@ use crate::session::SessionManager;
 use crate::settings::SettingsState;
 
 /// Dynamic CORS middleware that reads `allowed_origins` from settings on each request.
-/// Default empty = same-origin only (Origin = Host, which browsers allow without CORS).
-/// Tauri desktop mode does not go through CORS (`tauri_fetch` is not a browser fetch).
+/// Default empty = same-origin only. The same validator protects WebSocket
+/// upgrades, so HTTP and WebSocket browser access cannot drift apart.
 async fn dynamic_cors_middleware(
     State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     req: axum::extract::Request,
     next: middleware::Next,
 ) -> Response<Body> {
@@ -41,21 +42,23 @@ async fn dynamic_cors_middleware(
         req.headers().get(header::ORIGIN).and_then(|v| v.to_str().ok()).map(str::to_string);
     let is_clipboard = req.uri().path() == "/api/clipboard";
 
-    let allowed_origins = {
+    let (allowed_origins, trusted_proxies) = {
         let s = state.settings.read().await;
-        s.auth.allowed_origins.clone()
+        (s.auth.allowed_origins.clone(), s.auth.trusted_proxies.clone())
     };
 
     let is_preflight = req.method() == axum::http::Method::OPTIONS;
 
-    // Determine if origin is allowed
-    let allowed_origin = origin.as_ref().and_then(|o| {
-        if allowed_origins.iter().any(|a| a.trim() == o) {
-            Some(o.clone())
-        } else {
-            None
-        }
-    });
+    let origin_allowed =
+        auth::check_ws_origin(req.headers(), &allowed_origins, addr.ip(), &trusted_proxies);
+    if origin.is_some() && !origin_allowed {
+        return Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(header::CACHE_CONTROL, "no-store")
+            .body(Body::from(r#"{"error":"origin not allowed"}"#))
+            .unwrap();
+    }
 
     let mut response = if is_preflight {
         // For preflight, return 204 without calling the next handler
@@ -69,7 +72,7 @@ async fn dynamic_cors_middleware(
     if is_clipboard {
         headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     }
-    if let Some(ref ao) = allowed_origin.filter(|_| !suppress_clipboard_origin) {
+    if let Some(ref ao) = origin.filter(|_| origin_allowed && !suppress_clipboard_origin) {
         headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, ao.parse().unwrap());
         headers.insert(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, HeaderValue::from_static("true"));
         headers.insert(
@@ -80,6 +83,7 @@ async fn dynamic_cors_middleware(
             header::ACCESS_CONTROL_ALLOW_HEADERS,
             HeaderValue::from_static("Content-Type, Authorization"),
         );
+        headers.append(header::VARY, HeaderValue::from_static("Origin"));
     }
 
     response
@@ -371,6 +375,29 @@ fn parse_port() -> u16 {
     default_port()
 }
 
+fn parse_bind_ip() -> IpAddr {
+    let args: Vec<String> = std::env::args().collect();
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--bind" => {
+                if let Some(value) = args.get(i + 1) {
+                    return value.parse().expect("--bind must be a literal IP address");
+                }
+            }
+            value if value.starts_with("--bind=") => {
+                return value[7..].parse().expect("--bind must be a literal IP address");
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    std::env::var("DINOTTY_BIND_ADDR")
+        .ok()
+        .map(|value| value.parse().expect("DINOTTY_BIND_ADDR must be a literal IP address"))
+        .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST))
+}
+
 async fn server_info(State(state): State<AppState>) -> Json<serde_json::Value> {
     let lan_ip =
         local_ip_address::local_ip().map_or_else(|_| "127.0.0.1".to_string(), |ip| ip.to_string());
@@ -659,7 +686,31 @@ async fn update_token(
 async fn main() {
     let _guard = settings::init_logging();
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], parse_port()));
+    // Authentication must be ready before the socket starts accepting
+    // connections. A persistence failure is fatal rather than a fail-open
+    // first-start mode.
+    let initial_token = settings::load_token()
+        .or_else(|| std::env::var("DINOTTY_TOKEN").ok())
+        .map(|token| token.trim().to_string())
+        .filter(|token| !token.is_empty())
+        .unwrap_or_default();
+    let initial_token = if initial_token.is_empty() {
+        let token = generate_random_token();
+        settings::save_token(&token).expect("failed to persist auto-generated auth token");
+        tracing::info!("Auto-generated authentication token");
+        token
+    } else {
+        tracing::info!("Auth token loaded (length={})", initial_token.len());
+        initial_token
+    };
+
+    if std::env::args().any(|argument| argument == "--print-token") {
+        println!("{initial_token}");
+        return;
+    }
+
+    let bind_ip = parse_bind_ip();
+    let addr = SocketAddr::new(bind_ip, parse_port());
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     let port = listener.local_addr().expect("bound listener").port();
     auth::set_session_cookie_port(port);
@@ -687,25 +738,6 @@ async fn main() {
     }
     let history_state = HistoryState::new(Arc::clone(&manager.sync_clients));
 
-    // Load token from dedicated file or env var; empty means first-time setup
-    let initial_token =
-        settings::load_token().or_else(|| std::env::var("DINOTTY_TOKEN").ok()).unwrap_or_default();
-    let initial_token = if initial_token.is_empty() {
-        if cfg!(feature = "server") {
-            tracing::info!("No auth token configured — first-time setup required");
-            String::new()
-        } else {
-            let token = generate_random_token();
-            if let Err(e) = settings::save_token(&token) {
-                tracing::error!("Failed to persist auto-generated token: {}", e);
-            }
-            tracing::info!("Desktop mode: auto-generated auth token");
-            token
-        }
-    } else {
-        tracing::info!("Auth token loaded (length={})", initial_token.len());
-        initial_token
-    };
     let auth_token = Arc::new(tokio::sync::RwLock::new(initial_token));
 
     let git_info = read_git_info();
@@ -975,7 +1007,7 @@ async fn main() {
             .layer(middleware::from_fn_with_state(state.clone(), dynamic_cors_middleware))
             .with_state(state);
 
-    tracing::info!("Listening on http://0.0.0.0:{}", port);
+    tracing::info!("Listening on http://{}:{}", bind_ip, port);
 
     notify_manager.set_notify_port(port);
     let shutdown_plugins = Arc::clone(&plugins);

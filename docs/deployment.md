@@ -118,8 +118,10 @@ Windows 上可通过 Docker Desktop 使用 Linux 容器部署；`.env` 中的工
 
 | 参数 | 方式 | 默认值 | 说明 |
 |------|------|--------|------|
+| 监听地址 | `--bind` / `DINOTTY_BIND_ADDR` | 127.0.0.1 | 局域网监听需显式设置为 `0.0.0.0`，并配置 Token 与防火墙 |
 | 端口 | `--port` / `-p` | 8999 | 服务监听端口 |
-| Token | `DINOTTY_TOKEN` 环境变量或配置文件 | 未配置 / 首次设置 | 访问认证令牌，为空时进入首次设置流程 |
+| Token | `DINOTTY_TOKEN` 环境变量或配置文件 | 自动生成 | 首次启动在接受连接前生成并持久化随机认证令牌 |
+| 显示 Token | `--print-token` | — | 由运行服务的同一系统用户解密并输出 Token 后退出 |
 | 日志级别 | `RUST_LOG` 环境变量 | info | trace / debug / info / warn / error |
 | Shell | Unix: `SHELL`；Windows: `DINOTTY_SHELL` | 自动检测 | Windows 优先 `DINOTTY_SHELL`，再尝试 `pwsh.exe`、`powershell.exe`、`%ComSpec%` / `cmd.exe` |
 
@@ -131,4 +133,6 @@ Windows 上可通过 Docker Desktop 使用 Linux 容器部署；`.env` 中的工
 | macOS | `~/Library/Application Support/dinotty` | `~/.dinotty/plugins` |
 | Windows | `%APPDATA%\dinotty` | `%USERPROFILE%\.dinotty\plugins` |
 
-Token、`settings.json`、审计日志和 webhook secrets 存放在配置目录；插件持久化数据存放在用户目录下的 `.dinotty/plugin-data`。
+Token、`settings.json`、审计日志和 webhook secrets 存放在配置目录；Windows
+上的 Token 与 `settings.json` 使用当前用户 DPAPI 加密。插件持久化数据存放在
+用户目录下的 `.dinotty/plugin-data`。

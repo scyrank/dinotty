@@ -10,7 +10,7 @@ use axum::{
     Router,
 };
 use rust_embed::Embed;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
 use dinotty_server::api::clipboard;
@@ -459,8 +459,8 @@ async fn update_token(
     StatusCode::OK.into_response()
 }
 
-pub fn bind_listener(port: u16) -> std::io::Result<std::net::TcpListener> {
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+pub fn bind_listener(port: u16, bind_ip: IpAddr) -> std::io::Result<std::net::TcpListener> {
+    let addr = SocketAddr::new(bind_ip, port);
     let listener = std::net::TcpListener::bind(addr)?;
     listener.set_nonblocking(true)?;
     Ok(listener)
@@ -539,11 +539,14 @@ pub fn run_server(
 
         let initial_token = settings::load_token()
             .or_else(|| std::env::var("DINOTTY_TOKEN").ok())
+            .map(|token| token.trim().to_string())
+            .filter(|token| !token.is_empty())
             .unwrap_or_default();
         let initial_token = if initial_token.is_empty() {
             let token = generate_random_token();
             if let Err(e) = settings::save_token(&token) {
                 tracing::error!("Failed to persist auto-generated token: {}", e);
+                return;
             }
             tracing::info!("Desktop mode: auto-generated auth token");
             token
@@ -743,8 +746,12 @@ pub fn run_server(
                     .await
                 },
             ))
-            .layer(middleware::from_fn(
-                |req: axum::extract::Request, next: middleware::Next| async move {
+            .layer(middleware::from_fn_with_state(
+                state.clone(),
+                |AxumState(s): AxumState<AppState>,
+                 ConnectInfo(addr): ConnectInfo<SocketAddr>,
+                 req: axum::extract::Request,
+                 next: middleware::Next| async move {
                     let is_clipboard = req.uri().path() == "/api/clipboard";
                     let origin = req
                         .headers()
@@ -752,23 +759,45 @@ pub fn run_server(
                         .and_then(|v| v.to_str().ok())
                         .map(|s| s.to_string());
                     let is_preflight = req.method() == axum::http::Method::OPTIONS;
+                    let (allowed_origins, trusted_proxies) = {
+                        let settings = s.settings.read().await;
+                        (
+                            settings.auth.allowed_origins.clone(),
+                            settings.auth.trusted_proxies.clone(),
+                        )
+                    };
+                    let origin_allowed = auth::check_ws_origin(
+                        req.headers(),
+                        &allowed_origins,
+                        addr.ip(),
+                        &trusted_proxies,
+                    );
+                    if origin.is_some() && !origin_allowed {
+                        return Response::builder()
+                            .status(StatusCode::FORBIDDEN)
+                            .header(header::CONTENT_TYPE, "application/json")
+                            .header(header::CACHE_CONTROL, "no-store")
+                            .body(Body::from(r#"{"error":"origin not allowed"}"#))
+                            .unwrap();
+                    }
                     let mut response = if is_preflight {
-                        Response::new(Body::empty())
+                        Response::builder()
+                            .status(StatusCode::NO_CONTENT)
+                            .body(Body::empty())
+                            .unwrap()
                     } else {
                         next.run(req).await
                     };
                     if is_clipboard {
-                        if is_preflight {
-                            *response.status_mut() = StatusCode::NO_CONTENT;
-                        }
                         response.headers_mut().insert(
                             header::CACHE_CONTROL,
                             axum::http::HeaderValue::from_static("no-store"),
                         );
                     }
-                    if let Some(origin) = origin
-                        .filter(|_| !(is_clipboard && response.status() == StatusCode::FORBIDDEN))
-                    {
+                    if let Some(origin) = origin.filter(|_| {
+                        origin_allowed
+                            && !(is_clipboard && response.status() == StatusCode::FORBIDDEN)
+                    }) {
                         let headers = response.headers_mut();
                         headers.insert(
                             header::ACCESS_CONTROL_ALLOW_ORIGIN,
@@ -786,13 +815,16 @@ pub fn run_server(
                             header::ACCESS_CONTROL_ALLOW_HEADERS,
                             axum::http::HeaderValue::from_static("Content-Type, Authorization"),
                         );
+                        headers
+                            .append(header::VARY, axum::http::HeaderValue::from_static("Origin"));
                     }
                     response
                 },
             ))
             .with_state(state);
 
-        tracing::info!("Embedded server listening on http://0.0.0.0:{}", local_port);
+        let local_addr = listener.local_addr().expect("bound listener");
+        tracing::info!("Embedded server listening on http://{}", local_addr);
         axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
             .await
             .unwrap();

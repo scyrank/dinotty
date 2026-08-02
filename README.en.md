@@ -173,11 +173,28 @@ $env:DINOTTY_SHELL = "pwsh.exe"
 
 On Windows, the default shell is detected in this order: `DINOTTY_SHELL` → `pwsh.exe` → `powershell.exe` → `%ComSpec%` / `cmd.exe`.
 
-Default port is **8999**. After starting, visit `http://<your-ip>:8999`. Use `-p` to specify a custom port:
+By default Dinotty listens only on `127.0.0.1`, port **8999**. After
+starting, visit `http://127.0.0.1:8999`. Use `-p` to specify a custom port:
 
 ```bash
 dinotty-server -p 3000
 ```
+
+LAN access must be enabled explicitly with `--bind 0.0.0.0` (or
+`DINOTTY_BIND_ADDR=0.0.0.0`). Configure a strong token and host firewall:
+
+```powershell
+.\dinotty-server.exe --bind 0.0.0.0 -p 8999
+```
+
+On first start, Dinotty generates a random token before accepting
+connections. Run `.\dinotty-server.exe --print-token` as the same OS user to
+retrieve it, or set `DINOTTY_TOKEN` before startup.
+
+For security, built-in SSH private-key authentication supports Ed25519/ECDSA
+without compiling the Rust RSA implementation that has a known timing
+side-channel and no upstream fix. Migrate legacy `id_rsa` profiles to
+`id_ed25519`, or use password authentication.
 
 ## Quick Start
 

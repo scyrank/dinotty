@@ -28,9 +28,17 @@ pub async fn ws_handler(
     State(manager): State<Arc<SessionManager>>,
     State(history): State<HistoryState>,
     State(settings): State<SettingsState>,
-    ConnectInfo(_addr): ConnectInfo<SocketAddr>,
-    _headers: axum::http::HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
+    let s = settings.read().await;
+    let allowed_origins = s.auth.allowed_origins.clone();
+    let trusted_proxies = s.auth.trusted_proxies.clone();
+    drop(s);
+    if !crate::auth::check_ws_origin(&headers, &allowed_origins, addr.ip(), &trusted_proxies) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+
     // WebSocket connections only attach to panes already created through /api/tabs.
     // Reject argv explicitly so a reconnect can never silently turn into a spawn request.
     if q.argv.is_some() {

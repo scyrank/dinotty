@@ -56,7 +56,8 @@ pub fn validate_manifest(manifest: &PluginManifest) -> Result<(), String> {
         }
 
         let permissions = manifest.permissions.as_deref().unwrap_or_default();
-        let uses_native_runtime = !bin.entries.is_empty() || bin.lifecycle.is_some();
+        let uses_native_runtime =
+            bin.entry.is_some() || !bin.entries.is_empty() || bin.lifecycle.is_some();
         if uses_native_runtime && !permissions.iter().any(|p| p == NATIVE_EXECUTE_PERMISSION) {
             return Err(format!(
                 "native plugin features require permission '{NATIVE_EXECUTE_PERMISSION}'"
@@ -115,7 +116,7 @@ pub fn required_native_permissions(manifest: &PluginManifest) -> Vec<&str> {
     let Some(bin) = &manifest.bin else {
         return Vec::new();
     };
-    if bin.entries.is_empty() && bin.lifecycle.is_none() {
+    if bin.entry.is_none() && bin.entries.is_empty() && bin.lifecycle.is_none() {
         return Vec::new();
     }
 
@@ -551,6 +552,25 @@ mod tests {
         manifest.bin.as_mut().unwrap().lifecycle.as_mut().unwrap().shutdown_deadline_ms = 30_000;
         manifest.bin.as_mut().unwrap().lifecycle.as_mut().unwrap().force_kill_after_ms = 60_001;
         assert!(validate_manifest(&manifest).is_err());
+    }
+
+    #[test]
+    fn legacy_native_entry_requires_permission_and_explicit_approval() {
+        let mut manifest = manifest(None);
+        manifest.bin = Some(BinConfig {
+            mode: "cli".into(),
+            entry: Some("bin/legacy-tool.exe".into()),
+            entries: HashMap::new(),
+            lifecycle: None,
+        });
+
+        let error = validate_manifest(&manifest).unwrap_err();
+        assert!(error.contains(NATIVE_EXECUTE_PERMISSION));
+
+        manifest.permissions = Some(vec![NATIVE_EXECUTE_PERMISSION.into()]);
+        assert!(validate_manifest(&manifest).is_ok());
+        assert!(require_native_approval(&manifest, false).is_err());
+        assert!(require_native_approval(&manifest, true).is_ok());
     }
 
     #[test]

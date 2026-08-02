@@ -6,6 +6,15 @@ import type { TerminalInstance } from './useTerminal'
 const MAX_PREVIEW_ROWS = 28
 const MAX_PREVIEW_COLS = 120 // beyond this, preview chars are <2px wide and invisible
 
+/** Only allow the color forms produced by built-in and imported terminal themes. */
+export function safeThemeColor(value: unknown, fallback: string): string {
+  if (typeof value !== 'string') return fallback
+  const color = value.trim()
+  return /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color)
+    ? color
+    : fallback
+}
+
 /** Recursive node for split-pane preview layout */
 export interface PanePreviewNode {
   html: string
@@ -63,24 +72,24 @@ function captureColoredHtml(terminal: TerminalInstance): string {
   // Get theme colors from xterm options
   const theme = (xterm.options as any).theme ?? {}
   const themeColors: string[] = [
-    theme.black ?? '#000000',
-    theme.red ?? '#e06c75',
-    theme.green ?? '#98c379',
-    theme.yellow ?? '#e5c07b',
-    theme.blue ?? '#61afef',
-    theme.magenta ?? '#c678dd',
-    theme.cyan ?? '#56b6c2',
-    theme.white ?? '#abb2bf',
-    theme.brightBlack ?? '#5c6370',
-    theme.brightRed ?? '#e06c75',
-    theme.brightGreen ?? '#98c379',
-    theme.brightYellow ?? '#e5c07b',
-    theme.brightBlue ?? '#61afef',
-    theme.brightMagenta ?? '#c678dd',
-    theme.brightCyan ?? '#56b6c2',
-    theme.brightWhite ?? '#ffffff',
+    safeThemeColor(theme.black, '#000000'),
+    safeThemeColor(theme.red, '#e06c75'),
+    safeThemeColor(theme.green, '#98c379'),
+    safeThemeColor(theme.yellow, '#e5c07b'),
+    safeThemeColor(theme.blue, '#61afef'),
+    safeThemeColor(theme.magenta, '#c678dd'),
+    safeThemeColor(theme.cyan, '#56b6c2'),
+    safeThemeColor(theme.white, '#abb2bf'),
+    safeThemeColor(theme.brightBlack, '#5c6370'),
+    safeThemeColor(theme.brightRed, '#e06c75'),
+    safeThemeColor(theme.brightGreen, '#98c379'),
+    safeThemeColor(theme.brightYellow, '#e5c07b'),
+    safeThemeColor(theme.brightBlue, '#61afef'),
+    safeThemeColor(theme.brightMagenta, '#c678dd'),
+    safeThemeColor(theme.brightCyan, '#56b6c2'),
+    safeThemeColor(theme.brightWhite, '#ffffff'),
   ]
-  const defaultFg = theme.foreground ?? '#abb2bf'
+  const defaultFg = safeThemeColor(theme.foreground, '#abb2bf')
 
   const parts: string[] = []
   let lastFg = ''

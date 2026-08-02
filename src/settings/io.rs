@@ -24,10 +24,24 @@ pub(crate) fn bg_image_path() -> PathBuf {
 
 #[must_use]
 pub fn load_token() -> Option<String> {
-    std::fs::read_to_string(token_path())
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+    let data = std::fs::read(token_path()).ok()?;
+    let (decoded, protected) = match crate::platform::secret::decode_persisted(&data) {
+        Ok(value) => value,
+        Err(e) => {
+            error!("decrypt token: {}", e);
+            return None;
+        }
+    };
+    let token = String::from_utf8(decoded).ok()?.trim().to_string();
+    if token.is_empty() {
+        return None;
+    }
+    if !protected {
+        if let Err(e) = save_token(&token) {
+            error!("migrate plaintext token storage: {}", e);
+        }
+    }
+    Some(token)
 }
 
 /// # Errors
@@ -36,38 +50,52 @@ pub fn save_token(token: &str) -> Result<(), String> {
     let dir = config_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = token_path();
-    std::fs::write(&path, token).map_err(|e| e.to_string())?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
-    }
+    let persisted = crate::platform::secret::encode_persisted(token.as_bytes())?;
+    std::fs::write(&path, persisted).map_err(|e| e.to_string())?;
+    crate::platform::fs::set_private_file_permissions(&path).map_err(|e| e.to_string())?;
     Ok(())
 }
 
 pub fn load_settings() -> Settings {
     let path = settings_path();
     let mut settings = if path.exists() {
-        match std::fs::read_to_string(&path) {
-            Ok(data) => match serde_json::from_str::<Settings>(&data) {
-                Ok(mut settings) => {
-                    let mut migrated = migrate_settings(&mut settings);
-                    if settings.upload_dir.trim().is_empty() {
-                        settings.upload_dir = default_upload_dir();
-                        migrated = true;
-                    }
-                    let text_changed = clamp_text_config(&mut settings.text);
-                    let threshold_changed = clamp_quick_send_threshold(&mut settings);
-                    let action_keyboard_changed = normalize_action_keyboards(&mut settings);
-                    if migrated || text_changed || threshold_changed || action_keyboard_changed {
-                        if let Err(e) = save_settings(&settings) {
-                            error!("persist settings on load: {}", e);
+        match std::fs::read(&path) {
+            Ok(persisted) => match crate::platform::secret::decode_persisted(&persisted) {
+                Ok((decoded, protected)) => match String::from_utf8(decoded) {
+                    Ok(data) => match serde_json::from_str::<Settings>(&data) {
+                        Ok(mut settings) => {
+                            let mut migrated = migrate_settings(&mut settings);
+                            migrated |= !protected;
+                            if settings.upload_dir.trim().is_empty() {
+                                settings.upload_dir = default_upload_dir();
+                                migrated = true;
+                            }
+                            let text_changed = clamp_text_config(&mut settings.text);
+                            let threshold_changed = clamp_quick_send_threshold(&mut settings);
+                            let action_keyboard_changed = normalize_action_keyboards(&mut settings);
+                            if migrated
+                                || text_changed
+                                || threshold_changed
+                                || action_keyboard_changed
+                            {
+                                if let Err(e) = save_settings(&settings) {
+                                    error!("persist settings on load: {}", e);
+                                }
+                            }
+                            return settings;
                         }
+                        Err(e) => {
+                            error!("parse settings: {}", e);
+                            Settings::default()
+                        }
+                    },
+                    Err(e) => {
+                        error!("settings are not valid UTF-8: {}", e);
+                        Settings::default()
                     }
-                    return settings;
-                }
+                },
                 Err(e) => {
-                    error!("parse settings: {}", e);
+                    error!("decrypt settings: {}", e);
                     Settings::default()
                 }
             },
@@ -143,7 +171,10 @@ pub(crate) fn save_settings(settings: &Settings) -> Result<(), String> {
     let dir = config_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let json = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
-    std::fs::write(settings_path(), json).map_err(|e| e.to_string())?;
+    let persisted = crate::platform::secret::encode_persisted(json.as_bytes())?;
+    let path = settings_path();
+    std::fs::write(&path, persisted).map_err(|e| e.to_string())?;
+    crate::platform::fs::set_private_file_permissions(&path).map_err(|e| e.to_string())?;
     Ok(())
 }
 
