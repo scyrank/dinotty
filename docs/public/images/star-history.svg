@@ -10,39 +10,39 @@
 
   <!-- Title -->
   <text x="400.0" y="22" text-anchor="middle" fill="#e6edf3" font-family="system-ui,sans-serif" font-size="14" font-weight="600">
-    Star History - 503 stars
+    Star History - 511 stars
   </text>
 
   <!-- Y-axis grid + labels -->
   <line x1="55" y1="250.0" x2="780" y2="250.0" stroke="#21262d" stroke-width="0.5"/>
   <text x="47" y="254.0" text-anchor="end" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">0</text>
-  <line x1="55" y1="208.3" x2="780" y2="208.3" stroke="#21262d" stroke-width="0.5"/>
-  <text x="47" y="212.3" text-anchor="end" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">100</text>
-  <line x1="55" y1="166.1" x2="780" y2="166.1" stroke="#21262d" stroke-width="0.5"/>
-  <text x="47" y="170.1" text-anchor="end" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">201</text>
-  <line x1="55" y1="124.3" x2="780" y2="124.3" stroke="#21262d" stroke-width="0.5"/>
-  <text x="47" y="128.3" text-anchor="end" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">301</text>
-  <line x1="55" y1="82.2" x2="780" y2="82.2" stroke="#21262d" stroke-width="0.5"/>
-  <text x="47" y="86.2" text-anchor="end" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">402</text>
+  <line x1="55" y1="208.1" x2="780" y2="208.1" stroke="#21262d" stroke-width="0.5"/>
+  <text x="47" y="212.1" text-anchor="end" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">102</text>
+  <line x1="55" y1="166.2" x2="780" y2="166.2" stroke="#21262d" stroke-width="0.5"/>
+  <text x="47" y="170.2" text-anchor="end" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">204</text>
+  <line x1="55" y1="124.2" x2="780" y2="124.2" stroke="#21262d" stroke-width="0.5"/>
+  <text x="47" y="128.2" text-anchor="end" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">306</text>
+  <line x1="55" y1="82.3" x2="780" y2="82.3" stroke="#21262d" stroke-width="0.5"/>
+  <text x="47" y="86.3" text-anchor="end" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">408</text>
   <line x1="55" y1="40.0" x2="780" y2="40.0" stroke="#21262d" stroke-width="0.5"/>
-  <text x="47" y="44.0" text-anchor="end" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">503</text>
+  <text x="47" y="44.0" text-anchor="end" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">511</text>
 
   <!-- Area fill -->
-  <polygon points="55.0,246.7 64.8,244.6 74.6,239.1 84.4,236.2 94.2,235.4 104.0,234.6 113.8,233.7 123.6,233.3 133.4,232.9 143.2,232.0 153.0,232.0 162.8,229.5 172.6,225.4 182.4,222.4 192.2,221.6 202.0,219.1 211.8,217.9 221.6,215.8 231.4,214.5 241.1,212.4 250.9,212.4 260.7,210.8 270.5,208.3 280.3,205.7 290.1,203.7 299.9,203.2 309.7,202.0 319.5,200.7 329.3,200.3 339.1,199.1 348.9,198.2 358.7,197.4 368.5,196.1 378.3,194.5 388.1,194.5 397.9,193.6 407.7,193.2 417.5,192.8 427.3,186.1 437.1,166.1 446.9,158.2 456.7,151.1 466.5,148.1 476.3,140.6 486.1,131.4 495.9,123.5 505.7,116.8 515.5,113.9 525.3,111.4 535.1,108.9 544.9,105.5 554.7,103.9 564.5,101.8 574.3,99.3 584.1,98.0 593.9,97.6 603.6,95.9 613.4,94.7 623.2,92.6 633.0,92.2 642.8,91.8 652.6,90.1 662.4,88.8 672.2,85.9 682.0,85.5 691.8,85.1 701.6,65.5 711.4,62.5 721.2,55.9 731.0,52.5 740.8,49.6 750.6,45.4 760.4,43.8 770.2,42.1 780.0,40.0 780.0,250.0 55.0,250.0" fill="url(#fill)"/>
+  <polygon points="55.0,246.7 64.2,244.7 73.4,239.3 82.5,236.4 91.7,235.6 100.9,234.8 110.1,234.0 119.2,233.6 128.4,233.2 137.6,232.3 146.8,232.3 155.9,229.9 165.1,225.8 174.3,222.9 183.5,222.1 192.7,219.6 201.8,218.4 211.0,216.3 220.2,215.1 229.4,213.0 238.5,213.0 247.7,211.4 256.9,208.9 266.1,206.4 275.3,204.4 284.4,204.0 293.6,202.7 302.8,201.5 312.0,201.1 321.1,199.9 330.3,199.0 339.5,198.2 348.7,197.0 357.8,195.3 367.0,195.3 376.2,194.5 385.4,194.1 394.6,193.7 403.7,187.1 412.9,167.4 422.1,159.6 431.3,152.6 440.4,149.7 449.6,142.3 458.8,133.3 468.0,125.5 477.2,118.9 486.3,116.0 495.5,113.6 504.7,111.1 513.9,107.8 523.0,106.2 532.2,104.1 541.4,101.6 550.6,100.4 559.7,100.0 568.9,98.4 578.1,97.1 587.3,95.1 596.5,94.7 605.6,94.2 614.8,92.6 624.0,91.4 633.2,88.5 642.3,88.1 651.5,87.7 660.7,68.4 669.9,65.5 679.1,58.9 688.2,55.6 697.4,52.7 706.6,48.6 715.8,47.0 724.9,45.3 734.1,43.3 743.3,43.3 752.5,42.1 761.6,41.6 770.8,40.4 780.0,40.0 780.0,250.0 55.0,250.0" fill="url(#fill)"/>
 
   <!-- Line -->
-  <polyline points="55.0,246.7 64.8,244.6 74.6,239.1 84.4,236.2 94.2,235.4 104.0,234.6 113.8,233.7 123.6,233.3 133.4,232.9 143.2,232.0 153.0,232.0 162.8,229.5 172.6,225.4 182.4,222.4 192.2,221.6 202.0,219.1 211.8,217.9 221.6,215.8 231.4,214.5 241.1,212.4 250.9,212.4 260.7,210.8 270.5,208.3 280.3,205.7 290.1,203.7 299.9,203.2 309.7,202.0 319.5,200.7 329.3,200.3 339.1,199.1 348.9,198.2 358.7,197.4 368.5,196.1 378.3,194.5 388.1,194.5 397.9,193.6 407.7,193.2 417.5,192.8 427.3,186.1 437.1,166.1 446.9,158.2 456.7,151.1 466.5,148.1 476.3,140.6 486.1,131.4 495.9,123.5 505.7,116.8 515.5,113.9 525.3,111.4 535.1,108.9 544.9,105.5 554.7,103.9 564.5,101.8 574.3,99.3 584.1,98.0 593.9,97.6 603.6,95.9 613.4,94.7 623.2,92.6 633.0,92.2 642.8,91.8 652.6,90.1 662.4,88.8 672.2,85.9 682.0,85.5 691.8,85.1 701.6,65.5 711.4,62.5 721.2,55.9 731.0,52.5 740.8,49.6 750.6,45.4 760.4,43.8 770.2,42.1 780.0,40.0" fill="none" stroke="#FFD700" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <polyline points="55.0,246.7 64.2,244.7 73.4,239.3 82.5,236.4 91.7,235.6 100.9,234.8 110.1,234.0 119.2,233.6 128.4,233.2 137.6,232.3 146.8,232.3 155.9,229.9 165.1,225.8 174.3,222.9 183.5,222.1 192.7,219.6 201.8,218.4 211.0,216.3 220.2,215.1 229.4,213.0 238.5,213.0 247.7,211.4 256.9,208.9 266.1,206.4 275.3,204.4 284.4,204.0 293.6,202.7 302.8,201.5 312.0,201.1 321.1,199.9 330.3,199.0 339.5,198.2 348.7,197.0 357.8,195.3 367.0,195.3 376.2,194.5 385.4,194.1 394.6,193.7 403.7,187.1 412.9,167.4 422.1,159.6 431.3,152.6 440.4,149.7 449.6,142.3 458.8,133.3 468.0,125.5 477.2,118.9 486.3,116.0 495.5,113.6 504.7,111.1 513.9,107.8 523.0,106.2 532.2,104.1 541.4,101.6 550.6,100.4 559.7,100.0 568.9,98.4 578.1,97.1 587.3,95.1 596.5,94.7 605.6,94.2 614.8,92.6 624.0,91.4 633.2,88.5 642.3,88.1 651.5,87.7 660.7,68.4 669.9,65.5 679.1,58.9 688.2,55.6 697.4,52.7 706.6,48.6 715.8,47.0 724.9,45.3 734.1,43.3 743.3,43.3 752.5,42.1 761.6,41.6 770.8,40.4 780.0,40.0" fill="none" stroke="#FFD700" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
 
   <!-- X-axis labels -->
   <text x="55.0" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">05-16</text>
-  <text x="192.2" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">05-30</text>
-  <text x="329.3" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">06-13</text>
-  <text x="466.5" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">06-27</text>
-  <text x="603.6" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">07-11</text>
-  <text x="740.8" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">07-25</text>
-  <text x="780.0" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">07-29</text>
+  <text x="192.7" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">05-31</text>
+  <text x="330.3" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">06-15</text>
+  <text x="468.0" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">06-30</text>
+  <text x="605.6" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">07-15</text>
+  <text x="743.3" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">07-30</text>
+  <text x="780.0" y="268" text-anchor="middle" fill="#8b949e" font-family="system-ui,sans-serif" font-size="10">08-03</text>
 
   <!-- End dot -->
   <circle cx="780.0" cy="40.0" r="4" fill="#FFD700"/>
-  <text x="778.0" y="30.0" text-anchor="end" fill="#FFD700" font-family="system-ui,sans-serif" font-size="12" font-weight="600">503</text>
+  <text x="778.0" y="30.0" text-anchor="end" fill="#FFD700" font-family="system-ui,sans-serif" font-size="12" font-weight="600">511</text>
 </svg>
