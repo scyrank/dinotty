@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 const generalMocks = vi.hoisted(() => ({
   authFetch: vi.fn(),
+  tauriInvoke: vi.fn(),
+  isTauri: false,
   uploadStatus: 200,
   defaultDir: '/tmp/dinotty',
 }))
@@ -20,7 +22,8 @@ vi.mock('../composables/apiBase', () => ({
 }))
 
 vi.mock('../composables/useTransport', () => ({
-  isTauri: () => false,
+  isTauri: () => generalMocks.isTauri,
+  tauriInvoke: generalMocks.tauriInvoke,
 }))
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -39,11 +42,7 @@ vi.mock('../utils/clipboard', () => ({
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import GeneralTab from '../components/settings/GeneralTab.vue'
-import {
-  __resetSettingsLoadStateForTest,
-  loadSettings,
-  settings,
-} from '../composables/useSettings'
+import { __resetSettingsLoadStateForTest, loadSettings, settings } from '../composables/useSettings'
 
 // Spec: openspec/changes/confirm-before-close-tab/spec.md
 //   "### Requirement: Setting UI In General Settings"
@@ -57,6 +56,8 @@ describe('GeneralTab - confirm-before-close-tab toggle', () => {
     settings.workspace_badge_mode = null
     settings.upload_dir = ''
     generalMocks.uploadStatus = 200
+    generalMocks.isTauri = false
+    generalMocks.tauriInvoke.mockReset()
     generalMocks.defaultDir = '/tmp/dinotty'
     generalMocks.authFetch.mockReset()
     generalMocks.authFetch.mockImplementation(async (url: string, init?: RequestInit) => {
@@ -275,6 +276,76 @@ describe('GeneralTab - confirm-before-close-tab toggle', () => {
     expect(wrapper.find<HTMLInputElement>('[data-testid="upload-dir-input"]').element.value).toBe(
       '/var/tmp/dinotty'
     )
+  })
+
+  it('explains Windows portable risks and keeps autostart off when cancelled', async () => {
+    generalMocks.isTauri = true
+    generalMocks.tauriInvoke.mockResolvedValue({
+      packageKind: 'windowsDesktop',
+      canEnable: true,
+      canDisable: false,
+      state: 'off',
+      warnings: ['pathMoveBreaksRegistration'],
+    })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const wrapper = mount(GeneralTab)
+    await flush()
+
+    const input = wrapper.find<HTMLInputElement>('[data-setting="autostart"]')
+    expect(input.exists()).toBe(true)
+    await input.setValue(true)
+    await flush()
+
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/Windows/i))
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/portable|便携版/i))
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/fixed|固定/i))
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/startup entry|启动项/i))
+    expect(input.element.checked).toBe(false)
+    expect(generalMocks.tauriInvoke).toHaveBeenCalledTimes(1)
+    expect(generalMocks.tauriInvoke).toHaveBeenCalledWith('autostart_status')
+  })
+
+  it('explains AppImage portable risks before enabling autostart', async () => {
+    generalMocks.isTauri = true
+    generalMocks.tauriInvoke.mockResolvedValue({
+      packageKind: 'linuxAppImage',
+      canEnable: true,
+      canDisable: false,
+      state: 'off',
+      warnings: ['pathMoveBreaksRegistration'],
+    })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const wrapper = mount(GeneralTab)
+    await flush()
+
+    await wrapper.find<HTMLInputElement>('[data-setting="autostart"]').setValue(true)
+    await flush()
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/AppImage/i))
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/portable|便携版/i))
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/fixed|固定/i))
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/startup entry|启动项/i))
+    expect(generalMocks.tauriInvoke).toHaveBeenCalledTimes(1)
+  })
+
+  it('hides backend-only autostart environment warnings', async () => {
+    generalMocks.isTauri = true
+    generalMocks.tauriInvoke.mockResolvedValue({
+      packageKind: 'linuxAppImage',
+      canEnable: true,
+      canDisable: false,
+      state: 'off',
+      warnings: ['desktopEnvironmentDependent', 'systemMaySuppress'],
+    })
+    const wrapper = mount(GeneralTab)
+    await flush()
+
+    const card = wrapper.get('[data-testid="autostart-card"]')
+    expect(card.findAll('p.settings-hint')).toHaveLength(1)
+    expect(card.text()).not.toContain('desktopEnvironmentDependent')
+    expect(card.text()).not.toContain('systemMaySuppress')
+    expect(card.text()).not.toContain('AppIndicator')
   })
 })
 

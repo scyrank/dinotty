@@ -672,6 +672,40 @@ const messages: Record<Locale, Record<string, string>> = {
     'settings.spaceConfirmsDialogs': 'Use Space to confirm dialogs',
     'settings.spaceConfirmsDialogsHint': 'Applies to all confirmation dialogs',
     'settings.behavior': 'Behavior',
+    'autostart.title': 'Startup',
+    'autostart.loginLaunch': 'Launch at login',
+    'autostart.hint':
+      'Starts in the system tray without opening the main window. Use the tray, global shortcut, or launch Dinotty again to open it.',
+    'autostart.useCurrentFile': 'Use current file',
+    'autostart.disable': 'Disable autostart',
+    'autostart.portableConfirm.windows':
+      'You are enabling autostart for the Windows portable edition. Keep the program in a fixed, trusted location.\nAfter enabling it, moving, renaming, deleting, or replacing the program file will not update the startup entry automatically. Disable autostart before replacing it, then enable it again in the new copy.\nContinue?',
+    'autostart.portableConfirm.appImage':
+      'You are enabling autostart for the AppImage portable edition. Keep the AppImage in a fixed, trusted location.\nAfter enabling it, moving, renaming, deleting, or replacing the AppImage will not update the startup entry automatically. Disable autostart before replacing it, then enable it again in the new AppImage.\nContinue?',
+    'autostart.support.unsupportedPlatform': 'Autostart is not supported on this platform.',
+    'autostart.support.unsupportedPackage':
+      'This Dinotty package cannot create a new autostart entry.',
+    'autostart.support.unstableInstallLocation':
+      'Move Dinotty to a supported local installation location before enabling autostart.',
+    'autostart.support.executablePathUnavailable':
+      'The current executable path cannot be verified.',
+    'autostart.support.homeDirectoryUnavailable':
+      'The current user configuration directory is unavailable.',
+    'autostart.support.trayUnavailable':
+      'A working system tray is required before autostart can be enabled.',
+    'autostart.support.runtimeEvidenceInvalid':
+      'The AppImage runtime path information is incomplete or inconsistent.',
+    'autostart.stateError.registrationMalformed':
+      'The existing startup entry is not in Dinotty’s managed format and was left untouched. Inspect HKCU Run\\Dinotty, ~/Library/LaunchAgents/com.dinotty.terminal.autostart.plist, or ~/.config/autostart/dinotty.desktop for your platform.',
+    'autostart.stateError.registrationUnreadable':
+      'The operating system startup entry could not be read. Check its permissions and try again.',
+    'autostart.warning.removableVolumeMayBeUnavailable':
+      'The removable drive and its drive letter must be available when you sign in.',
+    'autostart.operation.notAllowed': 'The current startup entry cannot be changed safely.',
+    'autostart.operation.writeFailed': 'The startup entry could not be written.',
+    'autostart.operation.deleteFailed': 'The startup entry could not be removed.',
+    'autostart.operation.verificationFailed':
+      'The startup entry could not be verified after the change.',
     'confirm.closeTabTitle': 'Close session?',
     'confirm.closeTabMessage': 'Closing this session will terminate all running processes. Close',
     'confirm.closeTabConfirm': 'Close',
@@ -689,12 +723,6 @@ const messages: Record<Locale, Record<string, string>> = {
     'traySetup.openSettings': 'Open system tray settings',
     'traySetup.confirmAndHide': 'I enabled it, hide window',
     'traySetup.cancel': 'Do not hide yet',
-    'settings.systemTray': 'System tray',
-    'settings.systemTrayWindows':
-      'Windows 11: Settings → Personalization → Taskbar → Other system tray icons. Windows 10: Taskbar settings → Select which icons appear on the taskbar. Installer and portable builds may have separate preferences.',
-    'settings.systemTrayLinux':
-      'Linux tray support is experimental and automatically falls back when no AppIndicator host or runtime library is available.',
-
     'fileBookmark.title': 'Bookmarks',
     'fileBookmark.empty': 'No bookmarks yet',
     'fileBookmark.emptyHint': 'Right-click a file to add',
@@ -1494,6 +1522,33 @@ const messages: Record<Locale, Record<string, string>> = {
     'settings.spaceConfirmsDialogs': '使用空格键确认对话框',
     'settings.spaceConfirmsDialogsHint': '适用于所有确认对话框',
     'settings.behavior': '行为',
+    'autostart.title': '启动',
+    'autostart.loginLaunch': '登录时自动启动',
+    'autostart.hint':
+      '启动后只在系统托盘运行，不会自动打开主窗口。可通过托盘、全局快捷键或再次启动 Dinotty 打开。',
+    'autostart.useCurrentFile': '改用当前文件',
+    'autostart.disable': '关闭自启动',
+    'autostart.portableConfirm.windows':
+      '你正在为 Windows 便携版启用登录自启动。请先将程序放在固定、可信的位置。\n启用后，移动、重命名、删除或更换程序文件不会自动更新启动项。更换前请关闭自启动，并在新程序中重新启用。\n是否继续？',
+    'autostart.portableConfirm.appImage':
+      '你正在为 AppImage 便携版启用登录自启动。请先将 AppImage 放在固定、可信的位置。\n启用后，移动、重命名、删除或更换 AppImage 不会自动更新启动项。更换前请关闭自启动，并在新 AppImage 中重新启用。\n是否继续？',
+    'autostart.support.unsupportedPlatform': '当前平台不支持登录自启动。',
+    'autostart.support.unsupportedPackage': '当前 Dinotty 包无法创建新的自启动记录。',
+    'autostart.support.unstableInstallLocation':
+      '请先将 Dinotty 移到受支持的本地安装位置，再启用自启动。',
+    'autostart.support.executablePathUnavailable': '无法验证当前可执行文件路径。',
+    'autostart.support.homeDirectoryUnavailable': '当前用户配置目录不可用。',
+    'autostart.support.trayUnavailable': '启用自启动前需要可用的系统托盘。',
+    'autostart.support.runtimeEvidenceInvalid': 'AppImage 运行时路径信息缺失或相互冲突。',
+    'autostart.stateError.registrationMalformed':
+      '现有启动项不符合 Dinotty 的受管格式，已保持不变。请按平台检查 HKCU Run\\Dinotty、~/Library/LaunchAgents/com.dinotty.terminal.autostart.plist 或 ~/.config/autostart/dinotty.desktop。',
+    'autostart.stateError.registrationUnreadable': '无法读取操作系统启动项，请检查权限后重试。',
+    'autostart.warning.removableVolumeMayBeUnavailable':
+      '登录时必须能访问该可移动设备，并保持相同盘符。',
+    'autostart.operation.notAllowed': '当前启动项无法安全修改。',
+    'autostart.operation.writeFailed': '无法写入启动项。',
+    'autostart.operation.deleteFailed': '无法删除启动项。',
+    'autostart.operation.verificationFailed': '修改后无法验证启动项状态。',
     'confirm.closeTabTitle': '关闭会话？',
     'confirm.closeTabMessage': '关闭此会话将终止所有正在运行的进程。仍要关闭',
     'confirm.closeTabConfirm': '关闭',
@@ -1510,12 +1565,6 @@ const messages: Record<Locale, Record<string, string>> = {
     'traySetup.openSettings': '打开系统托盘设置',
     'traySetup.confirmAndHide': '我已开启，隐藏窗口',
     'traySetup.cancel': '暂不隐藏',
-    'settings.systemTray': '系统托盘',
-    'settings.systemTrayWindows':
-      'Windows 11：设置 → 个性化 → 任务栏 → 其他系统托盘图标。Windows 10：任务栏设置 → 选择哪些图标显示在任务栏上。安装版与 portable 版可能使用独立偏好。',
-    'settings.systemTrayLinux':
-      'Linux 托盘为实验性功能；没有 AppIndicator 宿主或运行库时会自动降级。',
-
     'fileBookmark.title': '书签',
     'fileBookmark.empty': '暂无书签',
     'fileBookmark.emptyHint': '右键点击文件添加',
