@@ -1465,17 +1465,19 @@ dependencies = [
 
 [[package]]
 name = "dinotty-desktop"
-version = "0.19.1"
+version = "0.20.0"
 dependencies = [
  "axum 0.7.9",
  "base64 0.22.1",
  "dinotty-server",
  "dunce",
+ "libc",
  "local-ip-address",
  "mime_guess",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
+ "plist",
  "portable-pty",
  "rand 0.10.1",
  "reqwest 0.12.28",
@@ -1489,17 +1491,20 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "tauri-plugin-shell",
  "tauri-plugin-single-instance",
+ "tempfile",
  "tokio",
  "tower-http 0.5.2",
  "tracing",
  "tracing-subscriber",
  "urlencoding",
  "uuid",
+ "windows-sys 0.60.2",
+ "winreg 0.55.0",
 ]
 
 [[package]]
 name = "dinotty-server"
-version = "0.19.1"
+version = "0.20.0"
 dependencies = [
  "arboard",
  "axum 0.7.9",
@@ -1593,7 +1598,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.2",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2797,7 +2802,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.62.2",
+ "windows-core 0.57.0",
 ]
 
 [[package]]
@@ -3704,7 +3709,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4022,7 +4027,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
- "windows-sys 0.45.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -6084,6 +6089,7 @@ dependencies = [
  "gtk",
  "heck 0.5.0",
  "http",
+ "image",
  "jni",
  "libc",
  "log",
@@ -6841,9 +6847,9 @@ dependencies = [
 
 [[package]]
 name = "tray-icon"
-version = "0.24.1"
+version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65ba1e5f6b9ef9fd87e21b9c6f351554dbd717960089168fcfdef854686961dc"
+checksum = "045979e3f037cd18ad1cb2a419dfda133c5c29c9f3453370079f2255d46c257e"
 dependencies = [
  "crossbeam-channel",
  "dirs 6.0.0",

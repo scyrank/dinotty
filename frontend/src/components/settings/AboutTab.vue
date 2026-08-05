@@ -21,6 +21,28 @@
           https://github.com/xichan96/dinotty
         </a>
       </div>
+      <div class="settings-row">
+        <label>{{ t('settings.about.documentation') }}</label>
+        <a
+          href="https://xichan96.github.io/dinotty/"
+          target="_blank"
+          rel="noopener"
+          class="about-link"
+        >
+          https://xichan96.github.io/dinotty/
+        </a>
+      </div>
+      <div class="settings-row">
+        <label>{{ t('settings.about.feedback') }}</label>
+        <a
+          href="https://github.com/xichan96/dinotty/issues"
+          target="_blank"
+          rel="noopener"
+          class="about-link"
+        >
+          https://github.com/xichan96/dinotty/issues
+        </a>
+      </div>
     </div>
   </div>
 </template>
