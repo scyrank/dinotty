@@ -727,10 +727,9 @@ pub fn get_shell_args(shell: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        is_claude_session_env_key, locale_adjustment, notify_url_for, resolve_local_cwd,
-        LocaleAdjustment,
-    };
+    #[cfg(windows)]
+    use super::resolve_local_cwd;
+    use super::{is_claude_session_env_key, locale_adjustment, notify_url_for, LocaleAdjustment};
 
     #[test]
     fn builds_notify_url_for_bound_port() {

@@ -699,6 +699,7 @@ mod tests {
             active_pane_id: None,
             cwd: cwd.map(String::from),
             connection_id: connection_id.map(String::from),
+            workspace_id: None,
             title: None,
         }
     }
