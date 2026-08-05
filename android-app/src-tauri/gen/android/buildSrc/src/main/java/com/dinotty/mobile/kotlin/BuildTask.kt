@@ -48,7 +48,9 @@ open class BuildTask : DefaultTask() {
         val rootDirRel = rootDirRel ?: throw GradleException("rootDirRel cannot be null")
         val target = target ?: throw GradleException("target cannot be null")
         val release = release ?: throw GradleException("release cannot be null")
-        val args = listOf("dlx", "@tauri-apps/cli", "android", "android-studio-script");
+        // Pin the JS CLI so Gradle builds remain reproducible instead of
+        // silently executing a newer package from the registry.
+        val args = listOf("dlx", "@tauri-apps/cli@2.11.4", "android", "android-studio-script");
 
         project.exec {
             workingDir(File(project.projectDir, rootDirRel))
