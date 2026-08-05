@@ -114,6 +114,55 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 
 Windows 上可通过 Docker Desktop 使用 Linux 容器部署；`.env` 中的工作区路径需要按 Docker Desktop 的挂载路径填写。
 
+## 在已有容器内安装 dinotty-server
+
+如果不想构建专用镜像，而是直接在已有的 Debian/Ubuntu 容器里跑 `dinotty-server`，可以用 `supervisor` 守护进程。下面命令在容器内下载 v0.20.0 的 deb 并交给 supervisor 拉起：
+
+```bash
+apt update && apt install -y wget supervisor && \
+wget https://github.com/xichan96/dinotty/releases/download/v0.20.0/dinotty-server_0.20.0-1_amd64.deb && \
+(dpkg -i dinotty-server_0.20.0-1_amd64.deb || apt -f install -y) && \
+rm -f dinotty-server_0.20.0-1_amd64.deb && \
+echo -e "[program:dinotty-server]\ncommand=dinotty-server\nautostart=true\nautorestart=true\nstdout_logfile=/var/log/dinotty.log\nstderr_logfile=/var/log/dinotty.err.log" \
+  > /etc/supervisor/conf.d/dinotty.conf && \
+supervisord -c /etc/supervisor/supervisord.conf && \
+supervisorctl update
+```
+
+要点：
+
+- `dpkg -i ... || apt -f install -y` 在依赖缺失时自动补齐。
+- `supervisord` 必须作为容器主进程（PID 1）常驻，否则容器会立即退出。
+- 默认监听 `8999`；改端口在 supervisor 的 `command=dinotty-server -p <port>`，并在 `docker run -p` 同步映射。
+- 想锁版本请把 URL 里的 `v0.20.0` 与文件名里的 `0.20.0` 替换为目标版本；获取最新版可参考 [安装页](installation#服务端-deb-linux) 的 `VERSION=...` 片段。
+
+最小化 Dockerfile 示例：
+
+```dockerfile
+FROM ubuntu:22.04
+
+RUN apt update && apt install -y wget supervisor && \
+    wget https://github.com/xichan96/dinotty/releases/download/v0.20.0/dinotty-server_0.20.0-1_amd64.deb && \
+    (dpkg -i dinotty-server_0.20.0-1_amd64.deb || apt -f install -y) && \
+    rm -f dinotty-server_0.20.0-1_amd64.deb
+
+COPY <<'EOF' /etc/supervisor/conf.d/dinotty.conf
+[program:dinotty-server]
+command=dinotty-server
+autostart=true
+autorestart=true
+stdout_logfile=/var/log/dinotty.log
+stderr_logfile=/var/log/dinotty.err.log
+EOF
+
+EXPOSE 8999
+CMD ["supervisord", "-c", "/etc/supervisor/supervisord.conf"]
+```
+
+::: warning Token 认证
+公网暴露的容器务必配置 Token。可在 supervisor command 追加 `-t <token>`，或写入 `/etc/dinotty/env` 后 `supervisorctl restart dinotty-server`。详见 [Token 权限系统](/zh/internals/token-system)。
+:::
+
 ## 跨平台包
 
 跨平台桌面包由 `Package` workflow 的 matrix 统一生成：
