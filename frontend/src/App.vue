@@ -355,6 +355,7 @@ import type { Tab, TerminalTab, PluginTab, PaneLayout, LeafPane, DropPosition } 
 import { getAllLeaves, findLeaf, findFirstLeaf, ensureSplitRoot, paneKind } from './types/pane'
 import { createFrozenSendFn, type SendDataFn } from './utils/frozenSend'
 import { initializePaneMru } from './types/paneMru'
+import { setTauriWindowTitle, updateDocumentTitle } from './utils/windowTitle'
 // useSettings replaced by useSettingsStore
 import {
   getApiBase,
@@ -661,6 +662,7 @@ const onSshConnectRef = shallowRef<
     pane_id: string
     layout: any
     connection_id?: string
+    workspace_id?: string
   }) => Promise<void>
 >(async () => {
   throw new Error('onSshConnect not wired')
@@ -724,6 +726,7 @@ const {
   termRefs,
   session,
   activateTab,
+  activateWorkspace,
   closeTab,
   requestCloseTab,
   newTab,
@@ -817,16 +820,13 @@ watch(
   { immediate: true }
 )
 watch(
-  () => {
-    return activeWorkspaceName.value ?? 'dinotty'
-  },
+  () => activeWorkspaceName.value,
   (wsName) => {
-    document.title = wsName
+    const title = updateDocumentTitle(wsName)
     if (isTauri()) {
-      tauriInvoke('set_window_title', { title: wsName }).catch(() => {
-        const tauriWindow = (window as any).__TAURI__?.window?.getCurrentWindow?.()
-        tauriWindow?.setTitle?.(wsName)
-      })
+      void setTauriWindowTitle(title, tauriInvoke, () =>
+        (window as any).__TAURI__?.window?.getCurrentWindow?.()
+      )
     }
   },
   { immediate: true }
