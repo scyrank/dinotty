@@ -186,6 +186,50 @@ pub fn derive_name(path: &str) -> String {
         .unwrap_or_else(|| "root".to_string())
 }
 
+/// Resolve the workspace id a tab belongs to, mirroring frontend
+/// `useWorkspaces.ts:matchWorkspace`:
+///   - SSH tabs (`connection_id` set) match by `Workspace.connection_id`.
+///   - Local tabs match by longest path-prefix of `cwd` against `Workspace.path`.
+///
+/// Returns `None` when no workspace matches, meaning the tab belongs to the
+/// default workspace (`selected_workspace_id == None` in MC state). The
+/// frontend-only `tab.workspaceId` field (explicit assignment via Command
+/// Palette) is not visible to the backend; we accept this edge-case
+/// divergence to keep the backend stateless on that dimension.
+#[must_use]
+pub fn tab_workspace_id(
+    workspaces: &[Workspace],
+    cwd: Option<&str>,
+    connection_id: Option<&str>,
+) -> Option<String> {
+    if let Some(cid) = connection_id {
+        return workspaces
+            .iter()
+            .find(|w| w.connection_id.as_deref() == Some(cid))
+            .map(|w| w.id.clone());
+    }
+    let cwd = cwd.filter(|s| !s.is_empty())?;
+    let mut best: Option<&Workspace> = None;
+    let mut best_len = 0;
+    for ws in workspaces {
+        if ws.connection_id.is_some() {
+            continue;
+        }
+        let path = ws.path.as_str();
+        let path = path.trim_end_matches('/');
+        if path.is_empty() {
+            continue;
+        }
+        if (cwd == path || (cwd.starts_with(path) && cwd.as_bytes().get(path.len()) == Some(&b'/')))
+            && path.len() > best_len
+        {
+            best = Some(ws);
+            best_len = path.len();
+        }
+    }
+    best.map(|w| w.id.clone())
+}
+
 // ---------------------------------------------------------------------------
 // Request types
 // ---------------------------------------------------------------------------
