@@ -146,7 +146,7 @@ Notes:
 - `dpkg -i ... || apt -f install -y` auto-resolves missing dependencies.
 - `supervisord` must run as the container's main process (PID 1); otherwise the container exits immediately.
 - The server listens on `8999` by default. To change the port, set supervisor's `command=dinotty-server -p <port>` and mirror it in `docker run -p`.
-- To pin a version, replace `v0.20.0` in the URL and `0.20.0` in the filename. For the latest release, use the `VERSION=...` snippet on the [Installation](installation#server-deb-linux) page.
+- To pin a version, replace `v0.20.0` in the URL and `0.20.0` in the filename. For the latest release, use the `VERSION=...` snippet on the [Installation](../installation#server-deb-linux) page.
 
 Minimal Dockerfile example:
 

@@ -49,7 +49,8 @@ const zhSidebar = [
         items: [
           { text: '安装与使用', link: '/zh/plugins/plugins' }
         ]
-      }
+      },
+      { text: 'Roadmap', link: '/zh/roadmap' }
     ]
   },
   {
@@ -113,7 +114,8 @@ const enSidebar = [
         items: [
           { text: 'Install & Use', link: '/en/plugins/plugins' }
         ]
-      }
+      },
+      { text: 'Roadmap', link: '/en/roadmap' }
     ]
   },
   {

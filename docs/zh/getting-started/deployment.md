@@ -146,7 +146,7 @@ supervisorctl update
 - `dpkg -i ... || apt -f install -y` 在依赖缺失时自动补齐。
 - `supervisord` 必须作为容器主进程（PID 1）常驻，否则容器会立即退出。
 - 默认监听 `8999`；改端口在 supervisor 的 `command=dinotty-server -p <port>`，并在 `docker run -p` 同步映射。
-- 想锁版本请把 URL 里的 `v0.20.0` 与文件名里的 `0.20.0` 替换为目标版本；获取最新版可参考 [安装页](installation#服务端-deb-linux) 的 `VERSION=...` 片段。
+- 想锁版本请把 URL 里的 `v0.20.0` 与文件名里的 `0.20.0` 替换为目标版本；获取最新版可参考 [安装页](../installation#服务端-deb-linux) 的 `VERSION=...` 片段。
 
 最小化 Dockerfile 示例：
 
