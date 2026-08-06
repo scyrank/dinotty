@@ -349,6 +349,7 @@ import {
   onMounted,
   onBeforeUnmount,
   nextTick,
+  h,
 } from 'vue'
 import TabBar from './components/terminal/TabBar.vue'
 import type { TabInfo } from './components/terminal/TabBar.vue'
@@ -485,6 +486,7 @@ import { createHostClipboardPasteController } from './utils/hostClipboardPaste'
 import { readHostClipboard } from './utils/clipboard'
 import { hasCollapseGuard, hasOpenGuard } from './utils/keyboardGuardMode'
 import type { AppActionOptions } from './components/keyboard/mkbTypes'
+import { canFixShellErrorInSettings, shellErrorMessage } from './utils/shellError'
 
 // ── Stores ──────────────────────────────────────────────────────
 const session = useSessionStore()
@@ -545,6 +547,32 @@ const notif = useNotification()
 const presentationSettings = useNotificationPresentation().settings
 const { supervise } = useSuperviseTabs()
 const toast = useToast()
+
+function showShellApiError(error: unknown, fallbackKey: string) {
+  const message = shellErrorMessage(error, t, fallbackKey)
+  if (!canFixShellErrorInSettings(error)) {
+    toast.error(message)
+    return
+  }
+
+  toast.error(
+    h('div', { class: 'notif-toast-content' }, [
+      h('span', { class: 'notif-toast-body' }, message),
+      h(
+        'button',
+        {
+          class: 'notif-toast-btn',
+          onClick: () => {
+            settingsOpen.value = true
+          },
+        },
+        t('settings.title')
+      ),
+    ]),
+    { timeout: 8000 }
+  )
+}
+
 const hostClipboardPaste = createHostClipboardPasteController({
   fetchText: async () => {
     const text = await readHostClipboard()
@@ -749,6 +777,7 @@ const {
   persistNow,
   onSshConnectRef,
   sendSync: (msg) => sendSyncFn(msg),
+  showCreateTerminalError: (error) => showShellApiError(error, 'terminal.createFailed'),
 })
 
 const {
@@ -969,6 +998,7 @@ const splitPane = useSplitPane({
   sendSync: (msg) => sendSyncFn(msg),
   sendLayoutSync: syncWs.sendLayoutSync,
   persist,
+  showSplitTerminalError: (error) => showShellApiError(error, 'terminal.splitFailed'),
 })
 
 function registerTermRef(paneId: string, el: InstanceType<typeof TerminalPane> | null) {
@@ -1323,6 +1353,11 @@ function onTerminalRunCode(e: Event) {
   const send = getSendFn()
   if (!activeLeaf || !send) return
 
+  if (activeLeaf.shell_type === 'wsl') {
+    toast.warning(t('terminal.wslRunCodeUnsupported'))
+    return
+  }
+
   // 步骤2：按活动 shell 生成命令，并发送回车立即执行。
   const command = buildRunCodeCommand(path, activeLeaf.shell_type ?? '')
   if (command) send(`${command}\r`)
@@ -1330,6 +1365,10 @@ function onTerminalRunCode(e: Event) {
 
 function onLinkActivate() {
   linkJustActivated = true
+}
+
+function onOpenSettingsRequest() {
+  settingsOpen.value = true
 }
 
 // Sticky typing mode, native focus-move guard.
@@ -1503,8 +1542,8 @@ async function onTemplateApplied(
     } else {
       toast?.success(t('template.applyToast'))
     }
-  } catch (e: any) {
-    toast?.error(e?.message || 'Apply failed')
+  } catch (e: unknown) {
+    showShellApiError(e, 'template.applyFailed')
   }
   void scope
 }
@@ -1957,6 +1996,7 @@ onMounted(async () => {
   window.addEventListener('terminal-insert-path', onTerminalInsertPath)
   window.addEventListener('terminal-insert-text', onTerminalInsertText)
   window.addEventListener('terminal-run-code', onTerminalRunCode)
+  window.addEventListener('dinotty:open-settings', onOpenSettingsRequest)
   window.addEventListener('pane-drag-hover-switch', onPaneDragHoverSwitch)
   try {
     if (authenticated.value) {
@@ -2082,6 +2122,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('terminal-insert-path', onTerminalInsertPath)
   window.removeEventListener('terminal-insert-text', onTerminalInsertText)
   window.removeEventListener('terminal-run-code', onTerminalRunCode)
+  window.removeEventListener('dinotty:open-settings', onOpenSettingsRequest)
   window.removeEventListener('pane-drag-hover-switch', onPaneDragHoverSwitch)
   disposeViewport()
   syncWs.closeWs()
