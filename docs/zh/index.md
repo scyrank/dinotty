@@ -41,7 +41,7 @@
 
 ### API
 
-- [Agent API](api/agent-api) - HTTP/WebSocket 结构化交互，供 AI Agent 与自动化脚本调用
+- [Open API](api/open-api) - 终端读写、命令执行、事件订阅（支持 AI Agent 与自动化脚本）
 - [主机剪贴板 API](api/clipboard-api) - 移动端主机粘贴使用的敏感认证接口
 - [MCP Server](api/mcp-server) - 内置 MCP JSON-RPC 服务器
 

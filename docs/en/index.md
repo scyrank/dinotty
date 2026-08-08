@@ -41,7 +41,7 @@ Docs are split into two tracks: **User Docs** for end users, and **Dev Docs** fo
 
 ### API (中文)
 
-- [Agent API](/zh/api/agent-api) - HTTP/WebSocket structured interaction for AI agents and automation
+- [Open API](/zh/api/open-api) - Terminal I/O, command execution, event subscription (supports AI agents and automation)
 - [Clipboard API](/zh/api/clipboard-api) - Mobile host paste authentication interface
 - [MCP Server](/zh/api/mcp-server) - Built-in MCP JSON-RPC server
 

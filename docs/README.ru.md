@@ -248,7 +248,6 @@ cargo run
 - [Система уведомлений](features/notifications.en.md) — HTTP API, интеграция с Claude Code, Open API
 - [Система плагинов](plugins/plugins.en.md) — установка, манифест, API, встроенные плагины
 - [Разработка плагинов](plugins/plugin-development.md) — полное руководство по разработке плагинов
-- [Agent API](api/agent-api.md) — структурированное HTTP/WebSocket-взаимодействие для AI-агентов и скриптов автоматизации
 - [API буфера обмена хоста](api/clipboard-api.md) — чувствительный аутентифицированный эндпоинт для мобильной вставки с хоста
 - [MCP-сервер](api/mcp-server.md) — встроенный MCP JSON-RPC сервер для AI-ассистентов, управляющих терминальными сессиями
 - [Система токенов и разрешений](internals/token-system.md) — управление доступом на основе capabilities с несколькими токенами

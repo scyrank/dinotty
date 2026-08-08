@@ -166,7 +166,7 @@ Hardware-keyboard clients have no dedicated `/ws/<paneId>` terminal channel; the
 
 **Safety net**: when MC is open, the server **drops** all `Input` messages to prevent keystrokes leaking into the PTY while the user is navigating the overview. Once MC closes, forwarding resumes.
 
-External programs that need to send terminal input while MC is open must either explicitly verify MC is closed first, or use the [Agent API](./agent-api.md) (`POST /api/agent/send` / `POST /api/sessions/:pane_id/input`) - those endpoints are not gated by the MC safety net.
+External programs that need to send terminal input while MC is open must either explicitly verify MC is closed first, or use the [Open API](./open-api.md) (`POST /api/sessions/:pane_id/send` / `POST /api/sessions/:pane_id/input`) - those endpoints are not gated by the MC safety net.
 
 ---
 

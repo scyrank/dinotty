@@ -63,7 +63,7 @@ curl -H "Authorization: Bearer <token>" \
      http://localhost:8999/api/tabs
 ```
 
-`/api/tabs/*` does not require `open_api.enabled`. For fine-grained agent tokens, use the [Agent API](./agent-api.md) instead.
+`/api/tabs/*` does not require `open_api.enabled`. For fine-grained agent tokens over terminal I/O, use the [Open API](./open-api.md) `run`/`send`/`read` endpoints.
 
 ---
 

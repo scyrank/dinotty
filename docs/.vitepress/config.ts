@@ -64,7 +64,6 @@ const zhSidebar = [
           { text: 'Tabs & Panes API', link: '/zh/api/tabs-panes-api' },
           { text: 'Open API（终端读写）', link: '/zh/api/open-api' },
           { text: 'Mission Control API', link: '/zh/api/mission-control-api' },
-          { text: 'Agent API', link: '/zh/api/agent-api' },
           { text: 'Clipboard API', link: '/zh/api/clipboard-api' },
           { text: 'MCP Server', link: '/zh/api/mcp-server' }
         ]
@@ -133,7 +132,6 @@ const enSidebar = [
           { text: 'Tabs & Panes API', link: '/en/api/tabs-panes-api' },
           { text: 'Open API (Terminal I/O)', link: '/en/api/open-api' },
           { text: 'Mission Control API', link: '/en/api/mission-control-api' },
-          { text: 'Agent API', link: '/en/api/agent-api' },
           { text: 'Clipboard API', link: '/en/api/clipboard-api' },
           { text: 'MCP Server', link: '/en/api/mcp-server' }
         ]

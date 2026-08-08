@@ -273,7 +273,6 @@ If verification code login is stuck (notifier plugin uninstalled, subscription l
 - [Notification System](features/notifications.en.md) — HTTP API, Claude Code integration, Open API
 - [Plugin System](plugins/plugins.en.md) — installation, manifest, API, built-in plugins
 - [Plugin Development](plugins/plugin-development.md) — full plugin development guide
-- [Agent API](api/agent-api.md) — HTTP/WebSocket structured interaction for AI agents and automation scripts
 - [Host Clipboard API](api/clipboard-api.md) — sensitive authenticated endpoint used by mobile host paste
 - [MCP Server](api/mcp-server.md) — built-in MCP JSON-RPC server for AI assistants to operate terminal sessions
 - [Token Permission System](internals/token-system.md) — capability-based multi-token fine-grained access control

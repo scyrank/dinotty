@@ -63,7 +63,7 @@ curl -H "Authorization: Bearer <token>" \
      http://localhost:8999/api/tabs
 ```
 
-`/api/tabs/*` 不需要 `open_api.enabled`。如需让 Agent 通过细粒度 Token 调用，请使用 [Agent API](./agent-api.md)。
+`/api/tabs/*` 不需要 `open_api.enabled`。如需让 Agent 通过细粒度 Token 调用终端，请使用 [Open API](./open-api.md) 的 `run`/`send`/`read` 端点。
 
 ---
 

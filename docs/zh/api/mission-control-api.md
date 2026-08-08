@@ -166,7 +166,7 @@ Mission Control（MC）是 Dinotty 的多端概览模式：在所有同步客户
 
 **安全网**：当 MC 已开启时，服务端会**丢弃**所有 `Input` 消息，避免用户在概览中按方向键时按键被泄漏到终端 PTY。MC 关闭后恢复正常转发。
 
-外部程序想在 MC 开启期间向终端输入，必须显式确认 MC 已关闭，或直接使用 [Agent API](./agent-api.md) 的 `POST /api/agent/send` / `POST /api/sessions/:pane_id/input`（这两个端点不受 MC 安全网影响）。
+外部程序想在 MC 开启期间向终端输入，必须显式确认 MC 已关闭，或直接使用 [Open API](./open-api.md) 的 `POST /api/sessions/:pane_id/send` / `POST /api/sessions/:pane_id/input`（这两个端点不受 MC 安全网影响）。
 
 ---
 

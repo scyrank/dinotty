@@ -1135,7 +1135,7 @@ async fn main() {
             .route("/api/notify", post(notification::post_notify))
             .route("/api/events/emit", post(events::emit_event))
             .route("/api/input", post(ws::post_input))
-            // Open API
+            // Open API - public endpoints (session cookie / global Bearer via outer auth_middleware)
             .route("/api/sessions", get(openapi::list_sessions))
             .route("/api/sessions/:pane_id/screen", get(openapi::get_screen))
             .route("/api/sessions/:pane_id/scrollback", get(openapi::get_scrollback))
@@ -1279,13 +1279,15 @@ async fn main() {
             .route("/api/plugins/:id/workspace/rename", post(plugin::plugin_workspace_rename))
             .route("/api/plugins/:id/workspace/move", post(plugin::plugin_workspace_move))
             .route("/api/plugins/:id/*path", get(plugin::plugin_asset))
-            // Agent API + Token management + MCP — protected by agent token middleware
+            // Sessions extended API (run/send/read/events) + Token management + MCP
+            // - dual-track auth via sessions_token_middleware
+            //   (session cookie / global Bearer -> TokenInfo::global(); agent Bearer -> capability check)
             .merge(
                 Router::new()
-                    .route("/api/agent/run", post(agent::agent_run))
-                    .route("/api/agent/send", post(agent::agent_send))
-                    .route("/api/agent/read", get(agent::agent_read))
-                    .route("/ws/agent", get(agent::agent_ws_handler))
+                    .route("/api/sessions/:pane_id/run", post(agent::sessions_run))
+                    .route("/api/sessions/:pane_id/send", post(agent::sessions_send))
+                    .route("/api/sessions/:pane_id/read", get(agent::sessions_read))
+                    .route("/ws/events", get(agent::events_ws_handler))
                     .route("/api/tokens", post(token::create_token).get(token::list_tokens))
                     .route(
                         "/api/tokens/:id",
@@ -1296,11 +1298,11 @@ async fn main() {
                     .route("/mcp/sse", get(mcp::transport::mcp_sse_handler))
                     .route("/mcp/message", post(mcp::transport::mcp_message_handler))
                     .layer(middleware::from_fn_with_state(
-                        token::AgentAuthState {
+                        token::SessionsAuthState {
                             global_token: auth_token.clone(),
                             tokens: state.tokens.clone(),
                         },
-                        token::agent_token_middleware,
+                        token::sessions_token_middleware,
                     )),
             )
             .route("/preview/:port", any(proxy::proxy_handler_root))
