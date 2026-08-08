@@ -35,10 +35,6 @@ function terminalTab(tabId: string, paneId: string): Tab {
     paneMru: [paneId],
     broadcastMode: false,
     broadcastActivity: 0,
-    previewVisible: false,
-    previewAddress: '',
-    previewUrl: '',
-    previewKind: 'web',
   }
 }
 

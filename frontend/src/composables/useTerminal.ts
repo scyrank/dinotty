@@ -586,7 +586,7 @@ export class TerminalInstance {
       this._connectWS()
     }
     this._dropCleanup = setupTerminalDrop(wrapper, {
-      sendData: (d) => this.sendData(d),
+      sendData: (d, force) => this.sendData(d, force),
       onFileUpload: (files) => this.onFileUpload?.(files),
     })
     this._wheel = createTerminalWheel({

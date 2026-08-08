@@ -152,10 +152,6 @@ export function useTabLifecycle(opts: TabLifecycleOptions): TabLifecycleState {
         paneMru: [result.pane_id],
         broadcastMode: false,
         broadcastActivity: 0,
-        previewVisible: false,
-        previewAddress: '',
-        previewUrl: '',
-        previewKind: 'web',
         customTitle: title,
         cwd: result.cwd,
       })
@@ -217,10 +213,6 @@ export function useTabLifecycle(opts: TabLifecycleOptions): TabLifecycleState {
         paneMru: [firstPaneId],
         broadcastMode: false,
         broadcastActivity: 0,
-        previewVisible: false,
-        previewAddress: '',
-        previewUrl: '',
-        previewKind: 'web',
         ...tabFields,
       })
       commitLocalActivePane(result.tab_id)

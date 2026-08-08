@@ -55,10 +55,6 @@ function setup() {
     paneMru: ['b', 'a', 'c'],
     broadcastMode: false,
     broadcastActivity: 0,
-    previewVisible: false,
-    previewAddress: '',
-    previewUrl: '',
-    previewKind: 'web',
   }
   const tabs = ref<Tab[]>([tab])
   const termRefs = Object.fromEntries(

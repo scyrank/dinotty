@@ -43,17 +43,44 @@
         </button>
       </template>
       <template #right>
-        <button
-          v-if="activeTabType === 'terminal'"
-          type="button"
-          class="tab-bar-icon-btn"
-          :title="t('app.preview')"
-          :aria-pressed="activeTab?.type === 'terminal' && activeTab.previewVisible"
-          @click="togglePreview"
-          @touchend.prevent="togglePreview"
-        >
-          <Monitor :size="16" />
-        </button>
+        <div v-if="activeTabType === 'terminal'" class="preview-menu-wrap">
+          <button
+            type="button"
+            class="tab-bar-icon-btn"
+            :class="{ 'is-active': previewMenuOpen }"
+            :title="t('app.preview')"
+            @click="previewMenuOpen = !previewMenuOpen"
+            @touchend.prevent="previewMenuOpen = !previewMenuOpen"
+          >
+            <Monitor :size="16" />
+          </button>
+          <div
+            v-if="previewMenuOpen"
+            class="preview-menu-backdrop"
+            @click="previewMenuOpen = false"
+            @contextmenu.prevent="previewMenuOpen = false"
+          ></div>
+          <div v-if="previewMenuOpen" class="preview-menu-dropdown" role="menu">
+            <button
+              type="button"
+              class="preview-menu-item"
+              role="menuitem"
+              @click="previewMenuOpen = false; openOrFocusPreview('files')"
+            >
+              <FolderTree :size="14" />
+              <span>{{ t('previewPanel.switchFiles') }}</span>
+            </button>
+            <button
+              type="button"
+              class="preview-menu-item"
+              role="menuitem"
+              @click="previewMenuOpen = false; openOrFocusPreview('web')"
+            >
+              <Globe :size="14" />
+              <span>{{ t('previewPanel.switchWeb') }}</span>
+            </button>
+          </div>
+        </div>
         <button
           type="button"
           class="tab-bar-icon-btn"
@@ -99,8 +126,6 @@
         class="tab-page"
         :class="{
           active: tab.paneId === activePaneId,
-          'has-preview': tab.type === 'terminal' && tab.previewVisible,
-          ['pos-' + resolvedPosition]: tab.type === 'terminal' && tab.previewVisible,
         }"
       >
         <template v-if="tab.type === 'terminal'">
@@ -139,36 +164,6 @@
             "
             @divider-drag-end="onDividerDragEnd(tab)"
             @reconnect="onSshReconnect"
-          />
-          <PreviewPanel
-            v-if="tab.paneId === activePaneId"
-            :ref="setPreviewPanelRef"
-            :visible="tab.previewVisible"
-            :pane-id="tab.activePaneId"
-            :address="tab.previewAddress"
-            :kind="tab.previewKind"
-            :web-url="tab.previewUrl"
-            :panel-position="resolvedPosition"
-            :remote="isRemote"
-            @close="closePreview(tab.paneId)"
-            @update:address="
-              (v: string) => {
-                tab.previewAddress = v
-                persist()
-              }
-            "
-            @update:kind="
-              (v: 'web' | 'files') => {
-                tab.previewKind = v
-                persist()
-              }
-            "
-            @update:web-url="
-              (v: string) => {
-                tab.previewUrl = v
-                persist()
-              }
-            "
           />
         </template>
       </div>
@@ -374,7 +369,6 @@ import MultiSelectPicker from './components/ui/MultiSelectPicker.vue'
 import SaveTemplateDialog from './components/ui/SaveTemplateDialog.vue'
 import TemplatePicker from './components/ui/TemplatePicker.vue'
 import { promptState, promptResolve, promptCancel } from './composables/usePrompt'
-import PreviewPanel from './components/preview/PreviewPanel.vue'
 import CommandBookmarks from './components/command/CommandBookmarks.vue'
 import ServerList from './components/ServerList.vue'
 import SshHostsPanel from './components/ssh/SshHostsPanel.vue'
@@ -424,7 +418,6 @@ import { useSplitPane } from './composables/useSplitPane'
 import { useSuperviseTabs } from './composables/useSuperviseTabs'
 import { useSyncWebSocket } from './composables/useSyncWebSocket'
 import type { SyncClientMsg } from './types/protocol'
-import { isWebPreviewInput } from './utils/previewRouting'
 import { isWindowsClient } from './utils/clientPlatform'
 import { nextRevealNavGen, currentRevealNavGen } from './utils/navGen'
 import { pickSuccessorTab } from './utils/tabSuccessor'
@@ -467,6 +460,8 @@ import {
   AppWindow,
   Radar,
   RefreshCw,
+  FolderTree,
+  Globe,
 } from 'lucide-vue-next'
 import WorkspaceOverview from './components/overview/WorkspaceOverview.vue'
 import { refreshPluginPreview, invalidatePluginPreview } from './composables/useTabPreview'
@@ -510,6 +505,7 @@ const desktopLifecycle = useDesktopLifecycle({
 
 const windowCloseConfirmVisible = ref(false)
 const trayVisibilityDialogVisible = ref(false)
+const previewMenuOpen = ref(false)
 
 let linkJustActivated = false
 let scrollGestureDetected = false
@@ -534,11 +530,6 @@ const hasActiveTerminalLeaf = computed(() => activeTerminalLeaf.value !== null)
 // ── Template refs (purely UI concerns) ─────────────────────────
 const paletteRef = ref<InstanceType<typeof CommandPalette>>()
 const tabBarRef = ref<InstanceType<typeof TabBar> | null>(null)
-const previewPanelRef = ref<InstanceType<typeof PreviewPanel> | null>(null)
-
-function setPreviewPanelRef(el: any) {
-  previewPanelRef.value = el
-}
 const bookmarksRef = ref<InstanceType<typeof CommandBookmarks>>()
 const serverListRef = ref<InstanceType<typeof ServerList>>()
 const sshPanelRef = ref<InstanceType<typeof SshHostsPanel>>()
@@ -718,6 +709,8 @@ const notificationPaneLabels = computed(() => {
 })
 
 const termRefs = shallowReactive<Record<string, InstanceType<typeof TerminalPane>>>({})
+const filesRefs = shallowReactive<Record<string, any>>({})
+const webRefs = shallowReactive<Record<string, any>>({})
 
 const { isLandscape, dispose: disposeViewport } = useViewportResize({
   kbVisible,
@@ -868,32 +861,18 @@ watch(activePaneId, (paneId) => {
   }
 })
 
-const resolvedPosition = computed(() => {
-  const pos = appSettings.panel_position ?? 'auto'
-  if (pos === 'auto') return isLandscape.value ? 'right' : 'top'
-  return pos
-})
-
 const isSingleTerminalTab = computed(() => {
   const tab = activeTab.value
   if (!tab || tab.type !== 'terminal') return false
   const leaves = getAllLeaves(tab.layout)
   return leaves.length === 1 && paneKind(leaves[0]) === 'terminal'
 })
-const hasVerticalPreview = computed(() => {
-  const tab = activeTab.value
-  return (
-    tab?.type === 'terminal' &&
-    tab.previewVisible &&
-    (resolvedPosition.value === 'top' || resolvedPosition.value === 'bottom')
-  )
-})
 useKeyboardOverlap({
   settingPx: imeKeyboardOverlapPx,
   kbVisible,
   textInputFocused: kbTyping,
   isSingleTerminalTab,
-  hasVerticalPreview,
+  hasVerticalPreview: computed(() => false),
 })
 
 watch(
@@ -1002,12 +981,17 @@ const splitPane = useSplitPane({
   showSplitTerminalError: (error) => showShellApiError(error, 'terminal.splitFailed'),
 })
 
-function registerTermRef(paneId: string, el: InstanceType<typeof TerminalPane> | null) {
-  if (el) {
+function registerTermRef(paneId: string, el: any) {
+  if (!el) return
+  if (typeof el.setOutputListener === 'function') {
     termRefs[paneId] = el
     el.setOutputListener((data: string) => {
       outputListeners.forEach((cb) => cb(paneId, data))
     })
+  } else if (typeof el.openFromTerminal === 'function') {
+    filesRefs[paneId] = el
+  } else if (typeof el.openFromWebUrl === 'function') {
+    webRefs[paneId] = el
   }
 }
 
@@ -1110,61 +1094,35 @@ function onPreviewLink(leafPaneId: string, url: string) {
     return !!findLeaf(t.layout, leafPaneId)
   }) as TerminalTab | undefined
   if (!tab) return
-  tab.previewKind = 'web'
-  tab.previewUrl = url
-  tab.previewAddress = url
-  tab.previewVisible = true
-  persist()
-}
 
-function closePreview(tabId: string) {
-  const tab = tabs.value.find((t) => t.paneId === tabId)
-  if (tab && tab.type === 'terminal') {
-    tab.previewVisible = false
-    persist()
+  const existing = getAllLeaves(tab.layout).find((l) => paneKind(l) === 'web')
+  if (existing) {
+    splitPane.focusPane(existing.paneId)
+    nextTick(() => webRefs[existing.paneId]?.openFromWebUrl(url))
+    return
   }
+  void splitPane.insertNonTerminalPane('web', { url })
 }
-
-const isRemote = computed(() => {
-  const tabId = activePaneId.value
-  if (!tabId) return false
-  const tab = tabs.value.find((t) => t.paneId === tabId)
-  if (!tab || tab.type !== 'terminal') return false
-  return findLeaf(tab.layout, tab.activePaneId)?.shell_type === 'ssh'
-})
 
 function reloadApp() {
   window.location.reload()
 }
 
-function openPreview() {
+function openOrFocusPreview(kind: 'files' | 'web') {
   const tabId = activePaneId.value
   if (!tabId) return
   const tab = tabs.value.find((t) => t.paneId === tabId)
   if (!tab || tab.type !== 'terminal') return
-  const isSsh = findLeaf(tab.layout, tab.activePaneId)?.shell_type === 'ssh'
-  if (isSsh || !tab.previewAddress.trim()) {
-    tab.previewKind = 'files'
-  }
-  tab.previewVisible = true
-  persist()
-  nextTick(() => {
-    if (tab.previewKind !== 'files') return
-    const raw = tab.previewAddress.trim()
-    if (raw && !isWebPreviewInput(raw)) {
-      previewPanelRef.value?.openFromPath(raw)
-    }
-  })
-}
 
-function togglePreview() {
-  const tab = activeTab.value
-  if (!tab || tab.type !== 'terminal') return
-  if (tab.previewVisible) {
-    closePreview(tab.paneId)
+  const leaves = getAllLeaves(tab.layout)
+  const existing = leaves.find((l) => paneKind(l) === kind)
+  if (existing) {
+    splitPane.focusPane(existing.paneId)
     return
   }
-  openPreview()
+  const payload: { path?: string; url?: string } =
+    kind === 'files' ? { path: tab.cwd || '' } : {}
+  void splitPane.insertNonTerminalPane(kind, payload)
 }
 
 function onFileClick(path: string) {
@@ -1172,11 +1130,14 @@ function onFileClick(path: string) {
   if (!tabId) return
   const tab = tabs.value.find((t) => t.paneId === tabId)
   if (!tab || tab.type !== 'terminal') return
-  tab.previewKind = 'files'
-  tab.previewAddress = path
-  tab.previewVisible = true
-  persist()
-  nextTick(() => previewPanelRef.value?.openFromPath(path))
+
+  const existing = getAllLeaves(tab.layout).find((l) => paneKind(l) === 'files')
+  if (existing) {
+    splitPane.focusPane(existing.paneId)
+    nextTick(() => filesRefs[existing.paneId]?.openFromTerminal(path))
+    return
+  }
+  void splitPane.insertNonTerminalPane('files', { path })
 }
 
 function getSendFn(): SendDataFn | null {
@@ -1712,9 +1673,15 @@ const paletteCommands = computed<Command[]>(() => {
     },
     {
       icon: '⊡',
-      title: t('palette.openPreview'),
-      subtitle: t('palette.openPreviewDesc'),
-      action: () => openPreview(),
+      title: t('palette.openFilePreview'),
+      subtitle: t('palette.openFilePreviewDesc'),
+      action: () => openOrFocusPreview('files'),
+    },
+    {
+      icon: '⊙',
+      title: t('palette.openWebPreview'),
+      subtitle: t('palette.openWebPreviewDesc'),
+      action: () => openOrFocusPreview('web'),
     },
     {
       icon: '⠿',
@@ -2043,10 +2010,6 @@ onMounted(async () => {
                 ),
                 broadcastMode: false,
                 broadcastActivity: 0,
-                previewVisible: false,
-                previewAddress: '',
-                previewUrl: '',
-                previewKind: 'web',
                 connectionId: tab.connection_id,
               })
             }
@@ -2169,55 +2132,6 @@ onBeforeUnmount(() => {
     100% - max(0px, var(--mkb-height, 0px) - var(--kb-overlap, 0px)) - var(--sys-kb-height, 0px)
   );
 }
-.tab-page.active.has-preview {
-  display: flex;
-}
-.tab-page.active.has-preview.pos-right,
-.tab-page.active.has-preview.pos-left {
-  flex-direction: row;
-}
-.tab-page.active.has-preview.pos-top,
-.tab-page.active.has-preview.pos-bottom {
-  flex-direction: column;
-}
-.tab-page.active.has-preview > .terminal-pane-container,
-.tab-page.active.has-preview > .split-container,
-.tab-page.active.has-preview > .split-leaf {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-.tab-page.active.has-preview > .preview-panel {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-.tab-page.active.has-preview.pos-left > .terminal-pane-container,
-.tab-page.active.has-preview.pos-left > .split-container,
-.tab-page.active.has-preview.pos-left > .split-leaf,
-.tab-page.active.has-preview.pos-top > .terminal-pane-container,
-.tab-page.active.has-preview.pos-top > .split-container,
-.tab-page.active.has-preview.pos-top > .split-leaf {
-  order: 1;
-}
-.tab-page.active.has-preview.pos-left > .preview-panel,
-.tab-page.active.has-preview.pos-top > .preview-panel {
-  order: 0;
-}
-.tab-page.active.has-preview.pos-top > .terminal-pane-container,
-.tab-page.active.has-preview.pos-top > .split-container,
-.tab-page.active.has-preview.pos-top > .split-leaf,
-.tab-page.active.has-preview.pos-bottom > .terminal-pane-container,
-.tab-page.active.has-preview.pos-bottom > .split-container,
-.tab-page.active.has-preview.pos-bottom > .split-leaf {
-  flex: 2;
-}
-.tab-page.active.has-preview.pos-top > .preview-panel,
-.tab-page.active.has-preview.pos-bottom > .preview-panel {
-  flex: 1;
-}
 .broadcast-btn {
   position: relative;
   color: #ef4444;
@@ -2250,5 +2164,54 @@ onBeforeUnmount(() => {
   text-align: center;
   padding: 0 3px;
   pointer-events: none;
+}
+
+.preview-menu-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+.preview-menu-wrap .tab-bar-icon-btn.is-active {
+  color: var(--fg-bright);
+  background: var(--tab-hover-bg);
+}
+.preview-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 499;
+  background: transparent;
+}
+.preview-menu-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 500;
+  min-width: 180px;
+  background: var(--bg-surface, #1a1a1a);
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+}
+.preview-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: transparent;
+  border: none;
+  color: var(--fg, #c7c7c7);
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  border-radius: 0;
+}
+.preview-menu-item:hover {
+  background: var(--tab-hover-bg, rgba(255, 255, 255, 0.06));
+  color: var(--fg-bright, #fff);
 }
 </style>

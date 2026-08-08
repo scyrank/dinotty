@@ -62,7 +62,6 @@ export interface SettingsData {
   windowsAltAsCmd: boolean
   locale: string
   auto_check_updates: boolean
-  panel_position: 'auto' | 'right' | 'left' | 'top' | 'bottom'
   shell: string
   shell_path: string | null
   wsl_distro: string | null
@@ -423,7 +422,6 @@ export const settings = reactive<SettingsData>({
   windowsAltAsCmd: isWindowsClient,
   locale: 'zh',
   auto_check_updates: true,
-  panel_position: 'auto',
   shell: 'auto',
   shell_path: null,
   wsl_distro: null,

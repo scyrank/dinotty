@@ -133,10 +133,6 @@ describe('TerminalPane host clipboard input path', () => {
         broadcastMode: true,
         broadcastActivity: 0,
         paneMru: ['p1', 'p2'],
-        previewVisible: false,
-        previewAddress: '',
-        previewKind: 'web',
-        previewUrl: '',
       } as any,
     ])
     const split = useSplitPane({

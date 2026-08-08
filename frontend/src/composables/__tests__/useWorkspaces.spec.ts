@@ -20,10 +20,6 @@ function makeTab(paneId: string, cwd?: string): TerminalTab {
     paneMru: [paneId],
     broadcastMode: false,
     broadcastActivity: 0,
-    previewVisible: false,
-    previewAddress: '',
-    previewUrl: '',
-    previewKind: 'web',
     cwd,
   }
 }

@@ -44,6 +44,7 @@ const mocks = vi.hoisted(() => {
   return {
     closePane: vi.fn<(paneId: string) => Promise<boolean>>(),
     splitPane: vi.fn(),
+    insertNonTerminalPane: vi.fn<() => Promise<void>>(async () => {}),
     toggleBroadcast: vi.fn(),
     toggleZoom: vi.fn(),
     equalizePanes: vi.fn(),
@@ -286,6 +287,7 @@ vi.mock('../composables/useSplitPane', () => ({
   useSplitPane: () => ({
     closePane: mocks.closePane,
     splitPane: mocks.splitPane,
+    insertNonTerminalPane: mocks.insertNonTerminalPane,
     toggleBroadcast: mocks.toggleBroadcast,
     toggleZoom: mocks.toggleZoom,
     equalizePanes: mocks.equalizePanes,
@@ -308,7 +310,7 @@ import { useUiStore } from '../stores/uiStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { useWorkspaces } from '../composables/useWorkspaces'
 import { currentRevealNavGen } from '../utils/navGen'
-import type { Tab } from '../types/pane'
+import { getAllLeaves, type Tab } from '../types/pane'
 
 // Spec: openspec/changes/confirm-before-close-tab/spec.md
 //   "### Requirement: Pane Close Confirmation"
@@ -495,23 +497,101 @@ afterEach(() => {
 })
 
 describe('App.vue - preview toolbar toggle', () => {
-  it('opens and closes the active terminal preview on consecutive clicks', async () => {
+  it('creates a files leaf when the file browser menu item is clicked', async () => {
     const wrapper = await mountWithTabs()
     const session = useSessionStore()
     const previewButton = wrapper.find('button[title="app.preview"]')
     const tab = session.tabs[0]
     if (tab.type !== 'terminal') throw new Error('expected terminal tab')
 
-    expect(tab.previewVisible).toBe(false)
-    expect(previewButton.attributes('aria-pressed')).toBe('false')
+    expect(getAllLeaves(tab.layout).some((l) => l.kind === 'files' || l.kind === 'web')).toBe(false)
 
     await previewButton.trigger('click')
-    expect(tab.previewVisible).toBe(true)
-    expect(previewButton.attributes('aria-pressed')).toBe('true')
+    const items = wrapper.findAll('.preview-menu-item')
+    expect(items.length).toBe(2)
+    await items[0].trigger('click')
+    expect(mocks.insertNonTerminalPane).toHaveBeenCalledWith('files', expect.anything())
+  })
 
+  it('creates a web leaf when the web preview menu item is clicked', async () => {
+    const wrapper = await mountWithTabs()
+    const session = useSessionStore()
+    const tab = session.tabs[0]
+    if (tab.type !== 'terminal') throw new Error('expected terminal tab')
+
+    const existingFilesLeaf = {
+      type: 'leaf' as const,
+      kind: 'files' as const,
+      paneId: 'existing-files-leaf',
+      title: 'Files',
+      ratio: 1,
+      zoomed: false,
+      path: '/tmp',
+    }
+    tab.layout = {
+      type: 'split',
+      id: 's-root',
+      direction: 'horizontal',
+      children: [tab.layout, existingFilesLeaf],
+      ratios: [0.7, 0.3],
+    }
+
+    mocks.insertNonTerminalPane.mockClear()
+    mocks.focusPane.mockClear()
+
+    const previewButton = wrapper.find('button[title="app.preview"]')
     await previewButton.trigger('click')
-    expect(tab.previewVisible).toBe(false)
-    expect(previewButton.attributes('aria-pressed')).toBe('false')
+    const items = wrapper.findAll('.preview-menu-item')
+    expect(items.length).toBe(2)
+    await items[1].trigger('click')
+
+    expect(mocks.insertNonTerminalPane).toHaveBeenCalledWith('web', expect.anything())
+  })
+
+  it('focuses the existing leaf of the selected kind when both files and web exist', async () => {
+    const wrapper = await mountWithTabs()
+    const session = useSessionStore()
+    const tab = session.tabs[0]
+    if (tab.type !== 'terminal') throw new Error('expected terminal tab')
+
+    const filesLeaf = {
+      type: 'leaf' as const,
+      kind: 'files' as const,
+      paneId: 'files-leaf-1',
+      title: 'Files',
+      ratio: 1,
+      zoomed: false,
+      path: '/tmp',
+    }
+    const webLeaf = {
+      type: 'leaf' as const,
+      kind: 'web' as const,
+      paneId: 'web-leaf-1',
+      title: 'Web',
+      ratio: 1,
+      zoomed: false,
+      url: 'https://example.com',
+    }
+    tab.layout = {
+      type: 'split',
+      id: 's-root',
+      direction: 'horizontal',
+      children: [tab.layout, filesLeaf, webLeaf],
+      ratios: [0.4, 0.3, 0.3],
+    }
+
+    mocks.insertNonTerminalPane.mockClear()
+    mocks.focusPane.mockClear()
+
+    const previewButton = wrapper.find('button[title="app.preview"]')
+    await previewButton.trigger('click')
+    const items = wrapper.findAll('.preview-menu-item')
+    expect(items.length).toBe(2)
+    // Click "Web preview" (second item) -> should focus existing web leaf
+    await items[1].trigger('click')
+
+    expect(mocks.focusPane).toHaveBeenCalledWith('web-leaf-1')
+    expect(mocks.insertNonTerminalPane).not.toHaveBeenCalled()
   })
 })
 
@@ -692,10 +772,6 @@ describe('App.vue - system keyboard state regressions', () => {
         paneMru: ['terminal-leaf', nonTerminalPaneId],
         broadcastMode: false,
         broadcastActivity: 0,
-        previewVisible: false,
-        previewAddress: '',
-        previewUrl: '',
-        previewKind: 'web',
         layout: {
           type: 'split',
           id: 'mixed-root',
@@ -766,10 +842,6 @@ describe('App.vue - activateTab cross-workspace', () => {
     paneMru: [`${paneId}-leaf`],
     broadcastMode: false,
     broadcastActivity: 0,
-    previewVisible: false,
-    previewAddress: '',
-    previewUrl: '',
-    previewKind: 'web',
     cwd,
   })
 
@@ -894,10 +966,6 @@ describe('App.vue - plugin tab close persistence', () => {
     paneMru: [`${paneId}-leaf`],
     broadcastMode: false,
     broadcastActivity: 0,
-    previewVisible: false,
-    previewAddress: '',
-    previewUrl: '',
-    previewKind: 'web',
   })
 
   it('flushes plugin tab closures synchronously to avoid resurrect race', async () => {
@@ -935,6 +1003,7 @@ describe('App.vue - onClosePane routes through confirmation gate', () => {
     settings.windowsAltAsCmd = false
     mocks.closePane.mockReset()
     mocks.splitPane.mockReset()
+    mocks.insertNonTerminalPane.mockReset()
     mocks.toggleBroadcast.mockReset()
     mocks.toggleZoom.mockReset()
     mocks.equalizePanes.mockReset()
@@ -1116,10 +1185,6 @@ describe('App.vue - onClosePane routes through confirmation gate', () => {
       paneMru: [`${paneId}-leaf`],
       broadcastMode: false,
       broadcastActivity: 0,
-      previewVisible: false,
-      previewAddress: '',
-      previewUrl: '',
-      previewKind: 'web',
       cwd,
     })
     session.setTabs([
@@ -1159,10 +1224,6 @@ describe('App.vue - onClosePane routes through confirmation gate', () => {
       paneMru: [`${paneId}-leaf`],
       broadcastMode: false,
       broadcastActivity: 0,
-      previewVisible: false,
-      previewAddress: '',
-      previewUrl: '',
-      previewKind: 'web',
       cwd,
     })
     session.setTabs([
@@ -1203,10 +1264,6 @@ describe('App.vue - onClosePane routes through confirmation gate', () => {
       paneMru: [`${paneId}-leaf`],
       broadcastMode: false,
       broadcastActivity: 0,
-      previewVisible: false,
-      previewAddress: '',
-      previewUrl: '',
-      previewKind: 'web',
       cwd,
     })
     session.setTabs([
@@ -1590,6 +1647,7 @@ describe('App.vue - Cmd+W routes through confirmation gate in split-pane mode', 
     settings.windowsAltAsCmd = false
     mocks.closePane.mockReset()
     mocks.splitPane.mockReset()
+    mocks.insertNonTerminalPane.mockReset()
     mocks.toggleBroadcast.mockReset()
     mocks.toggleZoom.mockReset()
     mocks.equalizePanes.mockReset()

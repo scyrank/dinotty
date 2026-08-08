@@ -560,6 +560,7 @@ pub async fn create_files_pane(
         "ratio": 1,
         "zoomed": false,
         "path": req.path.clone(),
+        "sourcePaneId": req.target_pane_id.clone(),
     });
 
     match insert_non_terminal_pane(
@@ -590,6 +591,7 @@ pub async fn create_web_pane(
         "ratio": 1,
         "zoomed": false,
         "url": req.url.clone(),
+        "sourcePaneId": req.target_pane_id.clone(),
     });
 
     match insert_non_terminal_pane(
