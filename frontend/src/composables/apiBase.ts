@@ -123,6 +123,14 @@ export async function fetchAutoToken(): Promise<string> {
   }
 }
 
+export async function authenticateEmbeddedDesktop(): Promise<boolean> {
+  if (!isTauri()) return false
+  const token = await fetchAutoToken()
+  if (!token) return false
+  const result = await validateToken(token)
+  return result.ok
+}
+
 export async function fetchServerToken(): Promise<string> {
   try {
     await getApiBase()

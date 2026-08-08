@@ -96,6 +96,7 @@ vi.mock('../composables/apiBase', () => ({
   getApiBase: async () => 'http://127.0.0.1:7681',
   fetchServerToken: async () => '',
   fetchAutoToken: async () => '',
+  authenticateEmbeddedDesktop: async () => true,
   validateToken: async () => ({ ok: true }),
   hasAuthToken: () => true,
   wsUrlWithToken: (url: string) => url,

@@ -383,8 +383,7 @@ import { setTauriWindowTitle, updateDocumentTitle } from './utils/windowTitle'
 import {
   getApiBase,
   checkTokenConfigured,
-  fetchAutoToken,
-  validateToken,
+  authenticateEmbeddedDesktop,
   apiUrl,
   markCookieAuthenticated,
 } from './composables/apiBase'
@@ -2040,27 +2039,23 @@ onMounted(async () => {
         // First-time setup: show setup page (server mode only)
         needsSetup.value = true
       } else if (!serverMode) {
-        // Desktop mode: honor an existing cookie session first (e.g. LAN
-        // access after manual login). Fall back to loopback auto-token only
-        // when the cookie is absent/invalid.
-        let cookieOk = false
-        try {
-          const res = await fetch(apiUrl('/api/settings'), { credentials: 'include' })
-          cookieOk = res.ok
-        } catch {
-          // network error - fall through to auto-token
-        }
-        if (cookieOk) {
-          await onLoginSuccess()
-        } else if (isTauri()) {
-          // Only the privileged desktop webview may retrieve the embedded
-          // DPAPI-backed token. LAN browsers must authenticate normally.
-          const autoToken = await fetchAutoToken()
-          if (autoToken) {
-            const r = await validateToken(autoToken)
-            if (r.ok) {
+        if (isTauri()) {
+          // Tauri REST calls use the Rust HTTP bridge, which does not share
+          // the WebView cookie jar. Always initialize its in-memory Bearer
+          // token from the DPAPI-backed desktop token before loading the app.
+          if (await authenticateEmbeddedDesktop()) {
+            await onLoginSuccess()
+          }
+        } else {
+          // A LAN browser uses the WebView/browser cookie session and cannot
+          // access the privileged desktop token command.
+          try {
+            const res = await fetch(apiUrl('/api/settings'), { credentials: 'include' })
+            if (res.ok) {
               await onLoginSuccess()
             }
+          } catch {
+            // Network error — show LoginPage.
           }
         }
       } else {

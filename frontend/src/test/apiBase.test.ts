@@ -4,6 +4,7 @@ import { hasAuthToken, markCookieAuthenticated } from '../composables/apiBase'
 afterEach(() => {
   delete (window as any).__TAURI_INTERNALS__
   localStorage.clear()
+  vi.unstubAllGlobals()
   vi.resetModules()
 })
 
@@ -35,5 +36,26 @@ describe('Tauri token storage', () => {
 
     await expect(fetchAutoToken()).resolves.toBe('dpapi-backed-token')
     expect(invoke).toHaveBeenCalledWith('embedded_auth_token', {})
+  })
+
+  it('initializes the Rust HTTP bridge bearer before desktop API calls', async () => {
+    const invoke = vi.fn(async (command: string) => {
+      if (command === 'embedded_auth_token') return 'dpapi-backed-token'
+      if (command === 'embedded_http_origin') return 'http://127.0.0.1:8999'
+      throw new Error(`unexpected command: ${command}`)
+    })
+    const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
+    ;(window as any).__TAURI_INTERNALS__ = { invoke }
+    vi.stubGlobal('fetch', fetch)
+    vi.resetModules()
+    const api = await import('../composables/apiBase')
+
+    await expect(api.authenticateEmbeddedDesktop()).resolves.toBe(true)
+    expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:8999/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: 'dpapi-backed-token' }),
+    })
+    expect(api.authHeaders()).toEqual({ Authorization: 'Bearer dpapi-backed-token' })
   })
 })
