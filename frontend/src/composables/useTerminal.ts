@@ -3,6 +3,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { SearchAddon } from '@xterm/addon-search'
+import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager'
 import type { ClientMsg, ServerMsg } from '../types/protocol'
 import { isTauri, createTransport, type Transport } from './useTransport'
 import { onThemeChange, settings, type MobileInputMode } from './useSettings'
@@ -60,6 +61,18 @@ function resolveTerminalFontFamily(configuredFamily: string, cssFallback: string
   if (configuredFamily) return configuredFamily
   if (isTauri() && hostTarget()?.startsWith('linux-')) return 'monospace'
   return cssFallback
+}
+
+async function pasteTerminalClipboard(terminal: XTerm): Promise<void> {
+  try {
+    const text = isTauri()
+      ? await readClipboardText()
+      : await navigator.clipboard.readText()
+    if (text) terminal.paste(text)
+  } catch {
+    // Clipboard access can be denied by the platform. Keep the shortcut
+    // consumed so it is not forwarded to the foreground TUI as Ctrl+V.
+  }
 }
 
 // Sticky typing mode (mobile web): while the user is typing in the app's own
@@ -318,6 +331,24 @@ export class TerminalInstance {
           return false
         }
 
+        // On Windows desktop, Ctrl+V must be handled by the terminal emulator.
+        // If forwarded as \x16 instead, PowerShell appears to work because
+        // PSReadLine implements its own paste binding, while TUIs such as
+        // OpenCode receive only the control character and paste nothing.
+        if (
+          isTauri() &&
+          isWindowsClient &&
+          e.ctrlKey &&
+          !e.shiftKey &&
+          !e.altKey &&
+          !e.metaKey &&
+          e.code === 'KeyV'
+        ) {
+          void pasteTerminalClipboard(xt)
+          e.preventDefault()
+          return false
+        }
+
         if (e.ctrlKey && e.shiftKey) {
           if (e.key === 'C' && xt.hasSelection()) {
             navigator.clipboard.writeText(xt.getSelection())
@@ -325,12 +356,7 @@ export class TerminalInstance {
             return false
           }
           if (e.key === 'V') {
-            navigator.clipboard
-              .readText()
-              .then((text) => {
-                if (text) xt.paste(text)
-              })
-              .catch(() => {})
+            void pasteTerminalClipboard(xt)
             e.preventDefault()
             return false
           }

@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   hostTarget: vi.fn<() => string | null>(),
   instances: [] as any[],
   isTauri: vi.fn<() => boolean>(),
+  readClipboardText: vi.fn<() => Promise<string>>(),
 }))
 
 vi.mock('@xterm/xterm', () => ({
@@ -22,11 +23,15 @@ vi.mock('@xterm/xterm', () => ({
       el.className = 'xterm'
       wrapper.appendChild(el)
     }
-    attachCustomKeyEventHandler() {}
+    keyHandler: ((event: KeyboardEvent) => boolean) | null = null
+    attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean) {
+      this.keyHandler = handler
+    }
     registerLinkProvider() {}
     onTitleChange() {}
     onData() {}
     hasSelection() { return false }
+    paste = vi.fn()
     dispose() {}
     focus() {}
     blur() {}
@@ -45,7 +50,10 @@ vi.mock('../composables/useTransport', () => ({
 }))
 vi.mock('../utils/clientPlatform', () => ({
   hostTarget: mocks.hostTarget,
-  isWindowsClient: false,
+  isWindowsClient: true,
+}))
+vi.mock('@tauri-apps/plugin-clipboard-manager', () => ({
+  readText: mocks.readClipboardText,
 }))
 vi.mock('../composables/useTerminalWheel', () => ({
   createTerminalWheel: () => ({
@@ -88,6 +96,7 @@ describe('useTerminal device text integration', () => {
     mocks.instances.length = 0
     mocks.hostTarget.mockReturnValue('linux-x86_64')
     mocks.isTauri.mockReturnValue(true)
+    mocks.readClipboardText.mockReset()
     const storage = new MemoryStorage()
     Object.defineProperty(window, 'localStorage', { value: storage, configurable: true })
     vi.stubGlobal('localStorage', storage)
@@ -121,6 +130,27 @@ describe('useTerminal device text integration', () => {
     settings.text.font_family = ''
     const term = attach('p1')
     expect(term.xterm?.options.fontFamily).toBe('monospace')
+    term.destroy()
+  })
+
+  it('handles Windows desktop Ctrl+V as clipboard paste for terminal TUIs', async () => {
+    mocks.hostTarget.mockReturnValue('windows-x86_64')
+    mocks.readClipboardText.mockResolvedValue('pasted into OpenCode')
+    const term = attach('p1')
+    const xterm = mocks.instances[mocks.instances.length - 1]
+    const event = new KeyboardEvent('keydown', {
+      key: 'v',
+      code: 'KeyV',
+      ctrlKey: true,
+      cancelable: true,
+    })
+
+    expect(xterm.keyHandler(event)).toBe(false)
+    expect(event.defaultPrevented).toBe(true)
+    await vi.waitFor(() => {
+      expect(mocks.readClipboardText).toHaveBeenCalledOnce()
+      expect(xterm.paste).toHaveBeenCalledWith('pasted into OpenCode')
+    })
     term.destroy()
   })
 
