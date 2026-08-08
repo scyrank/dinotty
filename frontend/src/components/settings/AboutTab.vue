@@ -40,12 +40,12 @@
       <div class="settings-row">
         <label>{{ t('settings.about.documentation') }}</label>
         <a
-          href="https://xichan96.github.io/dinotty/"
+          href="https://xichan96.github.io/dinotty"
           target="_blank"
           rel="noopener"
           class="about-link"
         >
-          https://xichan96.github.io/dinotty/
+          https://xichan96.github.io/dinotty
         </a>
       </div>
       <div class="settings-row">
