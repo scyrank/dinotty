@@ -19,7 +19,9 @@
 
 ---
 
-**Multi-Gerät** Terminalserver, speziell für **Coding-Agenten** gebaut. Starte Claude Code, opencode, Codex oder OpenClaw auf jedem Gerät - Desktop-Erlebnis auf dem Laptop, immer in der Tasche auf dem Handy. Wechsel nahtlos, verliere nie eine Session.
+Ein Terminal für Coding-Agenten.
+
+Claude Code, opencode, Codex oder OpenClaw auf jedem Gerät -- schlicht, erweiterbar, geräteübergreifend, verliert nie eine Session.
 
 ## Screenshots
 

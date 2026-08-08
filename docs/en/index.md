@@ -1,6 +1,8 @@
 # Dinotty Docs
 
-Dinotty is a multi-device terminal server purpose-built for coding agents. Run Claude Code, opencode, Codex, or OpenClaw on any device -- desktop-class on your laptop, always in your pocket on your phone. Switch seamlessly, never lose a session.
+A terminal built for coding agents.
+
+Run Claude Code, opencode, Codex, or OpenClaw on any device -- simple, extensible, multi-device, never lose a session.
 
 Docs are split into two tracks: **User Docs** for end users, and **Dev Docs** for plugin authors, API integrators, and project contributors.
 

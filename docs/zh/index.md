@@ -1,6 +1,8 @@
 # Dinotty 文档
 
-Dinotty 是为 Coding Agent 打造的多端同步终端服务器。在任意设备上运行 Claude Code、opencode、Codex 或 OpenClaw，桌面端专业高效，移动端随时掌控 -- 无缝切换，会话永不丢失。
+为 Coding Agent 场景打造的终端。
+
+在任意设备上运行 Claude Code、opencode、Codex 或 OpenClaw -- 简洁、可拓展、多端同步，会话永不丢失。
 
 文档分两条轨道：**使用文档**面向最终用户，**开发文档**面向插件作者、API 集成方与项目贡献者。
 

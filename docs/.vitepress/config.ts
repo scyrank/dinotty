@@ -149,7 +149,7 @@ export default defineConfig({
   cleanUrls: true,
   lastUpdated: true,
   title: 'Dinotty',
-  description: '为 Coding Agent 打造的多端同步终端服务器',
+  description: '为 Coding Agent 场景打造的终端 -- 简洁、可拓展、多端同步，会话永不丢失',
 
   srcExclude: ['README.*.md', 'README.md'],
 

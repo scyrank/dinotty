@@ -19,7 +19,9 @@
 
 ---
 
-Servidor terminal **multidispositivo** feito sob medida para **agentes de código**. Rode Claude Code, opencode, Codex ou OpenClaw em qualquer dispositivo - nível desktop no seu notebook, sempre no bolso no celular. Alterne sem interrupções, nunca perca uma sessão.
+Um terminal para agentes de código.
+
+Rode Claude Code, opencode, Codex ou OpenClaw em qualquer dispositivo -- simples, extensível, multidispositivo, nunca perde uma sessão.
 
 ## Screenshots
 
