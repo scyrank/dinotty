@@ -30,7 +30,7 @@ use dinotty_server::platform::process::CommandNoWindowExt;
 use dinotty_server::platform::shell_probe::ShellProbeService;
 use dinotty_server::plugin::{self, PluginManager, PluginManagerState};
 use dinotty_server::proxy;
-use dinotty_server::session::SessionManager;
+use dinotty_server::session::{restore_session, SessionManager, SessionSnapshotStore};
 use dinotty_server::settings;
 use dinotty_server::tabs;
 use dinotty_server::templates;
@@ -777,6 +777,22 @@ pub fn run_server(
         ));
         let settings_state = settings::create_settings_state();
         notifier.set_settings(settings_state.clone());
+        // Restore tabs/panes from the last session (if enabled in settings).
+        // Done before `start_cleanup_task` so the reaper never sees restoring
+        // sessions as unowned (mirrors src/main.rs server wiring).
+        {
+            let restore_enabled = settings_state.read().await.restore_session_on_startup;
+            if restore_enabled {
+                let snapshot = SessionSnapshotStore::new().load();
+                if !snapshot.tabs.is_empty() {
+                    tracing::info!("Restoring session: {} tabs in snapshot", snapshot.tabs.len());
+                    restore_session(&manager, &snapshot).await;
+                }
+            }
+        }
+        // Start the snapshot debounce task after restore so restore-time layout
+        // commits don't trigger a redundant write.
+        manager.start_snapshot_task();
         // Registering the notifier is independent of starting the reaper: a bind failure or
         // startup-ordering issue here must never suppress the detached-session reaper itself
         // (mirrors src/main.rs server wiring).
@@ -825,6 +841,14 @@ pub fn run_server(
 
         let workspaces_state = workspace_mgmt::create_workspaces_state();
         let mc_state = mission_control::create_mission_control_state();
+        // Sync MC's selected_workspace_id to active_workspace_id so the
+        // overview highlights the workspace the user is landing in (otherwise
+        // MC opens with nothing selected, even though the workspace view
+        // correctly shows the restored workspace's tabs).
+        {
+            let active_ws = settings_state.read().await.active_workspace_id.clone();
+            mc_state.write().await.selected_workspace_id = active_ws;
+        }
 
         let (verification_code_ttl, verification_code_rate_limit) = {
             let s = settings::load_settings();

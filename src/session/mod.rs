@@ -3,6 +3,8 @@ mod cwd;
 mod layout;
 pub mod ledger;
 mod manager;
+mod restore;
+mod snapshot;
 
 pub use backend::{PendingSshAuth, SessionBackend, SshAuthPrompt, SshCmd, SshSessionParams};
 pub use cwd::CwdState;
@@ -12,6 +14,8 @@ pub use layout::{
     insert_pane_into_layout_with_info, insert_subtree_into_layout, remove_pane_from_layout,
 };
 pub use manager::{CloseReason, SessionManager, SessionStatus, SyncClient, SyncMsg, TabInfo};
+pub use restore::restore_session;
+pub use snapshot::{SessionSnapshot, SessionSnapshotStore, TabSnapshot};
 
 #[cfg(test)]
 pub(crate) use cwd::{find_subslice, parse_title_cwd, sniff_cwd_from_title_osc, OSC_SNIFF_CAP};

@@ -983,6 +983,24 @@ async fn main() {
     ));
     let settings_state = settings::create_settings_state();
     notifier.set_settings(settings_state.clone());
+
+    // Restore tabs/panes from the last session (if enabled in settings).
+    // Done before `start_cleanup_task` so the reaper never sees restoring
+    // sessions as unowned (it has a 60s grace anyway, but this is cleaner).
+    {
+        let restore_enabled = settings_state.read().await.restore_session_on_startup;
+        if restore_enabled {
+            let snapshot = session::SessionSnapshotStore::new().load();
+            if !snapshot.tabs.is_empty() {
+                tracing::info!("Restoring session: {} tabs in snapshot", snapshot.tabs.len());
+                session::restore_session(&manager, &snapshot).await;
+            }
+        }
+    }
+    // Start the snapshot debounce task after restore so restore-time layout
+    // commits don't trigger a redundant write.
+    manager.start_snapshot_task();
+
     manager.register_notifier(Arc::clone(&notifier));
     manager.start_cleanup_task();
     manager.start_event_bridge();
@@ -1054,6 +1072,12 @@ async fn main() {
     let mcp_sse = Arc::new(mcp::transport::SseState::new());
     let workspaces_state = workspace_mgmt::create_workspaces_state();
     let mc_state = mission_control::create_mission_control_state();
+    // Sync MC's selected_workspace_id to active_workspace_id so the overview
+    // highlights the workspace the user is landing in.
+    {
+        let active_ws = settings_state.read().await.active_workspace_id.clone();
+        mc_state.write().await.selected_workspace_id = active_ws;
+    }
 
     let session_ttl_days = settings::load_settings().auth.session_ttl_days;
     let sessions = Arc::new(SessionStore::new(session_ttl_days));
@@ -1068,7 +1092,7 @@ async fn main() {
 
     let file_watcher_event_bus = manager.event_bus.clone();
     let state = AppState {
-        manager,
+        manager: Arc::clone(&manager),
         settings: settings_state,
         shell_probe: Arc::new(dinotty_server::platform::shell_probe::ShellProbeService::new()),
         file_watcher: Arc::new(FileWatcherState::new(file_watcher_event_bus)),
@@ -1312,11 +1336,15 @@ async fn main() {
     tracing::info!("Listening on http://0.0.0.0:{}", port);
 
     notify_manager.set_notify_port(port);
+    let shutdown_manager = Arc::clone(&manager);
     let shutdown_plugins = Arc::clone(&plugins);
     axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
         .with_graceful_shutdown(async move {
             shutdown_signal().await;
             shutdown_plugins.shutdown_all().await;
+            // Sync-flush the session snapshot so the most recent layout is
+            // persisted without waiting for the 1s debounce window.
+            shutdown_manager.flush_snapshot_sync();
         })
         .await
         .unwrap();

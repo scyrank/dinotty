@@ -511,6 +511,21 @@
           {{ t('settings.confirmBeforeCloseTabHint') }}
         </p>
         <div class="settings-row">
+          <label>{{ t('settings.restoreSessionOnStartup') }}</label>
+          <label class="toggle">
+            <input
+              type="checkbox"
+              v-model="settings.restore_session_on_startup"
+              @change="saveSettings()"
+              data-setting="restore-session-on-startup"
+            />
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </label>
+        </div>
+        <p class="settings-hint" data-hint="restore-session-on-startup">
+          {{ t('settings.restoreSessionOnStartupHint') }}
+        </p>
+        <div class="settings-row">
           <label>{{ t('settings.spaceConfirmsDialogs') }}</label>
           <label class="toggle">
             <input

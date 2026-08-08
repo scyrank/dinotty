@@ -57,6 +57,7 @@ export interface SettingsData {
   keyboard_guard_mode: KeyboardGuardMode
   workspace_badge_mode: WorkspaceBadgeMode | null
   confirm_before_close_tab: boolean
+  restore_session_on_startup: boolean
   reload_after_supervise_tabs: boolean
   space_confirms_dialogs: boolean
   windowsAltAsCmd: boolean
@@ -417,6 +418,7 @@ export const settings = reactive<SettingsData>({
   keyboard_guard_mode: 'off',
   workspace_badge_mode: null,
   confirm_before_close_tab: true,
+  restore_session_on_startup: true,
   reload_after_supervise_tabs: false,
   space_confirms_dialogs: false,
   windowsAltAsCmd: isWindowsClient,

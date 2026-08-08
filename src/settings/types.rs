@@ -124,6 +124,8 @@ pub struct Settings {
     pub windows_alt_as_cmd: bool,
     #[serde(default = "default_true")]
     pub confirm_before_close_tab: bool,
+    #[serde(default = "default_true")]
+    pub restore_session_on_startup: bool,
     #[serde(default)]
     pub reload_after_supervise_tabs: bool,
     #[serde(default)]
@@ -866,6 +868,7 @@ impl Default for Settings {
             workspace_badge_mode: None,
             windows_alt_as_cmd: false,
             confirm_before_close_tab: true,
+            restore_session_on_startup: true,
             reload_after_supervise_tabs: false,
             space_confirms_dialogs: false,
             locale: default_locale(),

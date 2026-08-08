@@ -719,6 +719,9 @@ const messages: Record<Locale, Record<string, string>> = {
     'settings.confirmBeforeCloseTab': 'Confirm before closing terminal tab',
     'settings.confirmBeforeCloseTabHint':
       'Show a confirmation dialog before closing a terminal tab',
+    'settings.restoreSessionOnStartup': 'Restore tabs on startup',
+    'settings.restoreSessionOnStartupHint':
+      'Reopen the tabs and panes from your last session when dinotty starts',
     'settings.spaceConfirmsDialogs': 'Use Space to confirm dialogs',
     'settings.spaceConfirmsDialogsHint': 'Applies to all confirmation dialogs',
     'settings.behavior': 'Behavior',
@@ -930,7 +933,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'previewPanel.expandTree': '展开文件树',
     'previewPanel.openInBrowser': '在浏览器中打开',
     'previewPanel.switchWeb': '网页预览',
-    'previewPanel.switchFiles': '文件浏览器',
+    'previewPanel.switchFiles': '文件浏览',
     'devtools.console': '控制台',
     'devtools.network': '网络',
     'devtools.clear': '清空',
@@ -1614,6 +1617,8 @@ const messages: Record<Locale, Record<string, string>> = {
     'settings.about.updateToast': '发现新版本 {version}，点击查看详情',
     'settings.confirmBeforeCloseTab': '关闭终端 tab 前显示确认',
     'settings.confirmBeforeCloseTabHint': '关闭终端 tab 前弹出确认对话框',
+    'settings.restoreSessionOnStartup': '启动时恢复 tabs',
+    'settings.restoreSessionOnStartupHint': 'dinotty 启动时重新打开上次会话的 tabs 和 panes',
     'settings.spaceConfirmsDialogs': '使用空格键确认对话框',
     'settings.spaceConfirmsDialogsHint': '适用于所有确认对话框',
     'settings.behavior': '行为',
