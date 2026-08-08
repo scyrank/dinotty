@@ -172,6 +172,12 @@ impl axum::extract::FromRef<AppState> for (Arc<SessionManager>, Arc<FileWatcherS
     }
 }
 
+impl axum::extract::FromRef<AppState> for Arc<FileWatcherState> {
+    fn from_ref(state: &AppState) -> Self {
+        state.file_watcher.clone()
+    }
+}
+
 impl axum::extract::FromRef<AppState> for MonitorState {
     fn from_ref(state: &AppState) -> Self {
         state.monitor.clone()
@@ -1125,6 +1131,7 @@ async fn main() {
             .route("/ws", get(ws::ws_handler))
             .route("/ws/sync", get(ws::sync_handler))
             .route("/ws/watch", get(file_watcher::watch_handler))
+            .route("/ws/plugins/:id/workspace/watch", get(plugin::plugin_workspace_watch))
             .route("/api/notify", post(notification::post_notify))
             .route("/api/events/emit", post(events::emit_event))
             .route("/api/input", post(ws::post_input))
@@ -1263,6 +1270,14 @@ async fn main() {
             .route("/api/plugins/:id/events/subscribe", post(plugin::subscribe))
             .route("/api/plugins/:id/events/unsubscribe", post(plugin::unsubscribe))
             .route("/api/plugins/events/has-subscriber", get(plugin::has_subscriber))
+            .route("/api/plugins/:id/workspace/readDir", get(plugin::plugin_workspace_read_dir))
+            .route("/api/plugins/:id/workspace/readFile", get(plugin::plugin_workspace_read_file))
+            .route("/api/plugins/:id/workspace/file", put(plugin::plugin_workspace_put_file))
+            .route("/api/plugins/:id/workspace/stat", get(plugin::plugin_workspace_stat))
+            .route("/api/plugins/:id/workspace/mkdir", post(plugin::plugin_workspace_mkdir))
+            .route("/api/plugins/:id/workspace/delete", delete(plugin::plugin_workspace_delete))
+            .route("/api/plugins/:id/workspace/rename", post(plugin::plugin_workspace_rename))
+            .route("/api/plugins/:id/workspace/move", post(plugin::plugin_workspace_move))
             .route("/api/plugins/:id/*path", get(plugin::plugin_asset))
             // Agent API + Token management + MCP — protected by agent token middleware
             .merge(
