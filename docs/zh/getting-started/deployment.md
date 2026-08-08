@@ -146,7 +146,7 @@ supervisorctl update
 - `dpkg -i ... || apt -f install -y` 在依赖缺失时自动补齐。
 - `supervisord` 必须作为容器主进程（PID 1）常驻，否则容器会立即退出。
 - 默认监听 `8999`；改端口在 supervisor 的 `command=dinotty-server -p <port>`，并在 `docker run -p` 同步映射。
-- 想锁版本请把 URL 里的 `v0.20.0` 与文件名里的 `0.20.0` 替换为目标版本；获取最新版可参考 [安装页](installation#服务端-deb-linux) 的 `VERSION=...` 片段。
+- 想锁版本请把 URL 里的 `v0.20.0` 与文件名里的 `0.20.0` 替换为目标版本；获取最新版可参考 [安装页](../installation#服务端-deb-linux) 的 `VERSION=...` 片段。
 
 最小化 Dockerfile 示例：
 
@@ -195,6 +195,14 @@ CMD ["supervisord", "-c", "/etc/supervisor/supervisord.conf"]
 | 显示 Token | `--print-token` | — | 由运行服务的同一系统用户解密并输出 Token 后退出 |
 | 日志级别 | `RUST_LOG` 环境变量 | info | trace / debug / info / warn / error |
 | Shell | Unix: `SHELL`；Windows: `DINOTTY_SHELL` | 自动检测 | Windows 优先 `DINOTTY_SHELL`，再尝试 `pwsh.exe`、`powershell.exe`、`%ComSpec%` / `cmd.exe` |
+
+### Shell 探测与 WSL
+
+“设置 → 通用 → Shell”中的列表由 Dinotty 后端主机实时探测，而不是由浏览器所在设备决定。每次打开选择器都会重新探测；列表中的“已检测到”只表示可执行文件或 WSL 发行版已找到，不保证用户启动脚本一定能成功运行。修改只影响之后创建的本地终端和分屏，已经打开的终端不会切换 Shell。
+
+Windows 主机安装了支持 `--distribution` 和 `--cd` 的 WSL，且至少注册了一个发行版时，可以选择默认发行版或指定发行版。Dinotty 通过系统目录中的 `wsl.exe` 启动它，并将发行版名称和工作目录作为独立参数传入。没有显式工作目录时，WSL 从 Linux 用户主目录 `~` 启动；有 Windows 工作区目录时，由 WSL 自己解释该 Windows 路径。
+
+首版不会把 WSL 内的 Linux 路径映射回 Windows 文件工作区，也不会假定发行版使用 `/mnt/<盘符>`。因此，WSL 终端中的输入、调整大小、关闭、重连和分屏可正常使用，但文件工作区的“运行代码”操作会被禁用并给出提示。
 
 ### 配置与数据目录
 

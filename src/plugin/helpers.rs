@@ -8,6 +8,8 @@ use super::types::{BinConfig, HostTarget, PluginManifest};
 
 pub const NATIVE_EXECUTE_PERMISSION: &str = "native.execute";
 pub const LONG_RUNNING_PERMISSION: &str = "process.long-running";
+pub const WORKSPACE_READ_PERMISSION: &str = "workspace.read";
+pub const WORKSPACE_WRITE_PERMISSION: &str = "workspace.write";
 
 pub fn validate_manifest(manifest: &PluginManifest) -> Result<(), String> {
     if manifest.id.is_empty() {
@@ -77,6 +79,12 @@ pub fn validate_manifest(manifest: &PluginManifest) -> Result<(), String> {
                 && permission != LONG_RUNNING_PERMISSION
             {
                 return Err(format!("unknown native permission '{permission}'"));
+            }
+            if permission.starts_with("workspace.")
+                && permission != WORKSPACE_READ_PERMISSION
+                && permission != WORKSPACE_WRITE_PERMISSION
+            {
+                return Err(format!("unknown workspace permission '{permission}'"));
             }
         }
     }
@@ -370,7 +378,7 @@ mod tests {
     use super::{
         copy_plugin_dir, extract_tar_gz, extract_zip, is_compatible, require_native_approval,
         resolve_binary, validate_manifest, validate_min_app_version, LONG_RUNNING_PERMISSION,
-        NATIVE_EXECUTE_PERMISSION,
+        NATIVE_EXECUTE_PERMISSION, WORKSPACE_READ_PERMISSION, WORKSPACE_WRITE_PERMISSION,
     };
     use crate::plugin::{
         BinConfig, HostTarget, PluginManifest, ProcessLifecycleConfig, ProcessLifecycleScope,
@@ -572,6 +580,17 @@ mod tests {
         assert!(validate_manifest(&manifest).is_ok());
         assert!(require_native_approval(&manifest, false).is_err());
         assert!(require_native_approval(&manifest, true).is_ok());
+    }
+
+    #[test]
+    fn workspace_permissions_validate_against_allowlist() {
+        let mut m = manifest(None);
+        m.permissions =
+            Some(vec![WORKSPACE_READ_PERMISSION.into(), WORKSPACE_WRITE_PERMISSION.into()]);
+        assert!(validate_manifest(&m).is_ok());
+
+        m.permissions = Some(vec!["workspace.unknown".into()]);
+        assert!(validate_manifest(&m).unwrap_err().contains("unknown workspace permission"));
     }
 
     #[test]

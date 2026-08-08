@@ -8,6 +8,11 @@
 const DPAPI_PREFIX: &[u8] = b"dpapi:";
 
 /// Encode bytes for persistent storage.
+///
+/// # Errors
+///
+/// Returns an error when the operating-system secret store cannot protect the
+/// data or when the input is too large for the platform API.
 pub fn encode_persisted(data: &[u8]) -> Result<Vec<u8>, String> {
     #[cfg(windows)]
     {
@@ -29,6 +34,11 @@ pub fn encode_persisted(data: &[u8]) -> Result<Vec<u8>, String> {
 
 /// Decode persisted bytes and report whether they already use the current
 /// platform protection format. A false flag indicates a legacy plaintext file.
+///
+/// # Errors
+///
+/// Returns an error when the protected envelope is malformed or the
+/// operating-system secret store cannot decrypt it for the current user.
 pub fn decode_persisted(data: &[u8]) -> Result<(Vec<u8>, bool), String> {
     #[cfg(windows)]
     {
@@ -62,13 +72,13 @@ fn protect_for_current_user(data: &[u8]) -> Result<Vec<u8>, String> {
     let mut output = CRYPT_INTEGER_BLOB::default();
     let succeeded = unsafe {
         CryptProtectData(
-            &input,
+            &raw const input,
             ptr::null(),
             ptr::null(),
             ptr::null(),
             ptr::null(),
             CRYPTPROTECT_UI_FORBIDDEN,
-            &mut output,
+            &raw mut output,
         )
     };
     if succeeded == 0 {
@@ -96,13 +106,13 @@ fn unprotect_for_current_user(data: &[u8]) -> Result<Vec<u8>, String> {
     let mut output = CRYPT_INTEGER_BLOB::default();
     let succeeded = unsafe {
         CryptUnprotectData(
-            &input,
+            &raw const input,
             ptr::null_mut(),
             ptr::null(),
             ptr::null(),
             ptr::null(),
             CRYPTPROTECT_UI_FORBIDDEN,
-            &mut output,
+            &raw mut output,
         )
     };
     if succeeded == 0 {

@@ -1,5 +1,21 @@
-use super::types::KeyboardGuardMode;
+use super::types::{KeyboardGuardMode, MobileInputMode};
 use super::*;
+
+#[test]
+fn wsl_distro_defaults_and_round_trips_without_version_migration() {
+    let old: Settings = serde_json::from_str(r#"{"shell":"auto"}"#).unwrap();
+    assert_eq!(old.wsl_distro, None);
+
+    let settings = Settings {
+        shell: "wsl".to_string(),
+        wsl_distro: Some("Ubuntu-24.04".to_string()),
+        ..Settings::default()
+    };
+    let restored: Settings =
+        serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+    assert_eq!(restored.shell, "wsl");
+    assert_eq!(restored.wsl_distro.as_deref(), Some("Ubuntu-24.04"));
+}
 
 #[test]
 fn old_config_missing_confirm_before_close_tab_defaults_to_true() {
@@ -10,6 +26,21 @@ fn old_config_missing_confirm_before_close_tab_defaults_to_true() {
         settings.confirm_before_close_tab,
         "missing field should default to true for backward compatibility"
     );
+}
+
+#[test]
+fn auto_check_updates_defaults_to_true_and_preserves_explicit_false() {
+    let old_settings: Settings = serde_json::from_str(r"{}")
+        .expect("settings written before auto_check_updates should still parse");
+    assert!(old_settings.auto_check_updates);
+    assert!(Settings::default().auto_check_updates);
+
+    let disabled: Settings = serde_json::from_str(r#"{"auto_check_updates":false}"#).unwrap();
+    assert!(!disabled.auto_check_updates);
+
+    let serialized = serde_json::to_string(&disabled).unwrap();
+    let restored: Settings = serde_json::from_str(&serialized).unwrap();
+    assert!(!restored.auto_check_updates);
 }
 
 #[test]
@@ -25,6 +56,7 @@ fn settings_empty_json_is_valid() {
     assert!(!settings.keyboard_sound);
     assert_eq!(settings.quick_send_threshold, 63);
     assert!(!settings.show_virtual_keyboard);
+    assert_eq!(settings.mobile_input_mode, None);
     assert!(!settings.windows_alt_as_cmd);
     assert!(settings.confirm_before_close_tab);
     assert!(settings.bookmarks.is_empty());
@@ -34,6 +66,21 @@ fn settings_empty_json_is_valid() {
         assert_eq!(settings.ip_whitelist, vec!["127.0.0.1", "::1"]);
     }
     assert_eq!(settings.upload_dir, default_upload_dir());
+}
+
+#[test]
+fn mobile_input_mode_round_trips_as_global_settings_data() {
+    for (mode, serialized_name) in
+        [(MobileInputMode::Builtin, "builtin"), (MobileInputMode::System, "system")]
+    {
+        let settings = Settings { mobile_input_mode: Some(mode), ..Settings::default() };
+
+        let serialized = serde_json::to_string(&settings).unwrap();
+        let restored: Settings = serde_json::from_str(&serialized).unwrap();
+
+        assert!(serialized.contains(&format!(r#""mobile_input_mode":"{serialized_name}""#)));
+        assert_eq!(restored.mobile_input_mode, Some(mode));
+    }
 }
 
 #[test]

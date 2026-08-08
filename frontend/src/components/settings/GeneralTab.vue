@@ -19,44 +19,14 @@
       </section>
 
       <section class="settings-section">
-        <h3>{{ t('settings.panelPosition') }}</h3>
-        <div class="settings-row">
-          <select
-            v-model="settings.panel_position"
-            class="shortcut-input"
-            style="flex: 1"
-            @change="saveSettings()"
-          >
-            <option value="auto">{{ t('settings.panelPos.auto') }}</option>
-            <option value="left">{{ t('settings.panelPos.left') }}</option>
-            <option value="right">{{ t('settings.panelPos.right') }}</option>
-            <option value="top">{{ t('settings.panelPos.top') }}</option>
-            <option value="bottom">{{ t('settings.panelPos.bottom') }}</option>
-          </select>
-        </div>
-        <p class="settings-hint">{{ t('settings.panelPositionHint') }}</p>
-      </section>
-
-      <section class="settings-section">
         <h3>{{ t('settings.shell') }}</h3>
         <div class="settings-row">
-          <select
-            v-model="settings.shell"
-            class="shortcut-input"
-            style="flex: 1"
-            @change="onShellKindChange"
-          >
-            <option value="auto">{{ t('settings.shellKind.auto') }}</option>
-            <option value="zsh">{{ t('settings.shellKind.zsh') }}</option>
-            <option value="bash">{{ t('settings.shellKind.bash') }}</option>
-            <option value="sh">{{ t('settings.shellKind.sh') }}</option>
-            <option value="fish">{{ t('settings.shellKind.fish') }}</option>
-            <option value="powershell">{{ t('settings.shellKind.powershell') }}</option>
-            <option value="cmd">{{ t('settings.shellKind.cmd') }}</option>
-            <option value="custom">{{ t('settings.shellKind.custom') }}</option>
-          </select>
+          <ShellPicker
+            :kind="settings.shell"
+            :distro="settings.wsl_distro"
+            @select="onShellSelection"
+          />
         </div>
-        <p class="settings-hint">{{ t('settings.shellHint') }}</p>
         <div v-if="settings.shell === 'custom'" class="settings-row">
           <input
             v-model="shellPathInput"
@@ -541,6 +511,21 @@
           {{ t('settings.confirmBeforeCloseTabHint') }}
         </p>
         <div class="settings-row">
+          <label>{{ t('settings.restoreSessionOnStartup') }}</label>
+          <label class="toggle">
+            <input
+              type="checkbox"
+              v-model="settings.restore_session_on_startup"
+              @change="saveSettings()"
+              data-setting="restore-session-on-startup"
+            />
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </label>
+        </div>
+        <p class="settings-hint" data-hint="restore-session-on-startup">
+          {{ t('settings.restoreSessionOnStartupHint') }}
+        </p>
+        <div class="settings-row">
           <label>{{ t('settings.spaceConfirmsDialogs') }}</label>
           <label class="toggle">
             <input
@@ -627,6 +612,7 @@ import { useIsMobile } from '../../composables/useIsMobile'
 import { resolveWorkspaceBadgeMode } from '../../composables/useWorkspaceBadgeMode'
 import CollapsibleSection from './CollapsibleSection.vue'
 import SegmentedControl from '../ui/SegmentedControl.vue'
+import ShellPicker from './ShellPicker.vue'
 import { useToast } from 'vue-toastification'
 import { isTauri } from '../../composables/useTransport'
 import { authFetch, apiUrl } from '../../composables/apiBase'
@@ -707,8 +693,10 @@ function onWsBadgeModeChange(value: string) {
 
 const shellPathInput = ref(settings.shell_path ?? '')
 
-function onShellKindChange() {
-  if (settings.shell !== 'custom') {
+function onShellSelection(selection: { kind: string; distro: string | null }) {
+  settings.shell = selection.kind
+  settings.wsl_distro = selection.kind === 'wsl' ? selection.distro : null
+  if (selection.kind !== 'custom') {
     settings.shell_path = null
     shellPathInput.value = ''
   }

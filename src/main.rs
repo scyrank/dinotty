@@ -3,7 +3,7 @@
 use dinotty_server::{
     agent, api::clipboard, audit, auth, event_bus, events, file_watcher, history, mcp,
     mission_control, monitor, notification, openapi, plugin, proxy, session, settings, tabs,
-    templates, token, webhook, workspace, workspace_mgmt, ws,
+    templates, token, update_check, webhook, workspace, workspace_mgmt, ws,
 };
 
 use axum::{
@@ -118,6 +118,7 @@ fn read_git_info() -> GitInfo {
 pub struct AppState {
     pub manager: Arc<SessionManager>,
     pub settings: SettingsState,
+    pub shell_probe: Arc<dinotty_server::platform::shell_probe::ShellProbeService>,
     pub file_watcher: Arc<FileWatcherState>,
     pub monitor: MonitorState,
     pub notifier: Arc<NotificationBroadcast>,
@@ -137,6 +138,7 @@ pub struct AppState {
     pub sessions: Arc<SessionStore>,
     pub code_store: Arc<CodeStore>,
     pub subscriptions: plugin::SubscriptionRegistry,
+    pub update_checker: update_check::UpdateCheckState,
 }
 
 // Allow extracting Arc<SessionManager> from AppState for ws handlers
@@ -159,10 +161,24 @@ impl axum::extract::FromRef<AppState> for SettingsState {
     }
 }
 
+impl axum::extract::FromRef<AppState>
+    for Arc<dinotty_server::platform::shell_probe::ShellProbeService>
+{
+    fn from_ref(state: &AppState) -> Self {
+        state.shell_probe.clone()
+    }
+}
+
 // Allow extracting (Arc<SessionManager>, Arc<FileWatcherState>) for file watcher handlers
 impl axum::extract::FromRef<AppState> for (Arc<SessionManager>, Arc<FileWatcherState>) {
     fn from_ref(state: &AppState) -> Self {
         (state.manager.clone(), state.file_watcher.clone())
+    }
+}
+
+impl axum::extract::FromRef<AppState> for Arc<FileWatcherState> {
+    fn from_ref(state: &AppState) -> Self {
+        state.file_watcher.clone()
     }
 }
 
@@ -269,6 +285,12 @@ impl axum::extract::FromRef<AppState> for Arc<SessionStore> {
 impl axum::extract::FromRef<AppState> for Arc<tokio::sync::RwLock<String>> {
     fn from_ref(state: &AppState) -> Self {
         state.auth_token.clone()
+    }
+}
+
+impl axum::extract::FromRef<AppState> for update_check::UpdateCheckState {
+    fn from_ref(state: &AppState) -> Self {
+        state.update_checker.clone()
     }
 }
 
@@ -431,10 +453,9 @@ fn parse_bind_ip() -> IpAddr {
         }
         i += 1;
     }
-    std::env::var("DINOTTY_BIND_ADDR")
-        .ok()
-        .map(|value| value.parse().expect("DINOTTY_BIND_ADDR must be a literal IP address"))
-        .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST))
+    std::env::var("DINOTTY_BIND_ADDR").ok().map_or(IpAddr::V4(Ipv4Addr::LOCALHOST), |value| {
+        value.parse().expect("DINOTTY_BIND_ADDR must be a literal IP address")
+    })
 }
 
 async fn server_info(State(state): State<AppState>) -> Json<serde_json::Value> {
@@ -1018,6 +1039,24 @@ async fn main() {
     ));
     let settings_state = settings::create_settings_state();
     notifier.set_settings(settings_state.clone());
+
+    // Restore tabs/panes from the last session (if enabled in settings).
+    // Done before `start_cleanup_task` so the reaper never sees restoring
+    // sessions as unowned (it has a 60s grace anyway, but this is cleaner).
+    {
+        let restore_enabled = settings_state.read().await.restore_session_on_startup;
+        if restore_enabled {
+            let snapshot = session::SessionSnapshotStore::new().load();
+            if !snapshot.tabs.is_empty() {
+                tracing::info!("Restoring session: {} tabs in snapshot", snapshot.tabs.len());
+                session::restore_session(&manager, &snapshot).await;
+            }
+        }
+    }
+    // Start the snapshot debounce task after restore so restore-time layout
+    // commits don't trigger a redundant write.
+    manager.start_snapshot_task();
+
     manager.register_notifier(Arc::clone(&notifier));
     manager.start_cleanup_task();
     manager.start_event_bridge();
@@ -1070,6 +1109,12 @@ async fn main() {
     let mcp_sse = Arc::new(mcp::transport::SseState::new());
     let workspaces_state = workspace_mgmt::create_workspaces_state();
     let mc_state = mission_control::create_mission_control_state();
+    // Sync MC's selected_workspace_id to active_workspace_id so the overview
+    // highlights the workspace the user is landing in.
+    {
+        let active_ws = settings_state.read().await.active_workspace_id.clone();
+        mc_state.write().await.selected_workspace_id = active_ws;
+    }
 
     let session_ttl_days = settings::load_settings().auth.session_ttl_days;
     let sessions = Arc::new(SessionStore::new(session_ttl_days));
@@ -1084,8 +1129,9 @@ async fn main() {
 
     let file_watcher_event_bus = manager.event_bus.clone();
     let state = AppState {
-        manager,
+        manager: Arc::clone(&manager),
         settings: settings_state,
+        shell_probe: Arc::new(dinotty_server::platform::shell_probe::ShellProbeService::new()),
         file_watcher: Arc::new(FileWatcherState::new(file_watcher_event_bus)),
         monitor: monitor_state,
         notifier,
@@ -1105,6 +1151,7 @@ async fn main() {
         sessions,
         code_store,
         subscriptions: plugin::SubscriptionRegistry::new(),
+        update_checker: update_check::UpdateChecker::new(),
     };
 
     state.plugins.watch_changes(state.manager.clone());
@@ -1115,10 +1162,11 @@ async fn main() {
             .route("/ws", get(ws::ws_handler))
             .route("/ws/sync", get(ws::sync_handler))
             .route("/ws/watch", get(file_watcher::watch_handler))
+            .route("/ws/plugins/:id/workspace/watch", get(plugin::plugin_workspace_watch))
             .route("/api/notify", post(notification::post_notify))
             .route("/api/events/emit", post(events::emit_event))
             .route("/api/input", post(ws::post_input))
-            // Open API
+            // Open API - public endpoints (session cookie / global Bearer via outer auth_middleware)
             .route("/api/sessions", get(openapi::list_sessions))
             .route("/api/sessions/:pane_id/screen", get(openapi::get_screen))
             .route("/api/sessions/:pane_id/scrollback", get(openapi::get_scrollback))
@@ -1150,6 +1198,7 @@ async fn main() {
             .route("/api/token-configured", get(token_configured))
             .route("/api/auto-token", get(auto_token))
             .route("/api/settings", get(settings::get_settings).put(put_settings_with_session_ttl))
+            .route("/api/shells", get(dinotty_server::api::shells::get_shells))
             .route("/api/clipboard", get(clipboard::get_clipboard))
             .route(
                 "/api/settings/background",
@@ -1216,6 +1265,7 @@ async fn main() {
             .route("/api/history", get(history::get_history).delete(history::delete_history))
             .route("/api/proxy", any(proxy::external_proxy_handler))
             .route("/api/info", get(server_info))
+            .route("/api/update-check", get(update_check::get_update_status))
             .route("/api/token", get(get_token).put(update_token))
             // Plugin management
             .route("/api/plugins", get(plugin::list_plugins))
@@ -1251,14 +1301,24 @@ async fn main() {
             .route("/api/plugins/:id/events/subscribe", post(plugin::subscribe))
             .route("/api/plugins/:id/events/unsubscribe", post(plugin::unsubscribe))
             .route("/api/plugins/events/has-subscriber", get(plugin::has_subscriber))
+            .route("/api/plugins/:id/workspace/readDir", get(plugin::plugin_workspace_read_dir))
+            .route("/api/plugins/:id/workspace/readFile", get(plugin::plugin_workspace_read_file))
+            .route("/api/plugins/:id/workspace/file", put(plugin::plugin_workspace_put_file))
+            .route("/api/plugins/:id/workspace/stat", get(plugin::plugin_workspace_stat))
+            .route("/api/plugins/:id/workspace/mkdir", post(plugin::plugin_workspace_mkdir))
+            .route("/api/plugins/:id/workspace/delete", delete(plugin::plugin_workspace_delete))
+            .route("/api/plugins/:id/workspace/rename", post(plugin::plugin_workspace_rename))
+            .route("/api/plugins/:id/workspace/move", post(plugin::plugin_workspace_move))
             .route("/api/plugins/:id/*path", get(plugin::plugin_asset))
-            // Agent API + Token management + MCP — protected by agent token middleware
+            // Sessions extended API (run/send/read/events) + Token management + MCP
+            // - dual-track auth via sessions_token_middleware
+            //   (session cookie / global Bearer -> TokenInfo::global(); agent Bearer -> capability check)
             .merge(
                 Router::new()
-                    .route("/api/agent/run", post(agent::agent_run))
-                    .route("/api/agent/send", post(agent::agent_send))
-                    .route("/api/agent/read", get(agent::agent_read))
-                    .route("/ws/agent", get(agent::agent_ws_handler))
+                    .route("/api/sessions/:pane_id/run", post(agent::sessions_run))
+                    .route("/api/sessions/:pane_id/send", post(agent::sessions_send))
+                    .route("/api/sessions/:pane_id/read", get(agent::sessions_read))
+                    .route("/ws/events", get(agent::events_ws_handler))
                     .route("/api/tokens", post(token::create_token).get(token::list_tokens))
                     .route(
                         "/api/tokens/:id",
@@ -1269,11 +1329,11 @@ async fn main() {
                     .route("/mcp/sse", get(mcp::transport::mcp_sse_handler))
                     .route("/mcp/message", post(mcp::transport::mcp_message_handler))
                     .layer(middleware::from_fn_with_state(
-                        token::AgentAuthState {
+                        token::SessionsAuthState {
                             global_token: auth_token.clone(),
                             tokens: state.tokens.clone(),
                         },
-                        token::agent_token_middleware,
+                        token::sessions_token_middleware,
                     )),
             )
             .route("/preview/:port", any(proxy::proxy_handler_root))
@@ -1324,11 +1384,15 @@ async fn main() {
     tracing::info!("Listening on http://{}:{}", bind_ip, port);
 
     notify_manager.set_notify_port(port);
+    let shutdown_manager = Arc::clone(&manager);
     let shutdown_plugins = Arc::clone(&plugins);
     axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
         .with_graceful_shutdown(async move {
             shutdown_signal().await;
             shutdown_plugins.shutdown_all().await;
+            // Sync-flush the session snapshot so the most recent layout is
+            // persisted without waiting for the 1s debounce window.
+            shutdown_manager.flush_snapshot_sync();
         })
         .await
         .unwrap();

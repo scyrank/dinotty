@@ -142,10 +142,6 @@ export function useOverviewCallbacks(opts: OverviewCallbacksOptions): OverviewCa
         paneMru: [result.pane_id],
         broadcastMode: false,
         broadcastActivity: 0,
-        previewVisible: false,
-        previewAddress: '',
-        previewUrl: '',
-        previewKind: 'web',
         connectionId,
         workspaceId: resolvedWorkspaceId,
       } as TerminalTab)

@@ -79,10 +79,6 @@ export function useSshConnectFlow(opts: SshConnectFlowOptions): SshConnectFlowSt
       paneMru: [result.pane_id],
       broadcastMode: false,
       broadcastActivity: 0,
-      previewVisible: false,
-      previewAddress: '',
-      previewUrl: '',
-      previewKind: 'web',
       connectionId: resolvedConnectionId,
       workspaceId: resolvedWorkspaceId,
     })

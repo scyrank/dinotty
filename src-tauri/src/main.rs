@@ -1,7 +1,6 @@
 #![cfg_attr(all(not(debug_assertions), windows), windows_subsystem = "windows")]
 
 use base64::Engine;
-use dinotty_server::pty;
 use dinotty_server::session::{
     CloseReason, SessionClientEvent, SessionManager, SessionStatus, TauriOnExit,
 };
@@ -238,70 +237,68 @@ fn emit_reconnected(
     );
 }
 
+#[derive(Debug, serde::Serialize)]
+struct PtySpawnError {
+    code: String,
+}
+
+impl PtySpawnError {
+    fn new(code: impl Into<String>) -> Self {
+        Self { code: code.into() }
+    }
+}
+
+fn session_for_tauri_attach(
+    manager: &SessionManager,
+    pane_id: &str,
+) -> Result<Arc<dinotty_server::session::Session>, PtySpawnError> {
+    // Tabs and PTYs are created by the HTTP API; IPC must never resurrect a closed pane.
+    manager.session_for_attach(pane_id).ok_or_else(|| PtySpawnError::new("session_unavailable"))
+}
+
 #[tauri::command]
 fn pty_spawn(
     pane_id: String,
     app: AppHandle,
     state: State<'_, Arc<SessionManager>>,
-) -> Result<String, String> {
+) -> Result<String, PtySpawnError> {
     let manager = state.inner().clone();
     let app_cb = app.clone();
     let exit_cb: TauriOnExit = Arc::new(move |pid: String, exit_code: Option<i32>| {
         let _ = app_cb.emit("pty-exit", PtyExit { pane_id: pid, exit_code });
     });
 
-    if let Some(session) = manager.session_for_attach(&pane_id) {
-        // Publish the reap veto before lifecycle membership revalidation.
-        session.set_status(SessionStatus::Connected);
-        if !manager.is_current_session(&pane_id, &session) {
-            session.mark_failed_attach();
-            return Err("session closed during reconnect".to_string());
-        }
-        manager.register_singleton_tab(&pane_id, &session, &session.shell_type);
-        {
-            let mut g = session.tauri_on_exit.lock().unwrap_or_else(|e| e.into_inner());
-            if g.is_none() {
-                *g = Some(Arc::clone(&exit_cb));
-            }
-        }
-        // Remove only the prior Tauri forwarder; WebSocket clients remain attached.
-        if let Some(client_id) =
-            session.tauri_client_id.lock().unwrap_or_else(|e| e.into_inner()).take()
-        {
-            session.remove_client(client_id);
-        }
-        // Spawn forwarder BEFORE emit_reconnected so the new client
-        // (snapshot_pending=true via add_client) is registered before the
-        // frontend receives pty-reconnected and (after converging) calls
-        // pty_snapshot_request. The snapshot_pending flag drops live Output
-        // for this client until ReplayEnd is enqueued.
-        spawn_tauri_output_forwarder(app.clone(), pane_id.clone(), Arc::clone(&session));
-        emit_reconnected(&app, &pane_id, &session);
-        // Set up channel-based write task (replaces old input channel, if any)
-        spawn_tauri_write_task(Arc::clone(&session), pane_id.clone());
-        return Ok(session.shell_type.clone());
+    let session = session_for_tauri_attach(&manager, &pane_id)?;
+    // Publish the reap veto before lifecycle membership revalidation.
+    session.set_status(SessionStatus::Connected);
+    if !manager.is_current_session(&pane_id, &session) {
+        session.mark_failed_attach();
+        return Err(PtySpawnError::new("session_unavailable"));
     }
-
-    let settings = dinotty_server::settings::load_settings();
-    let shell_spec = dinotty_server::platform::shell::shell_with_preference(
-        &settings.shell,
-        &settings.shell_path,
-    );
-    let (session, shell_type) = pty::create_session(
-        &manager,
-        &pane_id,
-        None,
-        Some(Arc::clone(&exit_cb)),
-        None,
-        None,
-        Some(shell_spec),
-    )?;
-    manager.register_singleton_tab(&pane_id, &session, &shell_type);
-
+    manager.register_singleton_tab(&pane_id, &session, &session.shell_type);
+    {
+        let mut g = session.tauri_on_exit.lock().unwrap_or_else(|e| e.into_inner());
+        if g.is_none() {
+            *g = Some(Arc::clone(&exit_cb));
+        }
+    }
+    // Remove only the prior Tauri forwarder; WebSocket clients remain attached.
+    if let Some(client_id) =
+        session.tauri_client_id.lock().unwrap_or_else(|e| e.into_inner()).take()
+    {
+        session.remove_client(client_id);
+    }
+    // Spawn forwarder BEFORE emit_reconnected so the new client
+    // (snapshot_pending=true via add_client) is registered before the
+    // frontend receives pty-reconnected and (after converging) calls
+    // pty_snapshot_request. The snapshot_pending flag drops live Output
+    // for this client until ReplayEnd is enqueued.
     spawn_tauri_output_forwarder(app.clone(), pane_id.clone(), Arc::clone(&session));
+    emit_reconnected(&app, &pane_id, &session);
+    // Set up channel-based write task (replaces old input channel, if any)
     spawn_tauri_write_task(Arc::clone(&session), pane_id.clone());
 
-    Ok(shell_type)
+    Ok(session.shell_type.clone())
 }
 
 #[tauri::command]
@@ -738,6 +735,7 @@ fn main() {
     let _ = EMBEDDED_HTTP_PORT.set(port);
 
     let manager = Arc::new(SessionManager::new());
+    let shell_probe = Arc::new(dinotty_server::platform::shell_probe::ShellProbeService::new());
     if launch_intent == LaunchIntent::Server {
         dinotty_server::session::ledger::boot_sweep();
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -749,7 +747,7 @@ fn main() {
             // ordering issue must never suppress it. Notification GC simply no-ops until
             // run_server registers a notifier.
             mgr.start_cleanup_task();
-            embedded_server::run_server(listener, mgr).await
+            embedded_server::run_server(listener, mgr, shell_probe).await
         });
         return;
     }
@@ -801,6 +799,7 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(manager.clone())
+        .manage(shell_probe.clone())
         .manage(autostart::AutostartController::default())
         .manage(tray::state::TrayCapabilityState::default())
         .manage(tray::state::TrayMenuState::default())
@@ -847,7 +846,11 @@ fn main() {
                     // before spawn — so a Tauri `pty_spawn` IPC that fires before the spawned task's
                     // first poll still reads the real port (not 0). Do NOT remove either set.
                     mgr.set_notify_port(actual);
-                    tauri::async_runtime::spawn(embedded_server::run_server(listener, mgr));
+                    tauri::async_runtime::spawn(embedded_server::run_server(
+                        listener,
+                        mgr,
+                        shell_probe.clone(),
+                    ));
                     tracing::info!("Desktop mode: embedded server on port {}", actual);
                 }
                 Err(e) => {
@@ -1034,5 +1037,23 @@ mod launch_tests {
             LaunchIntent::parse(&args(&["dinotty", "--background", "--server"])),
             LaunchIntent::Invalid
         );
+    }
+}
+
+#[cfg(test)]
+mod pty_spawn_tests {
+    use super::*;
+
+    #[test]
+    fn unknown_pane_is_rejected_instead_of_recreated() {
+        let manager = SessionManager::new();
+
+        let error = session_for_tauri_attach(&manager, "closed-pane")
+            .err()
+            .expect("an unknown pane must not be recreated");
+
+        assert_eq!(error.code, "session_unavailable");
+        assert!(manager.sessions.is_empty());
+        assert!(manager.tab_layouts.is_empty());
     }
 }

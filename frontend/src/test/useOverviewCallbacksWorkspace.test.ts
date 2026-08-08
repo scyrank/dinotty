@@ -121,10 +121,6 @@ describe('useOverviewCallbacks workspace activation', () => {
       paneMru: ['pane-ssh'],
       broadcastMode: false,
       broadcastActivity: 0,
-      previewVisible: false,
-      previewAddress: '',
-      previewUrl: '',
-      previewKind: 'web',
       connectionId: 'connection-1',
     })
     mocks.apiCreateSshTab.mockResolvedValue({

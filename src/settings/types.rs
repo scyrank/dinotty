@@ -48,6 +48,13 @@ pub enum WorkspaceBadgeMode {
     Both,
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MobileInputMode {
+    Builtin,
+    System,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct Settings {
@@ -102,6 +109,8 @@ pub struct Settings {
     #[serde(default)]
     pub show_virtual_keyboard: bool,
     #[serde(default)]
+    pub mobile_input_mode: Option<MobileInputMode>,
+    #[serde(default)]
     pub keyboard_guard_mode: KeyboardGuardMode,
     // Legacy v6 input retained only so v7 migration can deserialize it.
     #[serde(default, deserialize_with = "tolerant_legacy_bool", skip_serializing)]
@@ -115,12 +124,16 @@ pub struct Settings {
     pub windows_alt_as_cmd: bool,
     #[serde(default = "default_true")]
     pub confirm_before_close_tab: bool,
+    #[serde(default = "default_true")]
+    pub restore_session_on_startup: bool,
     #[serde(default)]
     pub reload_after_supervise_tabs: bool,
     #[serde(default)]
     pub space_confirms_dialogs: bool,
     #[serde(default = "default_locale")]
     pub locale: String,
+    #[serde(default = "default_true")]
+    pub auto_check_updates: bool,
     #[serde(default)]
     pub panel_position: PanelPosition,
     #[serde(default)]
@@ -155,6 +168,8 @@ pub struct Settings {
     pub shell: String,
     #[serde(default)]
     pub shell_path: Option<String>,
+    #[serde(default)]
+    pub wsl_distro: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -847,15 +862,18 @@ impl Default for Settings {
             keyboard_sound: false,
             quick_send_threshold: default_quick_send_threshold(),
             show_virtual_keyboard: false,
+            mobile_input_mode: None,
             keyboard_guard_mode: KeyboardGuardMode::default(),
             keyboard_keep_on_scroll: false,
             show_workspace_badge_on_tab: None,
             workspace_badge_mode: None,
             windows_alt_as_cmd: false,
             confirm_before_close_tab: true,
+            restore_session_on_startup: true,
             reload_after_supervise_tabs: false,
             space_confirms_dialogs: false,
             locale: default_locale(),
+            auto_check_updates: true,
             panel_position: PanelPosition::default(),
             monitor: MonitorConfig::default(),
             notification: NotificationConfig::default(),
@@ -873,6 +891,7 @@ impl Default for Settings {
             plugin_prefs: PluginPrefsConfig::default(),
             shell: default_shell_kind(),
             shell_path: None,
+            wsl_distro: None,
         }
     }
 }

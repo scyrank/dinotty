@@ -313,6 +313,11 @@ pub struct SessionManager {
     /// natural PTY/SSH exit, which never goes through `kill_and_remove` - can notify the
     /// attention ledger without threading a notifier handle through every call site.
     notifier: std::sync::OnceLock<Arc<crate::notification::NotificationBroadcast>>,
+    /// Snapshot debounce signal channel. Layout-changing methods send `()` here;
+    /// the debounce task (started by `start_snapshot_task`) drains and writes
+    /// `session.json` after 1s of quiet.
+    snapshot_tx: mpsc::UnboundedSender<()>,
+    snapshot_rx: Mutex<Option<mpsc::UnboundedReceiver<()>>>,
 }
 
 pub(crate) struct SessionReservation {
@@ -375,6 +380,7 @@ impl Default for SessionManager {
 impl SessionManager {
     #[must_use]
     pub fn new() -> Self {
+        let (snapshot_tx, snapshot_rx) = mpsc::unbounded_channel();
         Self {
             sessions: DashMap::new(),
             sync_clients: Arc::new(Mutex::new(Vec::new())),
@@ -388,6 +394,66 @@ impl SessionManager {
             unowned_since: Mutex::new(HashMap::new()),
             notify_port: AtomicU16::new(0),
             notifier: std::sync::OnceLock::new(),
+            snapshot_tx,
+            snapshot_rx: Mutex::new(Some(snapshot_rx)),
+        }
+    }
+
+    /// Signal the snapshot debounce task that a layout change occurred.
+    /// Non-blocking; safe to call from within `lifecycle` lock holds.
+    fn schedule_snapshot(&self) {
+        let _ = self.snapshot_tx.send(());
+    }
+
+    /// Start the background debounce task that writes `session.json` to disk
+    /// after 1s of layout-quiet. Idempotent: a second call is a no-op.
+    /// Must be called from a tokio runtime context (main.rs does this after
+    /// `SessionManager::new()`).
+    pub fn start_snapshot_task(self: &Arc<Self>) {
+        let mut rx_opt = self.snapshot_rx.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(mut rx) = rx_opt.take() else {
+            return; // already started
+        };
+        drop(rx_opt);
+
+        let manager = Arc::clone(self);
+        tokio::spawn(async move {
+            loop {
+                if rx.recv().await.is_none() {
+                    break; // all senders dropped (manager shutting down)
+                }
+                // Debounce: extend the quiet window on every new signal.
+                loop {
+                    tokio::select! {
+                        biased;
+                        _ = rx.recv() => {},
+                        () = tokio::time::sleep(Duration::from_secs(1)) => break,
+                    }
+                }
+                let manager_clone = Arc::clone(&manager);
+                let _ = tokio::task::spawn_blocking(move || {
+                    let store = super::snapshot::SessionSnapshotStore::new();
+                    let tab_count = manager_clone.tab_layouts.len();
+                    let session_count = manager_clone.sessions.len();
+                    info!(tab_count, session_count, "debounce: writing session.json");
+                    if let Err(e) = store.build_and_save(&manager_clone) {
+                        warn!("session snapshot save failed: {e}");
+                    }
+                })
+                .await;
+            }
+        });
+    }
+
+    /// Sync-flush the snapshot to disk immediately. Called on shutdown so the
+    /// most recent state is persisted without waiting for the debounce window.
+    pub fn flush_snapshot_sync(&self) {
+        let store = super::snapshot::SessionSnapshotStore::new();
+        let tab_count = self.tab_layouts.len();
+        let session_count = self.sessions.len();
+        info!(tab_count, session_count, "flush_snapshot_sync: writing session.json");
+        if let Err(e) = store.build_and_save(self) {
+            warn!("session snapshot flush failed: {e}");
         }
     }
 
@@ -416,6 +482,7 @@ impl SessionManager {
         }
         drop(order);
         self.tab_layouts.insert(tab_id, value);
+        self.schedule_snapshot();
     }
 
     /// Insert a tab layout and record its order position.
@@ -482,6 +549,9 @@ impl SessionManager {
         let removed = self.tab_layouts.remove(tab_id).is_some();
         let mut order = self.tab_order.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         order.retain(|id| id != tab_id);
+        if removed {
+            self.schedule_snapshot();
+        }
         removed
     }
 
@@ -520,6 +590,7 @@ impl SessionManager {
         if let Some(mut entry) = self.tab_layouts.get_mut(tab_id) {
             if let Some(obj) = entry.as_object_mut() {
                 obj.insert("title".to_string(), serde_json::Value::String(title.to_string()));
+                self.schedule_snapshot();
                 return true;
             }
         }
@@ -547,6 +618,7 @@ impl SessionManager {
     pub fn set_active_pane_id(&self, pane_id: Option<String>) {
         let _lifecycle = self.lifecycle.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         *self.active_pane_id.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = pane_id;
+        self.schedule_snapshot();
     }
 
     /// Insert a session only when the pane generation is vacant.
@@ -842,8 +914,8 @@ impl SessionManager {
                     layout.as_ref().and_then(first_leaf_id).unwrap_or_else(|| tab_id.clone());
                 let active_pane_id =
                     v.get("active_pane_id").and_then(|v| v.as_str()).map(String::from);
-                let cwd = self.sessions.get(&pane_id).and_then(|s| {
-                    s.cwd_state.lock().ok().map(|state| state.cwd.to_string_lossy().to_string())
+                let cwd = self.sessions.get(&pane_id).and_then(|session| {
+                    session.cwd_for_workspace().map(|path| path.to_string_lossy().to_string())
                 });
                 let connection_id = self
                     .sessions

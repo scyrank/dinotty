@@ -77,10 +77,6 @@ function terminal(
     paneMru: [`${paneId}-leaf`],
     broadcastMode: false,
     broadcastActivity: 0,
-    previewVisible: false,
-    previewAddress: '',
-    previewUrl: '',
-    previewKind: 'web',
     workspaceId: options.workspaceId as string | undefined,
     cwd: options.cwd,
   }

@@ -6,11 +6,24 @@ Dinotty has a built-in reverse proxy that lets you preview local dev servers or 
 
 | Method | Action |
 |--------|--------|
+| Toolbar | Click the Monitor icon button to create or focus a web/files preview leaf |
 | Command Palette | Type `webpreview.open` |
-| Toolbar | Choose "Web Preview" when adding a pane |
 | Drag URL | Drag a URL from the address bar into the Dinotty window |
+| Terminal link | `Cmd` / `Ctrl` + click a URL in terminal output to open it in a new leaf |
 
 Web preview panes share the same split/drag rules as terminal, file editor, and plugin panes. See [Tabs & Panes](tabs-and-panes).
+
+## Preview Toolbar
+
+Each web preview leaf has a toolbar at the top:
+
+- **Back / Forward**: navigate history, just like a browser
+- **Refresh**: force reload (bypasses iframe cache)
+- **Address bar**: type a URL and press Enter; dropdown shows recent URLs
+- **Open in browser**: open the current URL in the system default browser
+- **Bookmark (Star)**: save the current URL for quick access from the address bar dropdown
+- **DevTools**: built-in developer tools panel with Console / Network / Eval
+- **Close**: `Cmd + W` (when focused on the pane) or click X in the pane header
 
 ## Local Dev Server Proxy
 
@@ -55,8 +68,8 @@ Run the dev server on desktop, connect from mobile to the same Dinotty server, o
 
 ## Closing the Preview
 
-- Close pane: `Cmd + W` (when focused on the pane)
-- Back / forward: in-pane browser navigation buttons
+- Close pane: `Cmd + W` (when focused on the pane) or click X in the pane header
+- Back / forward: navigation buttons in the preview toolbar
 
 ## Next Steps
 

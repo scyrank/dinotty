@@ -44,6 +44,7 @@ const mocks = vi.hoisted(() => {
   return {
     closePane: vi.fn<(paneId: string) => Promise<boolean>>(),
     splitPane: vi.fn(),
+    insertNonTerminalPane: vi.fn<() => Promise<void>>(async () => {}),
     toggleBroadcast: vi.fn(),
     toggleZoom: vi.fn(),
     equalizePanes: vi.fn(),
@@ -58,6 +59,7 @@ const mocks = vi.hoisted(() => {
     apiActivatePane: vi.fn<(paneId: string, activePaneId: string) => Promise<void>>(async () => {}),
     apiActivateWorkspace: vi.fn<(id: string) => Promise<void>>(async () => {}),
     apiDeactivateWorkspace: vi.fn<() => Promise<void>>(async () => {}),
+    onSystemKeyboardClose: undefined as undefined | (() => void),
     apiCreateTab: vi.fn(async () => ({
       tab_id: 't-new',
       pane_id: 'p-new',
@@ -111,11 +113,25 @@ vi.mock('../composables/useHistory', async () => {
   }
 })
 vi.mock('../composables/useTerminal', () => ({
+  applyAfterTerminalComposition: (apply: () => void) => {
+    apply()
+    return true
+  },
+  configureAllMobileInputTextareas: () => {},
   isKbTypingLocked: () => false,
   isTouchDevice: () => false,
   setActivePaneId: () => {},
   setKbTypingLock: () => {},
 }))
+vi.mock('../composables/useViewportResize', async () => {
+  const { ref } = await vi.importActual<typeof import('vue')>('vue')
+  return {
+    useViewportResize: (options: { onSystemKeyboardClose?: () => void }) => {
+      mocks.onSystemKeyboardClose = options.onSystemKeyboardClose
+      return { isLandscape: ref(false), dispose: vi.fn() }
+    },
+  }
+})
 vi.mock('../utils/clientPlatform', () => ({ isWindowsClient: true }))
 // Per-binding key map so Cmd+W can be dispatched without colliding with
 // other keyActions in onGlobalKeydown (the first matching binding wins).
@@ -271,6 +287,7 @@ vi.mock('../composables/useSplitPane', () => ({
   useSplitPane: () => ({
     closePane: mocks.closePane,
     splitPane: mocks.splitPane,
+    insertNonTerminalPane: mocks.insertNonTerminalPane,
     toggleBroadcast: mocks.toggleBroadcast,
     toggleZoom: mocks.toggleZoom,
     equalizePanes: mocks.equalizePanes,
@@ -285,7 +302,7 @@ vi.mock('../composables/useSplitPane', () => ({
 }))
 
 import { shallowMount, type VueWrapper } from '@vue/test-utils'
-import { nextTick, defineComponent, h } from 'vue'
+import { nextTick, defineComponent, h, type PropType } from 'vue'
 import { createPinia } from 'pinia'
 import App from '../App.vue'
 import { settings } from '../composables/useSettings'
@@ -293,7 +310,7 @@ import { useUiStore } from '../stores/uiStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { useWorkspaces } from '../composables/useWorkspaces'
 import { currentRevealNavGen } from '../utils/navGen'
-import type { Tab } from '../types/pane'
+import { getAllLeaves, type Tab } from '../types/pane'
 
 // Spec: openspec/changes/confirm-before-close-tab/spec.md
 //   "### Requirement: Pane Close Confirmation"
@@ -333,10 +350,15 @@ const TabBarStub = defineComponent({
       hasTab: () => true,
       scrollTabIntoView: mocks.scrollTabIntoView,
     })
-    return () => h('div', {
-      class: 'tab-bar-stub',
-      'data-indicators': JSON.stringify(props.indicators),
-    }, slots.right?.())
+    return () =>
+      h(
+        'div',
+        {
+          class: 'tab-bar-stub',
+          'data-indicators': JSON.stringify(props.indicators),
+        },
+        slots.right?.()
+      )
   },
 })
 
@@ -376,6 +398,40 @@ const MobileKeyboardStub = defineComponent({
   },
 })
 
+const SystemKeyboardToolbarStub = defineComponent({
+  name: 'SystemKeyboardToolbar',
+  props: {
+    visible: Boolean,
+    paneId: { type: String, required: true },
+    getSendFn: { type: Function as PropType<() => unknown>, required: true },
+    actionOpen: Boolean,
+  },
+  emits: [
+    'update:actionOpen',
+    'modifier-change',
+    'app-action',
+    'dismiss',
+    'focus-xterm',
+    'paste-text',
+  ],
+  setup(props) {
+    return () =>
+      h('div', {
+        class: 'system-keyboard-toolbar-stub',
+        'data-visible': String(props.visible),
+        'data-action-open': String(props.actionOpen),
+      })
+  },
+})
+
+const KbToggleButtonStub = defineComponent({
+  name: 'KbToggleButton',
+  emits: ['toggle'],
+  setup() {
+    return () => h('button', { class: 'kb-toggle-stub' })
+  },
+})
+
 let mountedWrapper: VueWrapper | undefined
 
 async function mountWithTabs(options: { realKeyboard?: boolean } = {}) {
@@ -389,6 +445,8 @@ async function mountWithTabs(options: { realKeyboard?: boolean } = {}) {
         ConfirmCloseDialog: ConfirmCloseDialogStub,
         ConfirmModal: ConfirmModalStub,
         MobileKeyboard: options.realKeyboard ? false : MobileKeyboardStub,
+        SystemKeyboardToolbar: SystemKeyboardToolbarStub,
+        KbToggleButton: KbToggleButtonStub,
       },
     },
   })
@@ -432,8 +490,109 @@ afterEach(() => {
   mocks.apiActivateWorkspace.mockResolvedValue(undefined)
   mocks.apiDeactivateWorkspace.mockReset()
   mocks.apiDeactivateWorkspace.mockResolvedValue(undefined)
+  mocks.onSystemKeyboardClose = undefined
   mocks.mintNotificationRequestId.mockClear()
   mocks.resetNotificationRequestIds()
+  settings.mobile_input_mode = null
+})
+
+describe('App.vue - preview toolbar toggle', () => {
+  it('creates a files leaf when the file browser menu item is clicked', async () => {
+    const wrapper = await mountWithTabs()
+    const session = useSessionStore()
+    const previewButton = wrapper.find('button[title="app.preview"]')
+    const tab = session.tabs[0]
+    if (tab.type !== 'terminal') throw new Error('expected terminal tab')
+
+    expect(getAllLeaves(tab.layout).some((l) => l.kind === 'files' || l.kind === 'web')).toBe(false)
+
+    await previewButton.trigger('click')
+    const items = wrapper.findAll('.preview-menu-item')
+    expect(items.length).toBe(2)
+    await items[0].trigger('click')
+    expect(mocks.insertNonTerminalPane).toHaveBeenCalledWith('files', expect.anything())
+  })
+
+  it('creates a web leaf when the web preview menu item is clicked', async () => {
+    const wrapper = await mountWithTabs()
+    const session = useSessionStore()
+    const tab = session.tabs[0]
+    if (tab.type !== 'terminal') throw new Error('expected terminal tab')
+
+    const existingFilesLeaf = {
+      type: 'leaf' as const,
+      kind: 'files' as const,
+      paneId: 'existing-files-leaf',
+      title: 'Files',
+      ratio: 1,
+      zoomed: false,
+      path: '/tmp',
+    }
+    tab.layout = {
+      type: 'split',
+      id: 's-root',
+      direction: 'horizontal',
+      children: [tab.layout, existingFilesLeaf],
+      ratios: [0.7, 0.3],
+    }
+
+    mocks.insertNonTerminalPane.mockClear()
+    mocks.focusPane.mockClear()
+
+    const previewButton = wrapper.find('button[title="app.preview"]')
+    await previewButton.trigger('click')
+    const items = wrapper.findAll('.preview-menu-item')
+    expect(items.length).toBe(2)
+    await items[1].trigger('click')
+
+    expect(mocks.insertNonTerminalPane).toHaveBeenCalledWith('web', expect.anything())
+  })
+
+  it('focuses the existing leaf of the selected kind when both files and web exist', async () => {
+    const wrapper = await mountWithTabs()
+    const session = useSessionStore()
+    const tab = session.tabs[0]
+    if (tab.type !== 'terminal') throw new Error('expected terminal tab')
+
+    const filesLeaf = {
+      type: 'leaf' as const,
+      kind: 'files' as const,
+      paneId: 'files-leaf-1',
+      title: 'Files',
+      ratio: 1,
+      zoomed: false,
+      path: '/tmp',
+    }
+    const webLeaf = {
+      type: 'leaf' as const,
+      kind: 'web' as const,
+      paneId: 'web-leaf-1',
+      title: 'Web',
+      ratio: 1,
+      zoomed: false,
+      url: 'https://example.com',
+    }
+    tab.layout = {
+      type: 'split',
+      id: 's-root',
+      direction: 'horizontal',
+      children: [tab.layout, filesLeaf, webLeaf],
+      ratios: [0.4, 0.3, 0.3],
+    }
+
+    mocks.insertNonTerminalPane.mockClear()
+    mocks.focusPane.mockClear()
+
+    const previewButton = wrapper.find('button[title="app.preview"]')
+    await previewButton.trigger('click')
+    const items = wrapper.findAll('.preview-menu-item')
+    expect(items.length).toBe(2)
+    // Click "Web preview" (second item) -> should focus existing web leaf
+    await items[1].trigger('click')
+
+    expect(mocks.focusPane).toHaveBeenCalledWith('web-leaf-1')
+    expect(mocks.insertNonTerminalPane).not.toHaveBeenCalled()
+  })
 })
 
 describe('App.vue - terminal-sequence app actions', () => {
@@ -536,6 +695,144 @@ describe('App.vue - system keyboard dismissal', () => {
   })
 })
 
+describe('App.vue - system keyboard state regressions', () => {
+  it('dismisses the toolbar when VisualViewport reports a native keyboard close', async () => {
+    settings.mobile_input_mode = 'system'
+    const wrapper = await mountWithTabs()
+    const ui = useUiStore()
+    const activeTerminal = {
+      setOutputListener: vi.fn(),
+      blur: vi.fn(),
+    }
+    await wrapper.findComponent(SplitContainerStub).vm.$emit('register', 'pane-1', activeTerminal)
+    ui.kbVisible = true
+    await nextTick()
+
+    const textarea = document.createElement('textarea')
+    textarea.className = 'xterm-helper-textarea'
+    document.body.appendChild(textarea)
+    textarea.focus()
+
+    mocks.onSystemKeyboardClose?.()
+    await nextTick()
+
+    expect(ui.kbVisible).toBe(false)
+    expect(activeTerminal.blur).toHaveBeenCalledOnce()
+    expect(document.activeElement).not.toBe(textarea)
+    expect(wrapper.findComponent(SystemKeyboardToolbarStub).props('visible')).toBe(false)
+    textarea.remove()
+  })
+
+  it('pastes without refocusing xterm while the full action panel remains open', async () => {
+    settings.mobile_input_mode = 'system'
+    const wrapper = await mountWithTabs()
+    const ui = useUiStore()
+    const activeTerminal = {
+      setOutputListener: vi.fn(),
+      blur: vi.fn(),
+      pasteFromClipboard: vi.fn(),
+    }
+    await wrapper.findComponent(SplitContainerStub).vm.$emit('register', 'pane-1', activeTerminal)
+    ui.kbVisible = true
+    await nextTick()
+
+    const toolbar = wrapper.findComponent(SystemKeyboardToolbarStub)
+    await toolbar.vm.$emit('update:actionOpen', true)
+    mocks.authFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ text: 'echo from panel' }),
+    })
+
+    await toolbar.vm.$emit('app-action', 'pasteTerminal', { autoEnter: false })
+    await vi.waitFor(() => {
+      expect(activeTerminal.pasteFromClipboard).toHaveBeenCalledWith(
+        'echo from panel',
+        false,
+        false
+      )
+    })
+
+    expect(activeTerminal.blur).toHaveBeenCalledOnce()
+    expect(toolbar.props('actionOpen')).toBe(true)
+  })
+
+  it.each(['plugin', 'files', 'web'] as const)(
+    'dismisses terminal input state when the active leaf changes to %s',
+    async (kind) => {
+      settings.mobile_input_mode = 'system'
+      const wrapper = await mountWithTabs()
+      const session = useSessionStore()
+      const ui = useUiStore()
+      const nonTerminalPaneId = `${kind}-leaf`
+      const mixedTab: Tab = {
+        type: 'terminal',
+        paneId: 'mixed-tab',
+        activePaneId: 'terminal-leaf',
+        paneMru: ['terminal-leaf', nonTerminalPaneId],
+        broadcastMode: false,
+        broadcastActivity: 0,
+        layout: {
+          type: 'split',
+          id: 'mixed-root',
+          direction: 'horizontal',
+          ratios: [0.5, 0.5],
+          children: [
+            {
+              type: 'leaf',
+              kind: 'terminal',
+              paneId: 'terminal-leaf',
+              title: 'Terminal',
+              ratio: 0.5,
+              zoomed: false,
+            },
+            {
+              type: 'leaf',
+              kind,
+              paneId: nonTerminalPaneId,
+              title: kind,
+              ratio: 0.5,
+              zoomed: false,
+            },
+          ],
+        },
+      }
+      session.setTabs([mixedTab])
+      session.setActivePane(mixedTab.paneId)
+      await nextTick()
+
+      const terminal = {
+        setOutputListener: vi.fn(),
+        setVirtualModifiers: vi.fn(),
+        blur: vi.fn(),
+      }
+      await wrapper
+        .findComponent(SplitContainerStub)
+        .vm.$emit('register', 'terminal-leaf', terminal)
+      ui.kbVisible = true
+      const toolbar = wrapper.findComponent(SystemKeyboardToolbarStub)
+      await toolbar.vm.$emit('update:actionOpen', true)
+      terminal.blur.mockClear()
+
+      const reactiveMixedTab = session.tabs[0]
+      if (reactiveMixedTab.type !== 'terminal') throw new Error('expected terminal tab')
+      reactiveMixedTab.activePaneId = nonTerminalPaneId
+      await nextTick()
+
+      expect(ui.kbVisible).toBe(false)
+      expect(toolbar.props('visible')).toBe(false)
+      expect(toolbar.props('actionOpen')).toBe(false)
+      expect(toolbar.props('paneId')).toBe('')
+      expect(toolbar.props('getSendFn')()).toBeNull()
+      expect(terminal.setVirtualModifiers).toHaveBeenCalledWith(false, false)
+      expect(terminal.blur).toHaveBeenCalledOnce()
+
+      await wrapper.findComponent(KbToggleButtonStub).vm.$emit('toggle')
+      expect(ui.kbVisible).toBe(false)
+    }
+  )
+})
+
 describe('App.vue - activateTab cross-workspace', () => {
   const terminalTab = (paneId: string, cwd: string): Tab => ({
     type: 'terminal',
@@ -545,10 +842,6 @@ describe('App.vue - activateTab cross-workspace', () => {
     paneMru: [`${paneId}-leaf`],
     broadcastMode: false,
     broadcastActivity: 0,
-    previewVisible: false,
-    previewAddress: '',
-    previewUrl: '',
-    previewKind: 'web',
     cwd,
   })
 
@@ -597,7 +890,10 @@ describe('App.vue - activateTab cross-workspace', () => {
     const { wrapper } = await seedCrossWorkspaceTabs()
     let release!: () => void
     mocks.apiActivateWorkspace.mockImplementationOnce(
-      () => new Promise<void>((resolve) => { release = resolve })
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve
+        })
     )
 
     const staleActivation = (wrapper.vm as any).activateTab('terminal-other') as Promise<boolean>
@@ -616,7 +912,10 @@ describe('App.vue - activateTab cross-workspace', () => {
     const { wrapper } = await seedCrossWorkspaceTabs()
     let releasePane!: () => void
     mocks.apiActivatePane.mockImplementationOnce(
-      () => new Promise<void>((resolve) => { releasePane = resolve })
+      () =>
+        new Promise<void>((resolve) => {
+          releasePane = resolve
+        })
     )
 
     const staleActivation = (wrapper.vm as any).activateTab('terminal-other') as Promise<boolean>
@@ -667,10 +966,6 @@ describe('App.vue - plugin tab close persistence', () => {
     paneMru: [`${paneId}-leaf`],
     broadcastMode: false,
     broadcastActivity: 0,
-    previewVisible: false,
-    previewAddress: '',
-    previewUrl: '',
-    previewKind: 'web',
   })
 
   it('flushes plugin tab closures synchronously to avoid resurrect race', async () => {
@@ -708,6 +1003,7 @@ describe('App.vue - onClosePane routes through confirmation gate', () => {
     settings.windowsAltAsCmd = false
     mocks.closePane.mockReset()
     mocks.splitPane.mockReset()
+    mocks.insertNonTerminalPane.mockReset()
     mocks.toggleBroadcast.mockReset()
     mocks.toggleZoom.mockReset()
     mocks.equalizePanes.mockReset()
@@ -889,10 +1185,6 @@ describe('App.vue - onClosePane routes through confirmation gate', () => {
       paneMru: [`${paneId}-leaf`],
       broadcastMode: false,
       broadcastActivity: 0,
-      previewVisible: false,
-      previewAddress: '',
-      previewUrl: '',
-      previewKind: 'web',
       cwd,
     })
     session.setTabs([
@@ -932,10 +1224,6 @@ describe('App.vue - onClosePane routes through confirmation gate', () => {
       paneMru: [`${paneId}-leaf`],
       broadcastMode: false,
       broadcastActivity: 0,
-      previewVisible: false,
-      previewAddress: '',
-      previewUrl: '',
-      previewKind: 'web',
       cwd,
     })
     session.setTabs([
@@ -976,10 +1264,6 @@ describe('App.vue - onClosePane routes through confirmation gate', () => {
       paneMru: [`${paneId}-leaf`],
       broadcastMode: false,
       broadcastActivity: 0,
-      previewVisible: false,
-      previewAddress: '',
-      previewUrl: '',
-      previewKind: 'web',
       cwd,
     })
     session.setTabs([
@@ -1074,7 +1358,9 @@ describe('App.vue - plugin notification bridge', () => {
     await flushBridge()
 
     expect(mocks.authFetch).toHaveBeenCalledTimes(2)
-    const requestBodies = mocks.authFetch.mock.calls.map(([, init]) => JSON.parse(init!.body as string))
+    const requestBodies = mocks.authFetch.mock.calls.map(([, init]) =>
+      JSON.parse(init!.body as string)
+    )
     expect(requestBodies[0].requestId).toBe(requestBodies[1].requestId)
     expect(requestBodies[0]).toEqual(requestBodies[1])
     expect(mocks.pushNotification).not.toHaveBeenCalled()
@@ -1083,8 +1369,9 @@ describe('App.vue - plugin notification bridge', () => {
   it('does not insert for a suppressed response', async () => {
     await mountWithTabs()
     mocks.authFetch.mockClear()
-    mocks.authFetch.mockResolvedValueOnce(response(200, { status: 'suppressed', reason: 'disabled' }))
-
+    mocks.authFetch.mockResolvedValueOnce(
+      response(200, { status: 'suppressed', reason: 'disabled' })
+    )
     ;(window as any).__dinotty_ui_notify('suppressed', 'info')
     await flushBridge()
 
@@ -1108,14 +1395,15 @@ describe('App.vue - plugin notification bridge', () => {
       .mockResolvedValueOnce(
         response(200, { status: 'accepted', notifId: 'notif-3', eventSeq: '3' })
       )
-
     ;(window as any).__dinotty_ui_notify('busy', 'info')
     await flushBridge()
     await vi.advanceTimersByTimeAsync(3000)
     await flushBridge()
 
     expect(mocks.authFetch).toHaveBeenCalledTimes(3)
-    const requestBodies = mocks.authFetch.mock.calls.map(([, init]) => JSON.parse(init!.body as string))
+    const requestBodies = mocks.authFetch.mock.calls.map(([, init]) =>
+      JSON.parse(init!.body as string)
+    )
     expect(new Set(requestBodies.map(({ requestId }) => requestId))).toEqual(
       new Set([requestBodies[0].requestId])
     )
@@ -1136,7 +1424,6 @@ describe('App.vue - plugin notification bridge', () => {
       if (attempt === 1) throw new Error('network')
       return response(200, { status: 'accepted', notifId: request.requestId, eventSeq: '1' })
     })
-
     ;(window as any).__dinotty_ui_notify('first', 'info')
     ;(window as any).__dinotty_ui_notify('second', 'warn')
     await flushBridge()
@@ -1153,9 +1440,7 @@ describe('App.vue - plugin notification bridge', () => {
     expect([...requestIdsByBody.keys()].sort()).toEqual(['first', 'second'])
     expect(requestIdsByBody.get('first')?.size).toBe(1)
     expect(requestIdsByBody.get('second')?.size).toBe(1)
-    expect([...requestIdsByBody.get('first')!][0]).not.toBe(
-      [...requestIdsByBody.get('second')!][0]
-    )
+    expect([...requestIdsByBody.get('first')!][0]).not.toBe([...requestIdsByBody.get('second')!][0])
     expect([...attemptsByRequestId.values()]).toEqual([2, 2])
   })
 
@@ -1166,7 +1451,6 @@ describe('App.vue - plugin notification bridge', () => {
       mocks.authFetch.mockClear()
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
       mocks.authFetch.mockResolvedValueOnce(response(status, { status: 'terminal' }))
-
       ;(window as any).__dinotty_ui_notify('rejected', 'info')
       await flushBridge()
 
@@ -1185,7 +1469,6 @@ describe('App.vue - plugin notification bridge', () => {
     vi.useFakeTimers()
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     mocks.authFetch.mockRejectedValue(new Error('offline'))
-
     ;(window as any).__dinotty_ui_notify('offline', 'error')
     await flushBridge()
     await vi.advanceTimersByTimeAsync(7000)
@@ -1278,18 +1561,22 @@ describe('App.vue - plugin notification bridge', () => {
     expect(consoleWarn).toHaveBeenCalledWith(
       '[notification] plugin notify bridge queue full; evicted 5 oldest pending jobs'
     )
-    pending.splice(0, 3).forEach(({ resolve }) =>
-      resolve(response(200, { status: 'accepted', notifId: 'notif', eventSeq: '1' }))
-    )
+    pending
+      .splice(0, 3)
+      .forEach(({ resolve }) =>
+        resolve(response(200, { status: 'accepted', notifId: 'notif', eventSeq: '1' }))
+      )
     await flushBridge()
 
     const startedAfterSlotRelease = mocks.authFetch.mock.calls
       .slice(3, 6)
       .map(([, init]) => JSON.parse(init!.body as string).body)
     expect(startedAfterSlotRelease).toEqual(['queued-8', 'queued-9', 'queued-10'])
-    pending.splice(0).forEach(({ resolve }) =>
-      resolve(response(200, { status: 'accepted', notifId: 'notif', eventSeq: '1' }))
-    )
+    pending
+      .splice(0)
+      .forEach(({ resolve }) =>
+        resolve(response(200, { status: 'accepted', notifId: 'notif', eventSeq: '1' }))
+      )
     await flushBridge()
     consoleWarn.mockRestore()
   })
@@ -1328,8 +1615,8 @@ describe('App.vue - plugin notification bridge', () => {
     expect(abortEvents).toBe(3)
     expect(signals.every((signal) => signal.aborted)).toBe(true)
     expect(mocks.authFetch).toHaveBeenCalledTimes(3)
-    const startedBodies = mocks.authFetch.mock.calls.map(([, init]) =>
-      JSON.parse(init!.body as string).body
+    const startedBodies = mocks.authFetch.mock.calls.map(
+      ([, init]) => JSON.parse(init!.body as string).body
     )
     expect(startedBodies).toEqual(['dispose-0', 'dispose-1', 'dispose-2'])
     expect(mocks.pushNotification).not.toHaveBeenCalled()
@@ -1360,6 +1647,7 @@ describe('App.vue - Cmd+W routes through confirmation gate in split-pane mode', 
     settings.windowsAltAsCmd = false
     mocks.closePane.mockReset()
     mocks.splitPane.mockReset()
+    mocks.insertNonTerminalPane.mockReset()
     mocks.toggleBroadcast.mockReset()
     mocks.toggleZoom.mockReset()
     mocks.equalizePanes.mockReset()

@@ -3,6 +3,8 @@ mod cwd;
 mod layout;
 pub mod ledger;
 mod manager;
+mod restore;
+mod snapshot;
 
 pub use backend::{PendingSshAuth, SessionBackend, SshAuthPrompt, SshCmd, SshSessionParams};
 pub use cwd::CwdState;
@@ -12,6 +14,8 @@ pub use layout::{
     insert_pane_into_layout_with_info, insert_subtree_into_layout, remove_pane_from_layout,
 };
 pub use manager::{CloseReason, SessionManager, SessionStatus, SyncClient, SyncMsg, TabInfo};
+pub use restore::restore_session;
+pub use snapshot::{SessionSnapshot, SessionSnapshotStore, TabSnapshot};
 
 #[cfg(test)]
 pub(crate) use cwd::{find_subslice, parse_title_cwd, sniff_cwd_from_title_osc, OSC_SNIFF_CAP};
@@ -111,6 +115,7 @@ pub struct Session {
     pub exited: Mutex<bool>,
     #[allow(dead_code)]
     pub shell_type: String,
+    pub shell_launch_kind: crate::platform::shell::ShellLaunchKind,
     pub tauri_on_exit: Mutex<Option<TauriOnExit>>,
     pub cwd_state: Mutex<CwdState>,
     /// DEC mode 2026 state. Always acquire this before `clients` when both are needed.
@@ -576,13 +581,34 @@ impl Session {
     }
 
     pub fn on_pty_output(&self, data: &[u8]) {
+        if matches!(self.shell_launch_kind, crate::platform::shell::ShellLaunchKind::Wsl { .. }) {
+            return;
+        }
         let default_home = crate::platform::shell::home_dir();
         let remote_home_guard =
             self.remote_home.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let home = remote_home_guard.as_ref().unwrap_or(&default_home);
         let mut state = self.cwd_state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let CwdState { ref mut cwd, ref mut sniff_buf } = *state;
+        let CwdState { ref mut cwd, ref mut host_cwd, ref mut sniff_buf } = *state;
         cwd::sniff_cwd_from_title_osc(sniff_buf, data, home, cwd, self.ssh_params.is_none());
+        if self.ssh_params.is_none() {
+            *host_cwd = Some(cwd.clone());
+        }
+    }
+
+    #[must_use]
+    pub fn host_cwd(&self) -> Option<PathBuf> {
+        self.cwd_state.lock().unwrap_or_else(std::sync::PoisonError::into_inner).host_cwd.clone()
+    }
+
+    #[must_use]
+    pub fn cwd_for_workspace(&self) -> Option<PathBuf> {
+        let state = self.cwd_state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if self.ssh_params.is_some() {
+            Some(state.cwd.clone())
+        } else {
+            state.host_cwd.clone()
+        }
     }
 
     /// Replace the input channel, closing the old one (if any) so the previous
@@ -797,8 +823,13 @@ mod session_stub_tests {
             size: Mutex::new((80, 24)),
             exited: Mutex::new(false),
             shell_type: "test".to_string(),
+            shell_launch_kind: crate::platform::shell::ShellLaunchKind::Native,
             tauri_on_exit: Mutex::new(None),
-            cwd_state: Mutex::new(CwdState { cwd: PathBuf::from("/"), sniff_buf: Vec::new() }),
+            cwd_state: Mutex::new(CwdState {
+                cwd: PathBuf::from("/"),
+                host_cwd: Some(PathBuf::from("/")),
+                sniff_buf: Vec::new(),
+            }),
             sync: Mutex::new(SyncState::default()),
             sync_disable_hook: Mutex::new(None),
             resize_tx,

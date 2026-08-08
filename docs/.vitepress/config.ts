@@ -49,7 +49,8 @@ const zhSidebar = [
         items: [
           { text: '安装与使用', link: '/zh/plugins/plugins' }
         ]
-      }
+      },
+      { text: 'Roadmap', link: '/zh/roadmap' }
     ]
   },
   {
@@ -59,7 +60,10 @@ const zhSidebar = [
       {
         text: 'API',
         items: [
-          { text: 'Agent API', link: '/zh/api/agent-api' },
+          { text: '总览', link: '/zh/api/' },
+          { text: 'Tabs & Panes API', link: '/zh/api/tabs-panes-api' },
+          { text: 'Open API（终端读写）', link: '/zh/api/open-api' },
+          { text: 'Mission Control API', link: '/zh/api/mission-control-api' },
           { text: 'Clipboard API', link: '/zh/api/clipboard-api' },
           { text: 'MCP Server', link: '/zh/api/mcp-server' }
         ]
@@ -113,7 +117,8 @@ const enSidebar = [
         items: [
           { text: 'Install & Use', link: '/en/plugins/plugins' }
         ]
-      }
+      },
+      { text: 'Roadmap', link: '/en/roadmap' }
     ]
   },
   {
@@ -121,11 +126,14 @@ const enSidebar = [
     items: [
       { text: 'Plugin Development Guide (中文)', link: '/zh/plugins/plugin-development' },
       {
-        text: 'API (中文)',
+        text: 'API',
         items: [
-          { text: 'Agent API', link: '/zh/api/agent-api' },
-          { text: 'Clipboard API', link: '/zh/api/clipboard-api' },
-          { text: 'MCP Server', link: '/zh/api/mcp-server' }
+          { text: 'Overview', link: '/en/api/' },
+          { text: 'Tabs & Panes API', link: '/en/api/tabs-panes-api' },
+          { text: 'Open API (Terminal I/O)', link: '/en/api/open-api' },
+          { text: 'Mission Control API', link: '/en/api/mission-control-api' },
+          { text: 'Clipboard API', link: '/en/api/clipboard-api' },
+          { text: 'MCP Server', link: '/en/api/mcp-server' }
         ]
       },
       {
@@ -147,7 +155,7 @@ export default defineConfig({
   cleanUrls: true,
   lastUpdated: true,
   title: 'Dinotty',
-  description: '为 Coding Agent 打造的多端同步终端服务器',
+  description: '为 Coding Agent 场景打造的终端 -- 简洁、可拓展、多端同步，会话永不丢失',
 
   srcExclude: ['README.*.md', 'README.md'],
 
