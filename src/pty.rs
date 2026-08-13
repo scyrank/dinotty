@@ -254,9 +254,12 @@ pub fn create_session(
 
     let (mut cmd, shell_type, shell_launch_kind, effective_cwd, host_cwd) = if let Some(argv) = argv
     {
-        let mut cmd = CommandBuilder::new(&argv[0]);
-        cmd.args(&argv[1..]);
         let effective_cwd = requested_host_cwd.clone().unwrap_or_else(|| home_path.clone());
+        let program =
+            crate::platform::process::resolve_terminal_program(argv[0].as_ref(), &effective_cwd)?;
+        let mut cmd = CommandBuilder::new(program);
+        cmd.args(&argv[1..]);
+        ensure_command_path(&mut cmd);
         (
             cmd,
             "command".to_string(),
@@ -628,6 +631,13 @@ ZDOTDIR=  # reset so child shells behave normally
 
 [[ -f "{home}/.zshrc" ]] && source "{home}/.zshrc"
 
+# dinotty: zsh paints the leftover cell before a wrapped double-width glyph as a
+# reverse-video block (man zshzle, "Wrapped double-width characters"). Suppress it,
+# but never override a value the user set themselves.
+if [[ -z "${{zle_highlight[(r)special:*]}}" ]]; then
+  zle_highlight+=(special:none)
+fi
+
 # Ensure history is saved — fallback if user config doesn't set these
 [[ $HISTSIZE -gt 0 ]] || HISTSIZE=10000
 [[ $SAVEHIST -gt 0 ]] || SAVEHIST=10000
@@ -731,6 +741,30 @@ pub(crate) fn claude_session_env_keys_to_strip() -> Vec<String> {
 fn is_claude_session_env_key(key: &str) -> bool {
     let ku = key.to_ascii_uppercase();
     ku.starts_with("CLAUDE_CODE_") || ku == "CLAUDECODE" || ku == "CLAUDE_SESSION_ID"
+}
+
+/// Augment PATH for direct-argv spawns (createTerminalTab) so commands installed
+/// via Homebrew / nvm / pyenv are resolvable even when dinotty itself was launched
+/// from a GUI context with a minimal PATH (e.g. `/Applications/Dinotty.app` on
+/// macOS, which inherits `PATH=/usr/bin:/bin:/usr/sbin:/sbin` from launchd).
+fn ensure_command_path(cmd: &mut CommandBuilder) {
+    let current = cmd.get_env("PATH").map(|v| v.to_string_lossy().into_owned()).unwrap_or_default();
+    let mut parts: Vec<String> = if current.is_empty() {
+        Vec::new()
+    } else {
+        current.split(':').map(str::to_string).collect()
+    };
+    let extras: &[&str] = if cfg!(target_os = "macos") {
+        &["/opt/homebrew/bin", "/usr/local/bin"]
+    } else {
+        &["/usr/local/bin"]
+    };
+    for dir in extras {
+        if !parts.iter().any(|p| p == dir) {
+            parts.push((*dir).to_string());
+        }
+    }
+    cmd.env("PATH", parts.join(":"));
 }
 
 fn configure_utf8_locale(cmd: &mut CommandBuilder) {

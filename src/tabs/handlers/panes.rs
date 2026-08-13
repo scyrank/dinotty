@@ -7,218 +7,15 @@ use axum::{
     Json,
 };
 
-use crate::platform::{
-    shell::{ShellPreference, ShellResolveError},
-    shell_probe::ShellProbeService,
-};
+use crate::platform::{shell::ShellPreference, shell_probe::ShellProbeService};
 use crate::pty;
 use crate::session::{self, SessionManager, SyncMsg};
 use crate::settings::SettingsState;
 
-use super::types::{
-    validate_create_tab_request, CreateFilesPaneRequest, CreatePluginPaneRequest,
-    CreatePluginTabRequest, CreateTabRequest, CreateWebPaneRequest, ExtractPaneRequest,
-    MovePaneRequest, SplitPaneRequest, UpdateLayoutRequest,
+use super::super::types::{
+    ExtractPaneRequest, MovePaneRequest, SplitPaneRequest, UpdateLayoutRequest,
 };
-
-fn shell_error_response(error: &ShellResolveError) -> axum::response::Response {
-    let status = match error.code {
-        "wsl_timeout" | "wsl_list_failed" => StatusCode::SERVICE_UNAVAILABLE,
-        _ => StatusCode::CONFLICT,
-    };
-    (status, Json(serde_json::json!({ "error": { "code": error.code } }))).into_response()
-}
-
-// ─── GET /api/tabs ─────────────────────────────────────────────────
-
-#[allow(clippy::unused_async)]
-pub async fn list_tabs(State(manager): State<Arc<SessionManager>>) -> impl IntoResponse {
-    let (tabs, active_pane_id) = manager.tab_list();
-    Json(serde_json::json!({
-        "tabs": tabs,
-        "active_pane_id": active_pane_id,
-    }))
-}
-
-// ─── POST /api/tabs/:id/rename ────────────────────────────────────
-
-#[derive(serde::Deserialize)]
-pub struct RenameTabRequest {
-    title: String,
-}
-
-#[allow(clippy::unused_async)]
-pub async fn rename_tab(
-    State(manager): State<Arc<SessionManager>>,
-    Path(tab_id): Path<String>,
-    Json(req): Json<RenameTabRequest>,
-) -> impl IntoResponse {
-    let title = req.title.trim();
-    if title.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": "title must not be empty" })),
-        )
-            .into_response();
-    }
-    if manager.rename_tab(&tab_id, title) {
-        manager.broadcast_sync(&SyncMsg::TabRenamed { tab_id, title: title.to_string() });
-        Json(serde_json::json!({ "ok": true })).into_response()
-    } else {
-        (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "tab not found" })))
-            .into_response()
-    }
-}
-
-// ─── POST /api/tabs ────────────────────────────────────────────────
-
-#[allow(clippy::unused_async)]
-pub async fn create_tab(
-    State((manager, settings)): State<(Arc<SessionManager>, SettingsState)>,
-    State(shell_probe): State<Arc<ShellProbeService>>,
-    Json(req): Json<CreateTabRequest>,
-) -> impl IntoResponse {
-    let requested_cwd = match validate_create_tab_request(&req) {
-        Ok(cwd) => cwd,
-        Err(e) => {
-            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": e })))
-                .into_response();
-        }
-    };
-    let tab_id = uuid::Uuid::new_v4().to_string();
-    let pane_id = uuid::Uuid::new_v4().to_string();
-
-    // Copy settings under the lock, then probe outside it.
-    let (cwd, shell_preference) = {
-        let s = settings.read().await;
-        let cwd = match requested_cwd {
-            Some(cwd) => Some(cwd),
-            None => s.resolved_default_workspace_root(),
-        };
-        let preference =
-            ShellPreference::new(s.shell.clone(), s.shell_path.clone(), s.wsl_distro.clone());
-        (cwd, preference)
-    };
-    let is_argv_command = req.argv.is_some();
-    let shell_spec = if is_argv_command {
-        None
-    } else {
-        match shell_probe.resolve(&shell_preference).await {
-            Ok(spec) => Some(spec),
-            Err(error) => return shell_error_response(&error),
-        }
-    };
-
-    // Create PTY session
-    let (session, shell_type) = match pty::create_session(
-        &manager,
-        &pane_id,
-        Some(&tab_id),
-        None,
-        cwd.map(pty::LaunchCwd::Host),
-        req.argv,
-        shell_spec,
-    ) {
-        Ok(x) => x,
-        Err(e) => {
-            tracing::error!("Failed to create PTY: {}", e);
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": e })))
-                .into_response();
-        }
-    };
-    let cwd_str = session.cwd_for_workspace().map(|cwd| cwd.to_string_lossy().into_owned());
-
-    // Create initial layout with single leaf
-    let title = req.title.as_deref().unwrap_or("Terminal");
-    let layout = serde_json::json!({
-        "type": "leaf",
-        "paneId": pane_id,
-        "title": title,
-        "shell_type": shell_type,
-        "ratio": 1,
-        "zoomed": false,
-    });
-
-    let publish_tab = || {
-        if !manager.insert_tab_for_session(
-            &pane_id,
-            &session,
-            tab_id.clone(),
-            serde_json::json!({
-                "layout": layout.clone(),
-                "active_pane_id": pane_id.clone(),
-            }),
-            pane_id.clone(),
-        ) {
-            return false;
-        }
-
-        manager.broadcast_sync(&SyncMsg::TabCreated {
-            tab_id: tab_id.clone(),
-            pane_id: pane_id.clone(),
-            layout: Some(layout.clone()),
-            cwd: cwd_str.clone(),
-            connection_id: None,
-            workspace_id: None,
-        });
-        if manager.is_current_session(&pane_id, &session) {
-            true
-        } else {
-            // If close won after guarded publication but before TabCreated was
-            // sent, order a final corrective close after that late creation.
-            manager.broadcast_sync(&SyncMsg::TabClosed { pane_id: tab_id.clone() });
-            false
-        }
-    };
-
-    if !publish_tab() {
-        let message = if is_argv_command {
-            "command exited before tab creation completed"
-        } else {
-            "session closed before tab creation completed"
-        };
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": message })))
-            .into_response();
-    }
-
-    Json(serde_json::json!({
-        "tab_id": tab_id,
-        "pane_id": pane_id,
-        "layout": layout,
-        "cwd": cwd_str,
-    }))
-    .into_response()
-}
-
-// ─── DELETE /api/tabs/{tab_id} ─────────────────────────────────────
-
-#[allow(clippy::unused_async)]
-pub async fn close_tab(
-    State(manager): State<Arc<SessionManager>>,
-    Path(tab_id): Path<String>,
-) -> impl IntoResponse {
-    // Get tab layout to find all leaf pane IDs
-    let leaf_ids: Vec<String> = manager
-        .tab_layouts
-        .get(&tab_id)
-        .and_then(|v| v.get("layout").cloned())
-        .map(|layout| session::collect_leaf_pane_ids(&layout))
-        .unwrap_or_default();
-
-    // Each session close prunes its own leaf and emits the unified close protocol.
-    for leaf_id in &leaf_ids {
-        manager.kill_and_remove(leaf_id);
-    }
-
-    // Non-terminal-only tabs have no session close to remove the layout.
-    if manager.remove_tab(&tab_id) {
-        manager.broadcast_sync(&SyncMsg::TabClosed { pane_id: tab_id });
-    }
-
-    Json(serde_json::json!({ "ok": true })).into_response()
-}
-
-// ─── POST /api/tabs/{tab_id}/pane ──────────────────────────────────
+use super::shell_error_response;
 
 #[allow(clippy::unused_async, clippy::too_many_lines)]
 pub async fn split_pane(
@@ -314,13 +111,14 @@ pub async fn split_pane(
             }
         }
     } else {
-        // Local PTY - inherit CWD from source pane
+        // Local PTY - honor explicit cwd override, otherwise inherit from source pane
+        let local_cwd = req.cwd.map(std::path::PathBuf::from).or(source_cwd);
         match pty::create_session(
             &manager,
             &new_pane_id,
             Some(&tab_id),
             None,
-            source_cwd.map(pty::LaunchCwd::Host),
+            local_cwd.map(pty::LaunchCwd::Host),
             None,
             shell_spec,
         ) {
@@ -390,224 +188,6 @@ pub async fn split_pane(
     }))
     .into_response()
 }
-
-// ─── POST /api/tabs/{tab_id}/pane/plugin|files|web ────────────────
-
-/// Shared helper: insert a non-terminal leaf (plugin/files/web) into the
-/// layout by splitting the target pane. Does NOT create a PTY session.
-fn insert_non_terminal_pane(
-    manager: &SessionManager,
-    tab_id: &str,
-    target_pane_id: &str,
-    direction: &str,
-    new_leaf: serde_json::Value,
-    new_pane_id: &str,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    // NOTE: must drop the DashMap Ref before `manager.insert_tab` writes back
-    // to the same shard, otherwise the read lock blocks the write lock and the
-    // handler deadlocks. Use `match` so the Ref is dropped at the end of the
-    // expression, not held for the rest of the function.
-    let tab_val = match manager.tab_layouts.get(tab_id) {
-        Some(v) => v.value().clone(),
-        None => {
-            return Err((
-                StatusCode::NOT_FOUND,
-                Json(serde_json::json!({ "error": "tab not found" })),
-            ))
-        }
-    };
-
-    let Some(layout) = tab_val.get("layout") else {
-        return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": "tab has no layout" })),
-        ));
-    };
-    let layout = layout.clone();
-
-    let leaf_ids = session::collect_leaf_pane_ids(&layout);
-    if !leaf_ids.contains(&target_pane_id.to_string()) {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "error": "pane not found in tab" })),
-        ));
-    }
-
-    let Some(new_layout) =
-        session::insert_subtree_into_layout(&layout, target_pane_id, direction, new_leaf)
-    else {
-        return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": "failed to update layout" })),
-        ));
-    };
-
-    let active_pane_id = new_pane_id.to_string();
-    manager.insert_tab(
-        tab_id.to_string(),
-        serde_json::json!({
-            "layout": new_layout.clone(),
-            "active_pane_id": active_pane_id.clone(),
-        }),
-    );
-
-    manager.broadcast_sync(&SyncMsg::LayoutUpdated {
-        pane_id: tab_id.to_string(),
-        layout: new_layout.clone(),
-        active_pane_id,
-    });
-
-    Ok(Json(serde_json::json!({
-        "new_pane_id": new_pane_id,
-        "layout": new_layout,
-    })))
-}
-
-#[allow(clippy::unused_async)]
-pub async fn create_plugin_pane(
-    State(manager): State<Arc<SessionManager>>,
-    Path(tab_id): Path<String>,
-    Json(req): Json<CreatePluginPaneRequest>,
-) -> impl IntoResponse {
-    let new_pane_id = uuid::Uuid::new_v4().to_string();
-    let new_leaf = serde_json::json!({
-        "type": "leaf",
-        "kind": "plugin",
-        "paneId": new_pane_id,
-        "title": req.plugin_id.clone(),
-        "ratio": 1,
-        "zoomed": false,
-        "pluginId": req.plugin_id.clone(),
-    });
-
-    match insert_non_terminal_pane(
-        &manager,
-        &tab_id,
-        &req.target_pane_id,
-        &req.direction,
-        new_leaf,
-        &new_pane_id,
-    ) {
-        Ok(resp) => resp.into_response(),
-        Err(err) => err.into_response(),
-    }
-}
-
-// ─── POST /api/tabs/plugin ───────────────────────────────────────
-
-/// Create a new tab whose root layout is a single plugin leaf (no PTY).
-/// Used so plugin tabs gain a backend `tab_layouts` entry, enabling Mode A
-/// drag-and-drop merge with other tabs.
-#[allow(clippy::unused_async)]
-pub async fn create_plugin_tab(
-    State(manager): State<Arc<SessionManager>>,
-    Json(req): Json<CreatePluginTabRequest>,
-) -> impl IntoResponse {
-    let tab_id = req.tab_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    // Frontend convention: plugin tab uses the same ID for the tab and its
-    // single leaf pane, so existing paneId-based lookups keep working.
-    let pane_id = tab_id.clone();
-    let title = req.title.unwrap_or_else(|| req.plugin_id.clone());
-
-    let layout = serde_json::json!({
-        "type": "leaf",
-        "kind": "plugin",
-        "paneId": pane_id,
-        "title": title,
-        "ratio": 1,
-        "zoomed": false,
-        "pluginId": req.plugin_id,
-    });
-
-    manager.update_layout(
-        tab_id.clone(),
-        serde_json::json!({
-            "layout": layout.clone(),
-            "active_pane_id": pane_id.clone(),
-        }),
-        Some(pane_id.clone()),
-    );
-
-    manager.broadcast_sync(&SyncMsg::TabCreated {
-        tab_id: tab_id.clone(),
-        pane_id: pane_id.clone(),
-        layout: Some(layout.clone()),
-        cwd: None,
-        connection_id: None,
-        workspace_id: None,
-    });
-
-    Json(serde_json::json!({
-        "tab_id": tab_id,
-        "pane_id": pane_id,
-        "layout": layout,
-    }))
-    .into_response()
-}
-
-#[allow(clippy::unused_async)]
-pub async fn create_files_pane(
-    State(manager): State<Arc<SessionManager>>,
-    Path(tab_id): Path<String>,
-    Json(req): Json<CreateFilesPaneRequest>,
-) -> impl IntoResponse {
-    let new_pane_id = uuid::Uuid::new_v4().to_string();
-    let new_leaf = serde_json::json!({
-        "type": "leaf",
-        "kind": "files",
-        "paneId": new_pane_id,
-        "title": req.path.clone(),
-        "ratio": 1,
-        "zoomed": false,
-        "path": req.path.clone(),
-        "sourcePaneId": req.target_pane_id.clone(),
-    });
-
-    match insert_non_terminal_pane(
-        &manager,
-        &tab_id,
-        &req.target_pane_id,
-        &req.direction,
-        new_leaf,
-        &new_pane_id,
-    ) {
-        Ok(resp) => resp.into_response(),
-        Err(err) => err.into_response(),
-    }
-}
-
-#[allow(clippy::unused_async)]
-pub async fn create_web_pane(
-    State(manager): State<Arc<SessionManager>>,
-    Path(tab_id): Path<String>,
-    Json(req): Json<CreateWebPaneRequest>,
-) -> impl IntoResponse {
-    let new_pane_id = uuid::Uuid::new_v4().to_string();
-    let new_leaf = serde_json::json!({
-        "type": "leaf",
-        "kind": "web",
-        "paneId": new_pane_id,
-        "title": req.url.clone(),
-        "ratio": 1,
-        "zoomed": false,
-        "url": req.url.clone(),
-        "sourcePaneId": req.target_pane_id.clone(),
-    });
-
-    match insert_non_terminal_pane(
-        &manager,
-        &tab_id,
-        &req.target_pane_id,
-        &req.direction,
-        new_leaf,
-        &new_pane_id,
-    ) {
-        Ok(resp) => resp.into_response(),
-        Err(err) => err.into_response(),
-    }
-}
-
-// ─── POST /api/tabs/{dst_tab_id}/pane/move ────────────────────────
 
 #[allow(clippy::unused_async, clippy::too_many_lines)]
 pub async fn move_pane(
@@ -821,8 +401,6 @@ pub async fn move_pane(
     }
 }
 
-// ─── POST /api/tabs/extract ───────────────────────────────────────
-
 #[allow(clippy::unused_async)]
 pub async fn extract_pane(
     State(manager): State<Arc<SessionManager>>,
@@ -931,8 +509,6 @@ pub async fn extract_pane(
     .into_response()
 }
 
-// ─── DELETE /api/tabs/{tab_id}/pane/{pane_id} ──────────────────────
-
 #[allow(clippy::unused_async)]
 pub async fn close_pane(
     State(manager): State<Arc<SessionManager>>,
@@ -972,8 +548,6 @@ pub async fn close_pane(
     manager.close_pane(&pane_id);
     Json(serde_json::json!({ "ok": true, "tab_closed": leaf_ids.len() <= 1 })).into_response()
 }
-
-// ─── PUT /api/tabs/{tab_id}/pane/{pane_id}/activate ────────────────
 
 #[allow(clippy::unused_async)]
 pub async fn activate_pane(
@@ -1015,8 +589,6 @@ pub async fn activate_pane(
 
     Json(serde_json::json!({ "ok": true })).into_response()
 }
-
-// ─── PUT /api/tabs/{tab_id}/layout ─────────────────────────────────
 
 #[allow(clippy::unused_async)]
 pub async fn update_layout(
