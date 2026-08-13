@@ -2314,7 +2314,7 @@ onBeforeUnmount(() => {
   }
 }
 .system-layout-warning {
-  color: #ff9f43;
+  color: var(--warning);
 }
 .system-layout-at-limit {
   color: var(--fg-muted);
