@@ -10,6 +10,9 @@ mod subscriptions;
 mod types;
 mod workspace;
 
+#[cfg(test)]
+mod tests;
+
 pub use crud::{
     delete_plugin, dev_link_plugin, install_from_dir, install_plugin, list_plugins, plugin_asset,
     plugin_detail, update_plugin,

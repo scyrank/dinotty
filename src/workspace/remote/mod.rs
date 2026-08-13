@@ -1,3 +1,7 @@
+mod exec;
+mod path;
+mod sftp;
+
 use axum::{
     body::Body,
     http::{header, HeaderMap, HeaderValue, StatusCode},
@@ -5,194 +9,18 @@ use axum::{
     Json,
 };
 use axum_extra::extract::Multipart;
-use russh_sftp::client::SftpSession;
 use std::path::Path;
 use std::sync::Arc;
 
 use crate::session::Session;
-use crate::ssh::sftp::{clear_sftp_cache, get_or_create_sftp, ssh_exec};
 use crate::workspace::{
     detect_language, json_err, media_kind, office_kind, skip_text_preview, DirEntry, ListResponse,
     MetaResponse, PanePathQuery, ResolveResponse, WorkspaceListQuery, MAX_DOWNLOAD,
     MAX_TEXT_PREVIEW,
 };
-
-/// Get SFTP session, clearing cache on error and retrying once.
-async fn sftp(session: &Session) -> Result<Arc<SftpSession>, Response> {
-    match get_or_create_sftp(session).await {
-        Ok(s) => Ok(s),
-        Err(_e) => {
-            clear_sftp_cache(session);
-            // Retry once in case the cached session was stale
-            get_or_create_sftp(session)
-                .await
-                .map_err(|e2| json_err(StatusCode::BAD_GATEWAY, &format!("SFTP error: {e2}")))
-        }
-    }
-}
-
-fn sftp_err(e: impl std::fmt::Display) -> Response {
-    json_err(StatusCode::BAD_GATEWAY, &format!("SFTP: {e}"))
-}
-
-/// Detect the current PTY user by running `whoami` via SSH exec.
-/// Caches the result in `session.remote_user`.
-async fn detect_remote_user(session: &Session) -> Option<String> {
-    // Check cache first
-    {
-        let cached = session.remote_user.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(ref user) = *cached {
-            return Some(user.clone());
-        }
-    }
-    // Detect via whoami
-    let cwd = session
-        .cwd_for_workspace()
-        .map_or_else(|| "/".to_string(), |path| path.to_string_lossy().into_owned());
-    let (code, stdout, _) = ssh_exec(session, "whoami", &cwd).await.ok()?;
-    if code != 0 {
-        return None;
-    }
-    let user = stdout.trim().to_string();
-    if user.is_empty() {
-        return None;
-    }
-    *session.remote_user.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
-        Some(user.clone());
-    Some(user)
-}
-
-/// Check if the PTY user is likely elevated (root) compared to the SSH auth user.
-/// Returns `true` if sudo fallback should be attempted.
-async fn should_use_sudo(session: &Session) -> bool {
-    let Some(pty_user) = detect_remote_user(session).await else { return false };
-    // If PTY user is root, the SFTP session (running as original SSH user)
-    // likely can't access the same directories
-    pty_user == "root"
-}
-
-/// List directory via SSH exec with sudo as fallback.
-/// Used when SFTP fails due to permission issues after user switch (e.g. `su root`).
-async fn list_via_ssh_exec(session: &Session, target: &str) -> Result<Vec<DirEntry>, Response> {
-    let cwd = session
-        .cwd_for_workspace()
-        .map_or_else(|| "/".to_string(), |path| path.to_string_lossy().into_owned());
-    // Use `sudo ls -la` to get file types and names
-    let cmd = format!("sudo ls -la {}", shell_escape_path(target));
-    let (code, stdout, stderr) = ssh_exec(session, &cmd, &cwd)
-        .await
-        .map_err(|e| json_err(StatusCode::BAD_GATEWAY, &format!("SSH exec error: {e}")))?;
-    if code != 0 {
-        return Err(json_err(
-            StatusCode::FORBIDDEN,
-            &format!("Permission denied (sudo exit {code}): {}", stderr.trim()),
-        ));
-    }
-    let entries = parse_ls_la_entries(&stdout, target);
-    Ok(entries)
-}
-
-/// Parse `ls -la` output into `DirEntry` list with proper type detection.
-fn parse_ls_la_entries(output: &str, _target: &str) -> Vec<DirEntry> {
-    let mut entries = Vec::new();
-    for line in output.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        if let Some((name, is_dir, size)) = parse_ls_la_full(line) {
-            if name != "." && name != ".." {
-                entries.push(DirEntry { name, is_dir, size });
-            }
-        }
-    }
-    entries.sort_by_key(|e| (!e.is_dir, e.name.to_lowercase()));
-    entries
-}
-
-/// Parse a full `ls -la` line to extract name, type, and size.
-fn parse_ls_la_full(line: &str) -> Option<(String, bool, u64)> {
-    let parts: Vec<&str> = line.split_whitespace().collect();
-    if parts.len() < 9 {
-        return None;
-    }
-    let first = parts[0];
-    if first.is_empty() {
-        return None;
-    }
-    let ft_char = first.as_bytes()[0];
-    if !b"-dlcbps".contains(&ft_char) {
-        return None;
-    }
-    let is_dir = ft_char == b'd';
-    let size: u64 = parts[4].parse().unwrap_or(0);
-    let name = parts[8..].join(" ");
-    let name = name.split(" -> ").next().unwrap_or(&name).to_string();
-    Some((name, is_dir, size))
-}
-
-/// Read file via SSH exec with sudo. Returns the file content as bytes.
-async fn read_via_ssh_exec(session: &Session, target: &str) -> Result<Vec<u8>, Response> {
-    let cwd = session
-        .cwd_for_workspace()
-        .map_or_else(|| "/".to_string(), |path| path.to_string_lossy().into_owned());
-    let cmd = format!("sudo cat {}", shell_escape_path(target));
-    let (code, stdout, stderr) = ssh_exec(session, &cmd, &cwd)
-        .await
-        .map_err(|e| json_err(StatusCode::BAD_GATEWAY, &format!("SSH exec error: {e}")))?;
-    if code != 0 {
-        return Err(json_err(
-            StatusCode::FORBIDDEN,
-            &format!("Permission denied (sudo exit {code}): {}", stderr.trim()),
-        ));
-    }
-    Ok(stdout.into_bytes())
-}
-
-/// Shell-escape a file path for safe use in SSH exec commands.
-fn shell_escape_path(path: &str) -> String {
-    format!("'{}'", path.replace('\'', "'\\''"))
-}
-
-/// Check if an SFTP error message indicates a permission denied error.
-fn is_permission_error(msg: &str) -> bool {
-    let lower = msg.to_lowercase();
-    lower.contains("permission denied")
-        || lower.contains("access denied")
-        || lower.contains("eperm")
-        || lower.contains("eacces")
-}
-
-/// Resolve a relative path for SSH file browsing. SSH sessions have full shell
-/// access, so the default tree root is `/` (not `cwd_state.cwd`).
-///
-/// - Empty path → `/`  (tree root is the filesystem root)
-/// - Absolute path → as-is
-/// - `~` / `~/…` → remote home expansion
-/// - Relative path → joined against `/` (cwd param ignored - see below)
-fn resolve_remote_rel(session: &Session, rel: &str, _cwd: Option<&str>) -> String {
-    let rel = rel.trim();
-    if rel.is_empty() {
-        return "/".to_string();
-    }
-    if rel.starts_with('/') {
-        return rel.to_string();
-    }
-    if let Some(rest) = rel.strip_prefix("~/") {
-        let home = session.remote_home.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let home_str =
-            home.as_ref().map_or_else(|| "/".to_string(), |h| h.to_string_lossy().into_owned());
-        return format!("{home_str}/{rest}");
-    }
-    if rel == "~" {
-        let home = session.remote_home.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        return home.as_ref().map_or_else(|| "/".to_string(), |h| h.to_string_lossy().into_owned());
-    }
-    // SSH tree rel paths are always relative to / (the filesystem root).
-    // The cwd parameter is ignored - using it as base would double-prefix
-    // paths (e.g. /home/user + home/user/x -> /home/user/home/user/x).
-    normalize_remote_join("/", rel)
-}
+use exec::{list_via_ssh_exec, read_via_ssh_exec};
+use path::{normalize_remote_join, resolve_remote_rel};
+use sftp::{is_permission_error, remove_dir_recursive, sftp, sftp_err, should_use_sudo};
 
 // ── list ──────────────────────────────────────────────────────────────────
 
@@ -201,7 +29,7 @@ pub async fn remote_list(session: Arc<Session>, q: WorkspaceListQuery) -> Respon
         Ok(s) => s,
         Err(e) => return e,
     };
-    // SSH sessions have full shell access — no jail needed.
+    // SSH sessions have full shell access - no jail needed.
     // The frontend tree always sends `path` relative to the initial SSH root `/`,
     // regardless of the current browsing directory. The `root` parameter is
     // informational only (tracks cwdLabel) and must NOT be used for path joining.
@@ -382,7 +210,7 @@ pub async fn remote_raw(session: Arc<Session>, q: PanePathQuery) -> Response {
             }
         }
     };
-    // Check metadata for file type and size (skip on permission error — will try sudo)
+    // Check metadata for file type and size (skip on permission error - will try sudo)
     let mut use_sudo_fallback = false;
     match sftp.metadata(&target).await {
         Ok(m) => {
@@ -554,25 +382,6 @@ pub async fn remote_delete(session: Arc<Session>, q: PanePathQuery) -> Response 
         return json_err(StatusCode::BAD_REQUEST, "not a file or directory");
     }
     Json(serde_json::json!({ "ok": true })).into_response()
-}
-
-/// Recursively remove a directory via SFTP.
-async fn remove_dir_recursive(sftp: &SftpSession, path: &str) -> Result<(), String> {
-    let entries = sftp.read_dir(path).await.map_err(|e| format!("read_dir: {e}"))?;
-    for entry in entries {
-        let name = entry.file_name();
-        if name == "." || name == ".." {
-            continue;
-        }
-        let child = format!("{}/{}", path.trim_end_matches('/'), name);
-        let meta = entry.metadata();
-        if meta.file_type().is_dir() {
-            Box::pin(remove_dir_recursive(sftp, &child)).await?;
-        } else {
-            sftp.remove_file(&child).await.map_err(|e| format!("remove_file: {e}"))?;
-        }
-    }
-    sftp.remove_dir(path).await.map_err(|e| format!("remove_dir: {e}"))
 }
 
 // ── rename ────────────────────────────────────────────────────────────────
@@ -786,19 +595,4 @@ pub async fn remote_upload(
         resp["errors"] = serde_json::json!(errors);
     }
     Json(resp).into_response()
-}
-
-// ── helpers ───────────────────────────────────────────────────────────────
-
-fn normalize_remote_join(root: &str, rel: &str) -> String {
-    let rel = rel.trim().trim_start_matches('/');
-    if rel.split('/').any(|p| p == "..") {
-        return root.to_string(); // reject .. traversal
-    }
-    let mut out = root.trim_end_matches('/').to_string();
-    for seg in rel.split('/').filter(|s| !s.is_empty() && *s != ".") {
-        out.push('/');
-        out.push_str(seg);
-    }
-    out
 }

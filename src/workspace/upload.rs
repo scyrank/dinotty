@@ -386,7 +386,12 @@ pub async fn workspace_upload(
                         bytes_written += chunk.len() as u64;
                     }
                     Ok(None) => break,
-                    Err(e) => return json_err(StatusCode::BAD_REQUEST, &e.to_string()),
+                    Err(e) => {
+                        drop(file);
+                        let _ = std::fs::remove_file(&path);
+                        tracing::warn!("workspace_upload: read {} failed: {}", path.display(), e);
+                        return json_err(StatusCode::BAD_REQUEST, &e.to_string());
+                    }
                 }
             }
             if let Err(e) = file.flush().await {

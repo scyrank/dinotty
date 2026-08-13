@@ -423,7 +423,7 @@ import { pickSuccessorTab } from './utils/tabSuccessor'
 import { workspaceIdFromPaneId } from './utils/pluginPaneId'
 import { initMonitorHistory } from './composables/useMonitor'
 import NotificationPanel from './components/notification/NotificationPanel.vue'
-import { POSITION, useToast } from 'vue-toastification'
+import { useToast } from 'vue-toastification'
 import {
   useNotification,
   pushNotification,
@@ -465,7 +465,11 @@ import {
 import WorkspaceOverview from './components/overview/WorkspaceOverview.vue'
 import { refreshPluginPreview, invalidatePluginPreview } from './composables/useTabPreview'
 import { useIsMobile } from './composables/useIsMobile'
-import { useWorkspaces, DEFAULT_WORKSPACE_ID } from './composables/useWorkspaces'
+import {
+  useWorkspaces,
+  DEFAULT_WORKSPACE_ID,
+  toActiveWorkspaceId,
+} from './composables/useWorkspaces'
 // formatCloseTabMessage moved to ConfirmCloseDialog component
 import LoginPage from './components/LoginPage.vue'
 import SetupPage from './components/SetupPage.vue'
@@ -482,6 +486,7 @@ import { readHostClipboard } from './utils/clipboard'
 import { hasCollapseGuard, hasOpenGuard } from './utils/keyboardGuardMode'
 import type { AppActionOptions } from './components/keyboard/mkbTypes'
 import { canFixShellErrorInSettings, shellErrorMessage } from './utils/shellError'
+import { resolveResponsiveToastPosition } from './utils/toastPosition'
 
 // ── Stores ──────────────────────────────────────────────────────
 const session = useSessionStore()
@@ -574,11 +579,12 @@ const hostClipboardPaste = createHostClipboardPasteController({
     getActiveTerminalRef()?.pasteFromClipboard(text, autoEnter, !systemActionKeyboardOpen.value)
   },
   clipboardEmpty: () =>
-    toast.info(t('mobileKb.clipboardEmpty'), { position: POSITION.BOTTOM_CENTER }),
-  pasteFailed: () => toast.error(t('mobileKb.pasteFailed'), { position: POSITION.BOTTOM_CENTER }),
+    toast.info(t('mobileKb.clipboardEmpty'), { position: resolveResponsiveToastPosition() }),
+  pasteFailed: () =>
+    toast.error(t('mobileKb.pasteFailed'), { position: resolveResponsiveToastPosition() }),
   confirmMultiline: (lines) =>
     toast.info(t('mobileKb.confirmMultiline', { n: lines }), {
-      position: POSITION.BOTTOM_CENTER,
+      position: resolveResponsiveToastPosition(),
     }),
 })
 const cursorPicker = useCursorPicker({
@@ -620,9 +626,9 @@ const {
 
 function workspaceIdOfTab(tab: Tab): string | null {
   if (tab.type === 'plugin') {
-    return tab.workspaceId ?? workspaceIdFromPaneId(tab.paneId) ?? null
+    return toActiveWorkspaceId(tab.workspaceId ?? workspaceIdFromPaneId(tab.paneId))
   }
-  return (
+  return toActiveWorkspaceId(
     matchWorkspace(
       tab.cwd ?? '',
       tab.connectionId,
@@ -848,15 +854,18 @@ watch(
 )
 
 // Capture plugin preview when active tab changes to a plugin tab (handles initial load)
+// and remember the last terminal cwd so plugins can derive a default working directory
+// even when a non-terminal tab (e.g. a plugin tab) is currently active.
+const lastTerminalCwd = ref<string | null>(null)
 watch(activePaneId, (paneId) => {
   const tab = tabs.value.find((t) => t.paneId === paneId)
   if (!tab) return
-  // Legacy PluginTab or migrated TerminalTab-with-plugin-leaf.
-  if (tab.type === 'plugin') {
-    nextTick(() => refreshPluginPreview(tab.paneId))
-  } else if (tab.type === 'terminal') {
+  if (tab.type === 'terminal') {
+    if (tab.cwd) lastTerminalCwd.value = tab.cwd
     const pluginLeaf = getAllLeaves(tab.layout).find((l) => l.kind === 'plugin')
     if (pluginLeaf) nextTick(() => refreshPluginPreview(pluginLeaf.paneId))
+  } else if (tab.type === 'plugin') {
+    nextTick(() => refreshPluginPreview(tab.paneId))
   }
 })
 
@@ -1559,6 +1568,13 @@ window.__dinotty_terminal_api = {
     const tab = tabs.value.find((t) => t.paneId === activePaneId.value)
     return tab?.type === 'terminal' ? tab.activePaneId : activePaneId.value
   },
+  activeCwd() {
+    const tab = tabs.value.find((t) => t.paneId === activePaneId.value)
+    if (tab?.type === 'terminal' && tab.cwd) return tab.cwd
+    if (lastTerminalCwd.value) return lastTerminalCwd.value
+    const wsPath = activeWorkspacePath.value
+    return wsPath ?? null
+  },
   listPanes() {
     const result: { id: string; title: string; active: boolean }[] = []
     for (const t of tabs.value) {
@@ -1588,9 +1604,19 @@ window.__dinotty_terminal_api = {
   },
   async createTerminalTab(opts: { cwd: string; argv: string[]; title?: string }) {
     const ws = matchWorkspace(opts.cwd)
-    const targetId = ws?.id ?? null
-    if (targetId !== activeWorkspaceId.value) await activateWorkspace(targetId)
+    const targetId = toActiveWorkspaceId(ws?.id)
+    if (targetId !== activeWorkspaceId.value) {
+      const committed = await activateWorkspace(targetId)
+      if (!committed) return ''
+    }
     return newTab(opts.cwd, opts.argv, opts.title)
+  },
+  async splitTerminalPane(opts?: {
+    direction?: 'horizontal' | 'vertical'
+    cwd?: string
+  }): Promise<string | null> {
+    const direction = opts?.direction ?? 'vertical'
+    return splitPane.splitPane(direction, false, opts?.cwd)
   },
 }
 // Test hooks for P3 verification (focusActive + isComposing guard).
