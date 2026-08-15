@@ -148,7 +148,20 @@ describe('App.vue - system keyboard state regressions', () => {
     expect(toolbar.props('imeOpen')).toBe(false)
   })
 
-  it('uses the fixed toolbar control to close and reopen the phone IME', async () => {
+  it('docks the root only while the system toolbar is visible', async () => {
+    settings.mobile_input_mode = 'system'
+    const wrapper = await mountWithTabs()
+
+    expect(wrapper.get('#app-root').classes()).not.toContain('system-toolbar-docked')
+
+    settings.system_toolbar_mode = 'persistent_mobile'
+    useIsMobile().isMobile.value = true
+    await nextTick()
+
+    expect(wrapper.get('#app-root').classes()).toContain('system-toolbar-docked')
+  })
+
+  it('uses the toolbar control to close and reopen the phone IME', async () => {
     settings.mobile_input_mode = 'system'
     settings.system_toolbar_mode = 'persistent_mobile'
     useIsMobile().isMobile.value = true

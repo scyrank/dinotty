@@ -7,6 +7,9 @@
   <div
     v-else
     id="app-root"
+    :class="{
+      'system-toolbar-docked': effectiveMobileInputMode === 'system' && systemToolbarVisible,
+    }"
     @mousedown.capture="onAppMouseReplayCapture"
     @click.capture="onAppMouseReplayCapture"
     @touchstart.capture="onAppTouchStartCapture"
@@ -755,7 +758,6 @@ const webRefs = shallowReactive<Record<string, any>>({})
 
 const { isLandscape, dispose: disposeViewport } = useViewportResize({
   kbVisible,
-  terminalImeFocused,
   activePaneId,
   tabs,
   termRefs,
@@ -2347,6 +2349,17 @@ onBeforeUnmount(() => {
   height: calc(
     100% - max(0px, var(--mkb-height, 0px) - var(--kb-overlap, 0px)) - var(--sys-kb-height, 0px)
   );
+}
+#app-root.system-toolbar-docked {
+  /* The shortcut toolbar is a flex child, so its own height already reduces the content area.
+   * Only reserve the native keyboard occlusion here. */
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: var(--sys-kb-height, 0px);
+  left: 0;
+  box-sizing: border-box;
+  height: auto;
 }
 .broadcast-btn {
   position: relative;

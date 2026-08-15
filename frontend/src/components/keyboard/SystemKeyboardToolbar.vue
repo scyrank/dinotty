@@ -2,7 +2,6 @@
   <div
     v-show="visible"
     id="system-mobile-kb"
-    ref="rootRef"
     :class="{ 'system-action-open': actionOpen, 'ime-open': imeOpen }"
   >
     <template v-if="!actionOpen">
@@ -302,7 +301,6 @@ const emit = defineEmits<{
 
 const { settings } = useSettings()
 const { t } = useI18n()
-const rootRef = ref<HTMLElement>()
 const showHistoryPanel = ref(false)
 const showFilePicker = ref(false)
 const phoneFileInputRef = ref<HTMLInputElement>()
@@ -639,11 +637,6 @@ function onHistoryDelete(command: string) {
   historyItems.value = historyItems.value.filter((item) => item.command !== command)
 }
 
-function updateHeight() {
-  const height = props.visible && rootRef.value ? rootRef.value.getBoundingClientRect().height : 0
-  document.documentElement.style.setProperty('--mkb-height', `${height}px`)
-}
-
 function onModifiersConsumed(event: Event) {
   const detail = (
     event as CustomEvent<{
@@ -659,29 +652,16 @@ watch(
   () => props.visible,
   (visible) => {
     if (!visible) resetModifiers()
-    requestAnimationFrame(updateHeight)
   }
-)
-watch(
-  () => props.actionOpen,
-  () => requestAnimationFrame(updateHeight)
 )
 watch(() => props.paneId, resetModifiers)
 
-let resizeObserver: ResizeObserver | null = null
 onMounted(() => {
   window.addEventListener('dinotty-mobile-modifiers-consumed', onModifiersConsumed)
-  if (rootRef.value) {
-    resizeObserver = new ResizeObserver(updateHeight)
-    resizeObserver.observe(rootRef.value)
-  }
-  updateHeight()
 })
 
 onBeforeUnmount(() => {
   resetModifiers()
-  resizeObserver?.disconnect()
   window.removeEventListener('dinotty-mobile-modifiers-consumed', onModifiersConsumed)
-  document.documentElement.style.setProperty('--mkb-height', '0px')
 })
 </script>

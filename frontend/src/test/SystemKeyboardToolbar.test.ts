@@ -41,18 +41,35 @@ function mountToolbar(actionOpen = false, send = vi.fn()) {
 }
 
 describe('SystemKeyboardToolbar', () => {
-  it('keeps the existing fixed-toolbar height owner so terminal content is not covered', () => {
+  it('docks in app flex flow without a second height or bottom-offset owner', () => {
     const app = readFileSync(join(process.cwd(), 'src/App.vue'), 'utf8')
     const toolbar = readFileSync(
       join(process.cwd(), 'src/components/keyboard/SystemKeyboardToolbar.vue'),
       'utf8'
     )
     const css = readFileSync(join(process.cwd(), 'src/styles/mobile-keyboard.css'), 'utf8')
+    const viewport = readFileSync(
+      join(process.cwd(), 'src/composables/useViewportResize.ts'),
+      'utf8'
+    )
 
-    expect(toolbar).toContain("style.setProperty('--mkb-height'")
-    expect(toolbar).toContain('new ResizeObserver(updateHeight)')
-    expect(css).toMatch(/#system-mobile-kb\s*\{[^}]*position:\s*fixed/s)
-    expect(app).toContain('var(--mkb-height, 0px)')
+    expect(app).toMatch(/id="app-root"[^>]*system-toolbar-docked/s)
+    const dockedRule = app.match(/#app-root\.system-toolbar-docked\s*\{([^}]*)\}/s)?.[1] ?? ''
+    const toolbarRule = css.match(/#system-mobile-kb\s*\{([^}]*)\}/s)?.[1] ?? ''
+    const toolbarPadding = toolbarRule.match(/padding:\s*([^;]+);/s)?.[1] ?? ''
+    expect(dockedRule).toContain('bottom: var(--sys-kb-height, 0px)')
+    expect(dockedRule).toMatch(/height:\s*auto/)
+    expect(app).not.toContain('--system-ime-overlap')
+    expect(app).not.toMatch(/#app-root\.system-toolbar-docked\s*>\s*#system-mobile-kb/)
+    expect(toolbar).not.toContain("style.setProperty('--mkb-height'")
+    expect(toolbar).not.toContain('ResizeObserver')
+    expect(toolbarRule).toMatch(/position:\s*relative/)
+    expect(toolbarRule).toMatch(/flex-shrink:\s*0/)
+    expect(toolbarPadding).toContain('8px')
+    expect(toolbarPadding).not.toContain('safe-area-inset-bottom')
+    expect(css).not.toContain('--system-toolbar-bottom')
+    expect(viewport).not.toContain('toolbarBottom')
+    expect(viewport).not.toContain('--system-toolbar-bottom')
   })
 
   it('renders the exact custom upper and lower regions without fixed functional slots', () => {
