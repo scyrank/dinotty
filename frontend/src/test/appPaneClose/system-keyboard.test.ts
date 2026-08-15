@@ -14,11 +14,13 @@ import { settings } from '../../composables/useSettings'
 import { useUiStore } from '../../stores/uiStore'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useIsMobile } from '../../composables/useIsMobile'
+import { imeKeyboardOverlapPx } from '../../composables/useDeviceKeyboardSettings'
 import type { Tab } from '../../types/pane'
 
 afterEach(() => {
   settings.system_toolbar_mode = 'follow_ime'
   settings.keyboard_guard_mode = 'off'
+  imeKeyboardOverlapPx.value = 0
   useIsMobile().isMobile.value = false
 })
 
@@ -159,6 +161,61 @@ describe('App.vue - system keyboard state regressions', () => {
     await nextTick()
 
     expect(wrapper.get('#app-root').classes()).toContain('system-toolbar-docked')
+  })
+
+  it('publishes system overlap only while the measured software IME is open', async () => {
+    settings.mobile_input_mode = 'system'
+    settings.system_toolbar_mode = 'persistent_mobile'
+    useIsMobile().isMobile.value = true
+    imeKeyboardOverlapPx.value = 72
+    const wrapper = await mountWithTabs()
+    const session = useSessionStore()
+    const singleTerminalTab: Tab = {
+      type: 'terminal',
+      paneId: 'tab-1',
+      activePaneId: 'pane-1',
+      paneMru: ['pane-1'],
+      broadcastMode: false,
+      broadcastActivity: 0,
+      layout: {
+        type: 'leaf',
+        kind: 'terminal',
+        paneId: 'pane-1',
+        title: 'Terminal',
+        ratio: 1,
+        zoomed: false,
+      },
+    }
+    session.setTabs([singleTerminalTab])
+    session.setActivePane(singleTerminalTab.paneId)
+    await nextTick()
+    const activeTerminal = {
+      setOutputListener: vi.fn(),
+      setVirtualModifiers: vi.fn(),
+      focus: vi.fn(),
+      blur: vi.fn(),
+    }
+    await wrapper.findComponent(SplitContainerStub).vm.$emit('register', 'pane-1', activeTerminal)
+
+    const root = wrapper.get('#app-root')
+    const toolbar = wrapper.findComponent(SystemKeyboardToolbarStub)
+    expect(document.documentElement.style.getPropertyValue('--kb-overlap')).toBe('0px')
+    expect(root.classes()).not.toContain('system-ime-open')
+
+    await toolbar.vm.$emit('toggle-ime')
+    expect(toolbar.props('imeOpen')).toBe(true)
+    expect(document.documentElement.style.getPropertyValue('--kb-overlap')).toBe('0px')
+    expect(root.classes()).not.toContain('system-ime-open')
+
+    mocks.systemKeyboardOpen!.value = true
+    await nextTick()
+    expect(document.documentElement.style.getPropertyValue('--kb-overlap')).toBe('72px')
+    expect(root.classes()).toContain('system-ime-open')
+
+    mocks.systemKeyboardOpen!.value = false
+    await nextTick()
+    expect(document.documentElement.style.getPropertyValue('--kb-overlap')).toBe('0px')
+    expect(root.classes()).not.toContain('system-ime-open')
   })
 
   it('uses the toolbar control to close and reopen the phone IME', async () => {

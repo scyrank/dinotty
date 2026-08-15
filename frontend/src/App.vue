@@ -9,6 +9,7 @@
     id="app-root"
     :class="{
       'system-toolbar-docked': effectiveMobileInputMode === 'system' && systemToolbarVisible,
+      'system-ime-open': effectiveMobileInputMode === 'system' && systemKeyboardOpen,
     }"
     @mousedown.capture="onAppMouseReplayCapture"
     @click.capture="onAppMouseReplayCapture"
@@ -756,7 +757,11 @@ const termRefs = shallowReactive<Record<string, InstanceType<typeof TerminalPane
 const filesRefs = shallowReactive<Record<string, any>>({})
 const webRefs = shallowReactive<Record<string, any>>({})
 
-const { isLandscape, dispose: disposeViewport } = useViewportResize({
+const {
+  isLandscape,
+  systemKeyboardOpen,
+  dispose: disposeViewport,
+} = useViewportResize({
   kbVisible,
   activePaneId,
   tabs,
@@ -930,7 +935,11 @@ const isSingleTerminalTab = computed(() => {
 useKeyboardOverlap({
   settingPx: imeKeyboardOverlapPx,
   kbVisible,
-  textInputFocused: kbTyping,
+  textInputFocused: computed(() =>
+    effectiveMobileInputMode.value === 'builtin'
+      ? kbTyping.value
+      : terminalImeFocused.value && systemKeyboardOpen.value
+  ),
   isSingleTerminalTab,
   hasVerticalPreview: computed(() => false),
 })
@@ -2360,6 +2369,15 @@ onBeforeUnmount(() => {
   left: 0;
   box-sizing: border-box;
   height: auto;
+}
+#app-root.system-toolbar-docked.system-ime-open {
+  /* Reclaim only a measured system-IME occlusion. Focus intent alone leaves this at zero. */
+  --system-ime-overlap: min(var(--kb-overlap, 0px), var(--sys-kb-height, 0px));
+  bottom: calc(var(--sys-kb-height, 0px) - var(--system-ime-overlap));
+}
+#app-root.system-toolbar-docked.system-ime-open > #system-mobile-kb {
+  /* The root grows by O; move only the shortcut toolbar back by O so its screen position stays. */
+  top: calc(-1 * var(--system-ime-overlap));
 }
 .broadcast-btn {
   position: relative;

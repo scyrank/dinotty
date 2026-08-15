@@ -59,8 +59,6 @@ describe('SystemKeyboardToolbar', () => {
     const toolbarPadding = toolbarRule.match(/padding:\s*([^;]+);/s)?.[1] ?? ''
     expect(dockedRule).toContain('bottom: var(--sys-kb-height, 0px)')
     expect(dockedRule).toMatch(/height:\s*auto/)
-    expect(app).not.toContain('--system-ime-overlap')
-    expect(app).not.toMatch(/#app-root\.system-toolbar-docked\s*>\s*#system-mobile-kb/)
     expect(toolbar).not.toContain("style.setProperty('--mkb-height'")
     expect(toolbar).not.toContain('ResizeObserver')
     expect(toolbarRule).toMatch(/position:\s*relative/)
@@ -70,6 +68,28 @@ describe('SystemKeyboardToolbar', () => {
     expect(css).not.toContain('--system-toolbar-bottom')
     expect(viewport).not.toContain('toolbarBottom')
     expect(viewport).not.toContain('--system-toolbar-bottom')
+  })
+
+  it('reclaims measured system-IME overlap without moving the shortcut toolbar', () => {
+    const app = readFileSync(join(process.cwd(), 'src/App.vue'), 'utf8')
+    const dockedRule = app.match(/#app-root\.system-toolbar-docked\s*\{([^}]*)\}/s)?.[1] ?? ''
+    const openRule =
+      app.match(/#app-root\.system-toolbar-docked\.system-ime-open\s*\{([^}]*)\}/s)?.[1] ?? ''
+    const toolbarOffsetRule =
+      app.match(
+        /#app-root\.system-toolbar-docked\.system-ime-open\s*>\s*#system-mobile-kb\s*\{([^}]*)\}/s
+      )?.[1] ?? ''
+
+    expect(dockedRule).toContain('bottom: var(--sys-kb-height, 0px)')
+    expect(dockedRule).not.toContain('--system-ime-overlap')
+    expect(openRule).toContain(
+      '--system-ime-overlap: min(var(--kb-overlap, 0px), var(--sys-kb-height, 0px))'
+    )
+    expect(openRule).toContain(
+      'bottom: calc(var(--sys-kb-height, 0px) - var(--system-ime-overlap))'
+    )
+    expect(toolbarOffsetRule).toContain('top: calc(-1 * var(--system-ime-overlap))')
+    expect(toolbarOffsetRule).not.toMatch(/(?:^|;)\s*(?:bottom|margin-bottom)\s*:/)
   })
 
   it('renders the exact custom upper and lower regions without fixed functional slots', () => {
