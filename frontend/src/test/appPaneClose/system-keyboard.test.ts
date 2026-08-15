@@ -218,6 +218,64 @@ describe('App.vue - system keyboard state regressions', () => {
     expect(root.classes()).not.toContain('system-ime-open')
   })
 
+  it('keeps system overlap active when the focused terminal has a sibling leaf', async () => {
+    settings.mobile_input_mode = 'system'
+    settings.system_toolbar_mode = 'persistent_mobile'
+    useIsMobile().isMobile.value = true
+    imeKeyboardOverlapPx.value = 72
+    const wrapper = await mountWithTabs()
+    const session = useSessionStore()
+    const splitTab: Tab = {
+      type: 'terminal',
+      paneId: 'split-tab',
+      activePaneId: 'terminal-leaf',
+      paneMru: ['terminal-leaf', 'tasks-leaf'],
+      broadcastMode: false,
+      broadcastActivity: 0,
+      layout: {
+        type: 'split',
+        id: 'split-root',
+        direction: 'horizontal',
+        ratios: [0.5, 0.5],
+        children: [
+          {
+            type: 'leaf',
+            kind: 'terminal',
+            paneId: 'terminal-leaf',
+            title: 'Terminal',
+            ratio: 0.5,
+            zoomed: false,
+          },
+          {
+            type: 'leaf',
+            kind: 'plugin',
+            paneId: 'tasks-leaf',
+            title: 'Tasks',
+            ratio: 0.5,
+            zoomed: false,
+          },
+        ],
+      },
+    }
+    session.setTabs([splitTab])
+    session.setActivePane(splitTab.paneId)
+    await nextTick()
+    await wrapper.findComponent(SplitContainerStub).vm.$emit('register', 'terminal-leaf', {
+      setOutputListener: vi.fn(),
+      setVirtualModifiers: vi.fn(),
+      focus: vi.fn(),
+      blur: vi.fn(),
+    })
+
+    const toolbar = wrapper.findComponent(SystemKeyboardToolbarStub)
+    await toolbar.vm.$emit('toggle-ime')
+    mocks.systemKeyboardOpen!.value = true
+    await nextTick()
+
+    expect(document.documentElement.style.getPropertyValue('--kb-overlap')).toBe('72px')
+    expect(wrapper.get('#app-root').classes()).toContain('system-ime-open')
+  })
+
   it('uses the toolbar control to close and reopen the phone IME', async () => {
     settings.mobile_input_mode = 'system'
     settings.system_toolbar_mode = 'persistent_mobile'

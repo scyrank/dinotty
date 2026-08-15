@@ -932,6 +932,11 @@ const isSingleTerminalTab = computed(() => {
   const leaves = getAllLeaves(tab.layout)
   return leaves.length === 1 && paneKind(leaves[0]) === 'terminal'
 })
+const keyboardOverlapLayoutEligible = computed(() =>
+  effectiveMobileInputMode.value === 'system'
+    ? hasActiveTerminalLeaf.value
+    : isSingleTerminalTab.value
+)
 useKeyboardOverlap({
   settingPx: imeKeyboardOverlapPx,
   kbVisible,
@@ -940,7 +945,7 @@ useKeyboardOverlap({
       ? kbTyping.value
       : terminalImeFocused.value && systemKeyboardOpen.value
   ),
-  isSingleTerminalTab,
+  layoutEligible: keyboardOverlapLayoutEligible,
   hasVerticalPreview: computed(() => false),
 })
 
@@ -2371,8 +2376,9 @@ onBeforeUnmount(() => {
   height: auto;
 }
 #app-root.system-toolbar-docked.system-ime-open {
-  /* Reclaim only a measured system-IME occlusion. Focus intent alone leaves this at zero. */
-  --system-ime-overlap: min(var(--kb-overlap, 0px), var(--sys-kb-height, 0px));
+  /* system-ime-open already owns the measured keyboard episode. The layout viewport can shrink
+   * with the IME, leaving --sys-kb-height at 0 even though the configured overlap must remain. */
+  --system-ime-overlap: var(--kb-overlap, 0px);
   bottom: calc(var(--sys-kb-height, 0px) - var(--system-ime-overlap));
 }
 #app-root.system-toolbar-docked.system-ime-open > #system-mobile-kb {

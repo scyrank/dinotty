@@ -70,7 +70,7 @@ describe('SystemKeyboardToolbar', () => {
     expect(viewport).not.toContain('--system-toolbar-bottom')
   })
 
-  it('reclaims measured system-IME overlap without moving the shortcut toolbar', () => {
+  it('reclaims configured system-IME overlap without moving the shortcut toolbar', () => {
     const app = readFileSync(join(process.cwd(), 'src/App.vue'), 'utf8')
     const dockedRule = app.match(/#app-root\.system-toolbar-docked\s*\{([^}]*)\}/s)?.[1] ?? ''
     const openRule =
@@ -82,9 +82,8 @@ describe('SystemKeyboardToolbar', () => {
 
     expect(dockedRule).toContain('bottom: var(--sys-kb-height, 0px)')
     expect(dockedRule).not.toContain('--system-ime-overlap')
-    expect(openRule).toContain(
-      '--system-ime-overlap: min(var(--kb-overlap, 0px), var(--sys-kb-height, 0px))'
-    )
+    expect(openRule).toContain('--system-ime-overlap: var(--kb-overlap, 0px)')
+    expect(openRule).not.toContain('min(')
     expect(openRule).toContain(
       'bottom: calc(var(--sys-kb-height, 0px) - var(--system-ime-overlap))'
     )
