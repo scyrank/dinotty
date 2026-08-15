@@ -1,3 +1,5 @@
+import type { KeyboardModifierFamily, KeyboardSpecialId } from '../../utils/keyboardSpecialKeys'
+
 export interface KeyDef {
   l: string // label
   s?: string // send character
@@ -22,4 +24,7 @@ export interface ModState {
   shift: boolean
   ctrl: boolean
   alt: boolean
+  meta: boolean
+  locked?: Partial<Record<KeyboardModifierFamily, boolean>>
+  activeSpecial?: Partial<Record<KeyboardModifierFamily, KeyboardSpecialId>>
 }

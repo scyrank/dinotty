@@ -42,6 +42,7 @@ export const localStorageMock = {
 const mocks = vi.hoisted(() => {
   let notificationRequestIdCounter = 0
   return {
+    touchDevice: false,
     closePane: vi.fn<(paneId: string) => Promise<boolean>>(),
     splitPane: vi.fn(),
     insertNonTerminalPane: vi.fn<() => Promise<void>>(async () => {}),
@@ -60,6 +61,7 @@ const mocks = vi.hoisted(() => {
     apiActivateWorkspace: vi.fn<(id: string) => Promise<void>>(async () => {}),
     apiDeactivateWorkspace: vi.fn<() => Promise<void>>(async () => {}),
     onSystemKeyboardClose: undefined as undefined | (() => void),
+    setSystemImeAuthorized: vi.fn(),
     apiCreateTab: vi.fn(async () => ({
       tab_id: 't-new',
       pane_id: 'p-new',
@@ -119,9 +121,10 @@ vi.mock('../../composables/useTerminal', () => ({
   },
   configureAllMobileInputTextareas: () => {},
   isKbTypingLocked: () => false,
-  isTouchDevice: () => false,
+  isTouchDevice: () => mocks.touchDevice,
   setActivePaneId: () => {},
   setKbTypingLock: () => {},
+  setSystemImeAuthorized: (open: boolean) => mocks.setSystemImeAuthorized(open),
 }))
 vi.mock('../../composables/useViewportResize', async () => {
   const { ref } = await vi.importActual<typeof import('vue')>('vue')
@@ -405,12 +408,14 @@ export const SystemKeyboardToolbarStub = defineComponent({
     paneId: { type: String, required: true },
     getSendFn: { type: Function as PropType<() => unknown>, required: true },
     actionOpen: Boolean,
+    imeOpen: Boolean,
   },
   emits: [
     'update:actionOpen',
     'modifier-change',
     'app-action',
     'dismiss',
+    'toggle-ime',
     'focus-xterm',
     'paste-text',
   ],
@@ -495,8 +500,10 @@ afterEach(() => {
   mocks.apiDeactivateWorkspace.mockReset()
   mocks.apiDeactivateWorkspace.mockResolvedValue(undefined)
   mocks.onSystemKeyboardClose = undefined
+  mocks.setSystemImeAuthorized.mockReset()
   mocks.mintNotificationRequestId.mockClear()
   mocks.resetNotificationRequestIds()
+  mocks.touchDevice = false
   settings.mobile_input_mode = null
 })
 

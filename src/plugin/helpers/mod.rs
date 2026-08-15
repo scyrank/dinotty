@@ -4,7 +4,7 @@ mod validation;
 pub use archive::{extract_tar_gz, extract_zip};
 pub use validation::{
     is_compatible, require_native_approval, resolve_binary, set_executable, validate_manifest,
-    validate_min_app_version,
+    validate_min_app_version, WORKSPACE_READ_PERMISSION, WORKSPACE_WRITE_PERMISSION,
 };
 
 use axum::{

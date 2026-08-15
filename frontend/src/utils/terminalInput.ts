@@ -26,9 +26,28 @@ export function applyAfterTerminalComposition(apply: () => void): boolean {
   return true
 }
 
+export type MobileTerminalModifierMode = 'off' | 'once' | 'locked'
+
 export interface MobileTerminalModifiers {
-  ctrl: boolean
-  alt: boolean
+  ctrl: MobileTerminalModifierMode
+  shift: MobileTerminalModifierMode
+  alt: MobileTerminalModifierMode
+  meta: MobileTerminalModifierMode
+}
+
+export function emptyMobileTerminalModifiers(): MobileTerminalModifiers {
+  return { ctrl: 'off', shift: 'off', alt: 'off', meta: 'off' }
+}
+
+export function mobileTerminalModifierActive(mode: MobileTerminalModifierMode): boolean {
+  return mode !== 'off'
+}
+
+function consumeMobileTerminalModifier(
+  mode: MobileTerminalModifierMode,
+  consumed: boolean
+): MobileTerminalModifierMode {
+  return consumed && mode === 'once' ? 'off' : mode
 }
 
 export function applyMobileTerminalModifiers(
@@ -36,11 +55,17 @@ export function applyMobileTerminalModifiers(
   modifiers: MobileTerminalModifiers
 ): { data: string; modifiers: MobileTerminalModifiers; consumed: boolean } {
   let data = input
-  let ctrl = modifiers.ctrl
-  let alt = modifiers.alt
-  let consumed = false
+  const ctrlActive = mobileTerminalModifierActive(modifiers.ctrl)
+  const shiftActive = mobileTerminalModifierActive(modifiers.shift)
+  const altActive = mobileTerminalModifierActive(modifiers.alt)
+  const metaActive = mobileTerminalModifierActive(modifiers.meta)
+  const consumed = input.length > 0 && (ctrlActive || shiftActive || altActive || metaActive)
 
-  if (ctrl && data.length === 1 && data.charCodeAt(0) <= 0x7f) {
+  if (shiftActive && data.length === 1 && data >= 'a' && data <= 'z') {
+    data = data.toUpperCase()
+  }
+
+  if (ctrlActive && data.length === 1 && data.charCodeAt(0) <= 0x7f) {
     const upper = data.toUpperCase()
     let code: number | null = null
     if (upper >= 'A' && upper <= 'Z') code = upper.charCodeAt(0) - 64
@@ -54,18 +79,23 @@ export function applyMobileTerminalModifiers(
 
     if (code !== null) {
       data = String.fromCharCode(code)
-      ctrl = false
-      consumed = true
     }
   }
 
-  if (alt && data) {
+  if ((altActive || metaActive) && data) {
     data = `\x1b${data}`
-    alt = false
-    consumed = true
   }
 
-  return { data, modifiers: { ctrl, alt }, consumed }
+  return {
+    data,
+    modifiers: {
+      ctrl: consumeMobileTerminalModifier(modifiers.ctrl, consumed),
+      shift: consumeMobileTerminalModifier(modifiers.shift, consumed),
+      alt: consumeMobileTerminalModifier(modifiers.alt, consumed),
+      meta: consumeMobileTerminalModifier(modifiers.meta, consumed),
+    },
+    consumed,
+  }
 }
 
 // Dedup window (ms) for WKWebView onData double-fire.
@@ -79,6 +109,75 @@ export function applyMobileTerminalModifiers(
 export const DEDUP_WINDOW_MS = 2
 
 export const IME_SYM_PAIR_MS = 400
+
+export interface TerminalTextareaSnapshot {
+  value: string
+  selectionStart: number
+  selectionEnd: number
+}
+
+function codePointOffset(value: string, utf16Offset: number): number {
+  return Array.from(value.slice(0, Math.max(0, utf16Offset))).length
+}
+
+function moveTerminalCursor(from: number, to: number, applicationCursor: boolean): string {
+  if (from === to) return ''
+  const final = to < from ? 'D' : 'C'
+  return `\x1b${applicationCursor ? 'O' : '['}${final}`.repeat(Math.abs(to - from))
+}
+
+export function normalizeTerminalTextareaSelection(
+  before: TerminalTextareaSnapshot,
+  after: TerminalTextareaSnapshot,
+  inputData: string | null
+): TerminalTextareaSnapshot {
+  if (!inputData || after.selectionStart !== after.selectionEnd) return after
+  const start = after.selectionEnd
+  const end = start + inputData.length
+  return after.value.slice(start, end) === inputData &&
+    after.value.slice(0, start) + after.value.slice(end) === before.value
+    ? { ...after, selectionStart: end, selectionEnd: end }
+    : after
+}
+
+export function terminalTextareaEdit(
+  before: TerminalTextareaSnapshot,
+  after: TerminalTextareaSnapshot,
+  applicationCursor = false
+): string {
+  const cursorBefore = codePointOffset(before.value, before.selectionEnd)
+  const desiredCursor = codePointOffset(after.value, after.selectionEnd)
+  if (before.value === after.value) {
+    return moveTerminalCursor(cursorBefore, desiredCursor, applicationCursor)
+  }
+
+  const oldText = Array.from(before.value)
+  const newText = Array.from(after.value)
+  let prefix = 0
+  while (
+    prefix < oldText.length &&
+    prefix < newText.length &&
+    oldText[prefix] === newText[prefix]
+  ) {
+    prefix++
+  }
+  let suffix = 0
+  while (
+    suffix < oldText.length - prefix &&
+    suffix < newText.length - prefix &&
+    oldText[oldText.length - 1 - suffix] === newText[newText.length - 1 - suffix]
+  ) {
+    suffix++
+  }
+
+  const oldEditEnd = oldText.length - suffix
+  const inserted = newText.slice(prefix, newText.length - suffix).join('')
+  const cursorAfterEdit = prefix + Array.from(inserted).length
+
+  return `${moveTerminalCursor(cursorBefore, oldEditEnd, applicationCursor)}${'\x7f'.repeat(
+    oldEditEnd - prefix
+  )}${inserted}${moveTerminalCursor(cursorAfterEdit, desiredCursor, applicationCursor)}`
+}
 
 /**
  * Determine whether an incoming onData payload should be dropped because
