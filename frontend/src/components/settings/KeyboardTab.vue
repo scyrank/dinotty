@@ -1201,6 +1201,7 @@
           step="8"
           class="settings-input-number"
           data-setting="ime-keyboard-overlap-px"
+          @change="saveSettings()"
         />
       </div>
       <p class="settings-hint">{{ t('settings.text.imeKeyboardOverlapHint') }}</p>
@@ -1302,6 +1303,7 @@ import {
   resetSystemKeyboard,
   restoreSystemKeyboardUserDefault,
   saveSystemKeyboardUserDefault,
+  imeKeyboardOverlapPx,
 } from '../../composables/useSettings'
 import CollapsibleSection from './CollapsibleSection.vue'
 import { useI18n } from '../../composables/useI18n'
@@ -1349,7 +1351,6 @@ import { useOpenApiTest } from '../../composables/useOpenApiTest'
 import { useKbRecording } from '../../composables/useKbRecording'
 import { useActionKeyboardGesture } from '../../composables/useActionKeyboardGesture'
 import { useSystemKeyboardGesture } from '../../composables/useSystemKeyboardGesture'
-import { useDeviceKeyboardSettings } from '../../composables/useDeviceKeyboardSettings'
 import { applyAfterTerminalComposition } from '../../utils/terminalInput'
 import {
   escapeForDisplay,
@@ -1359,7 +1360,6 @@ import {
 } from '../../composables/useKeySequenceUtils'
 
 const { settings, saveSettings } = useSettings()
-const { imeKeyboardOverlapPx } = useDeviceKeyboardSettings()
 const { hasOverride, reloadAfterSuperviseTabs, resetOverride } = useDeviceSuperviseReload()
 const { t } = useI18n()
 

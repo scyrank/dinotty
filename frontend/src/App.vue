@@ -422,8 +422,7 @@ import { useOverviewCallbacks } from './composables/useOverviewCallbacks'
 import { useTabPersistence } from './composables/useTabPersistence'
 import { useDesktopLifecycle } from './composables/useDesktopLifecycle'
 import { useViewportResize } from './composables/useViewportResize'
-import { useDeviceKeyboardSettings } from './composables/useDeviceKeyboardSettings'
-import type { MobileInputMode } from './composables/useSettings'
+import { imeKeyboardOverlapPx, type MobileInputMode } from './composables/useSettings'
 import { useKeyboardOverlap } from './composables/useKeyboardOverlap'
 import { usePluginLauncher } from './composables/usePluginLauncher'
 import { useSshConnectFlow } from './composables/useSshConnectFlow'
@@ -546,7 +545,6 @@ const kbTyping = ref(false)
 const terminalImeFocused = ref(false)
 const mobileInputGuideVisible = ref(false)
 const systemActionKeyboardOpen = ref(false)
-const { imeKeyboardOverlapPx } = useDeviceKeyboardSettings()
 const effectiveMobileInputMode = computed<MobileInputMode>(
   () => appSettings.mobile_input_mode ?? 'builtin'
 )

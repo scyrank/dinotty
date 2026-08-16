@@ -10,11 +10,10 @@ import {
   SystemKeyboardToolbarStub,
   KbToggleButtonStub,
 } from './_setup'
-import { settings } from '../../composables/useSettings'
+import { imeKeyboardOverlapPx, settings } from '../../composables/useSettings'
 import { useUiStore } from '../../stores/uiStore'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useIsMobile } from '../../composables/useIsMobile'
-import { imeKeyboardOverlapPx } from '../../composables/useDeviceKeyboardSettings'
 import type { Tab } from '../../types/pane'
 
 afterEach(() => {
@@ -339,8 +338,7 @@ describe('App.vue - system keyboard state regressions', () => {
   )
 
   it('serializes an unguarded terminal touch until touchend', async () => {
-    const { wrapper, activeTerminal, terminalSurface, helper } =
-      await mountUnguardedTouchTerminal()
+    const { wrapper, activeTerminal, terminalSurface, helper } = await mountUnguardedTouchTerminal()
 
     terminalSurface.dispatchEvent(new TouchEvent('touchstart', { bubbles: true }))
     helper.focus()
@@ -358,8 +356,7 @@ describe('App.vue - system keyboard state regressions', () => {
   })
 
   it('keeps rejected terminal gestures from opening the system IME', async () => {
-    const { wrapper, activeTerminal, terminalSurface, helper } =
-      await mountUnguardedTouchTerminal()
+    const { wrapper, activeTerminal, terminalSurface, helper } = await mountUnguardedTouchTerminal()
 
     terminalSurface.dispatchEvent(new TouchEvent('touchstart', { bubbles: true }))
     helper.focus()
@@ -379,8 +376,7 @@ describe('App.vue - system keyboard state regressions', () => {
   })
 
   it('blocks only the compatibility mousedown after a long press', async () => {
-    const { wrapper, activeTerminal, terminalSurface, helper } =
-      await mountUnguardedTouchTerminal()
+    const { wrapper, activeTerminal, terminalSurface, helper } = await mountUnguardedTouchTerminal()
     const now = vi.spyOn(performance, 'now').mockReturnValue(100)
 
     terminalSurface.dispatchEvent(new TouchEvent('touchstart', { bubbles: true }))
@@ -435,8 +431,7 @@ describe('App.vue - system keyboard state regressions', () => {
   })
 
   it('does not open the system IME after terminal link activation', async () => {
-    const { wrapper, activeTerminal, terminalSurface, helper } =
-      await mountUnguardedTouchTerminal()
+    const { wrapper, activeTerminal, terminalSurface, helper } = await mountUnguardedTouchTerminal()
 
     terminalSurface.dispatchEvent(new TouchEvent('touchstart', { bubbles: true }))
     await wrapper.findComponent(SplitContainerStub).vm.$emit('link-activate')
