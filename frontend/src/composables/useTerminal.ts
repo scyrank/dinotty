@@ -3,7 +3,10 @@ import { FitAddon } from '@xterm/addon-fit'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { SearchAddon } from '@xterm/addon-search'
-import { readText as readClipboardText } from '@tauri-apps/plugin-clipboard-manager'
+import {
+  readImage as readClipboardImage,
+  readText as readClipboardText,
+} from '@tauri-apps/plugin-clipboard-manager'
 import type { ClientMsg, ServerMsg } from '../types/protocol'
 import { isTauri, createTransport, type Transport } from './useTransport'
 import { onThemeChange, settings, type MobileInputMode } from './useSettings'
@@ -71,15 +74,38 @@ function resolveTerminalFontFamily(configuredFamily: string, cssFallback: string
   return cssFallback
 }
 
-async function pasteTerminalClipboard(terminal: XTerm): Promise<void> {
+async function pasteTerminalClipboard(
+  terminal: XTerm,
+  forwardNonText?: () => void
+): Promise<void> {
+  // OpenCode and similar TUIs handle image paste by receiving Ctrl+V and
+  // reading the native clipboard themselves. Prefer that path when the
+  // Windows desktop clipboard exposes an image, even if it also exposes a
+  // text/URL flavor.
+  if (isTauri() && forwardNonText) {
+    try {
+      const image = await readClipboardImage()
+      await image.close()
+      forwardNonText()
+      return
+    } catch {
+      // No image flavor — continue with Dinotty's text paste path.
+    }
+  }
+
   try {
     const text = isTauri()
       ? await readClipboardText()
       : await navigator.clipboard.readText()
-    if (text) terminal.paste(text)
+    if (text) {
+      terminal.paste(text)
+    } else {
+      forwardNonText?.()
+    }
   } catch {
-    // Clipboard access can be denied by the platform. Keep the shortcut
-    // consumed so it is not forwarded to the foreground TUI as Ctrl+V.
+    // If Dinotty cannot classify/read the clipboard, preserve the foreground
+    // TUI's native Ctrl+V behavior instead of swallowing the key.
+    forwardNonText?.()
   }
 }
 
@@ -380,7 +406,7 @@ export class TerminalInstance {
           !e.metaKey &&
           e.code === 'KeyV'
         ) {
-          void pasteTerminalClipboard(xt)
+          void pasteTerminalClipboard(xt, () => this.sendInput('\x16'))
           e.preventDefault()
           return false
         }

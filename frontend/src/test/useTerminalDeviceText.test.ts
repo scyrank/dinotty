@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   hostTarget: vi.fn<() => string | null>(),
   instances: [] as any[],
   isTauri: vi.fn<() => boolean>(),
+  readClipboardImage: vi.fn<() => Promise<{ close: () => Promise<void> }>>(),
   readClipboardText: vi.fn<() => Promise<string>>(),
 }))
 
@@ -58,6 +59,7 @@ vi.mock('../utils/clientPlatform', () => ({
   isWindowsClient: true,
 }))
 vi.mock('@tauri-apps/plugin-clipboard-manager', () => ({
+  readImage: mocks.readClipboardImage,
   readText: mocks.readClipboardText,
 }))
 vi.mock('../composables/useTerminalWheel', () => ({
@@ -105,6 +107,8 @@ describe('useTerminal device text integration', () => {
     mocks.instances.length = 0
     mocks.hostTarget.mockReturnValue('linux-x86_64')
     mocks.isTauri.mockReturnValue(true)
+    mocks.readClipboardImage.mockReset()
+    mocks.readClipboardImage.mockRejectedValue(new Error('clipboard has no image'))
     mocks.readClipboardText.mockReset()
     const storage = new MemoryStorage()
     Object.defineProperty(window, 'localStorage', { value: storage, configurable: true })
@@ -160,6 +164,53 @@ describe('useTerminal device text integration', () => {
       expect(mocks.readClipboardText).toHaveBeenCalledOnce()
       expect(xterm.paste).toHaveBeenCalledWith('pasted into OpenCode')
     })
+    term.destroy()
+  })
+
+  it('forwards Windows desktop Ctrl+V to a TUI when the clipboard contains an image', async () => {
+    mocks.hostTarget.mockReturnValue('windows-x86_64')
+    const close = vi.fn(async () => {})
+    mocks.readClipboardImage.mockResolvedValue({ close })
+    mocks.readClipboardText.mockResolvedValue('image fallback text')
+    const term = attach('p1')
+    const input = vi.fn()
+    term.onInput = input
+    const xterm = mocks.instances[mocks.instances.length - 1]
+    const event = new KeyboardEvent('keydown', {
+      key: 'v',
+      code: 'KeyV',
+      ctrlKey: true,
+      cancelable: true,
+    })
+
+    expect(xterm.keyHandler(event)).toBe(false)
+    expect(event.defaultPrevented).toBe(true)
+    await vi.waitFor(() => {
+      expect(close).toHaveBeenCalledOnce()
+      expect(input).toHaveBeenCalledWith('\x16')
+    })
+    expect(mocks.readClipboardText).not.toHaveBeenCalled()
+    expect(xterm.paste).not.toHaveBeenCalled()
+    term.destroy()
+  })
+
+  it('forwards Windows desktop Ctrl+V when the clipboard has no readable text', async () => {
+    mocks.hostTarget.mockReturnValue('windows-x86_64')
+    mocks.readClipboardText.mockResolvedValue('')
+    const term = attach('p1')
+    const input = vi.fn()
+    term.onInput = input
+    const xterm = mocks.instances[mocks.instances.length - 1]
+    const event = new KeyboardEvent('keydown', {
+      key: 'v',
+      code: 'KeyV',
+      ctrlKey: true,
+      cancelable: true,
+    })
+
+    expect(xterm.keyHandler(event)).toBe(false)
+    await vi.waitFor(() => expect(input).toHaveBeenCalledWith('\x16'))
+    expect(xterm.paste).not.toHaveBeenCalled()
     term.destroy()
   })
 
