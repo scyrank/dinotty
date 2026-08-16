@@ -493,7 +493,7 @@ export const settings = reactive<SettingsData>({
   space_confirms_dialogs: false,
   windowsAltAsCmd: isWindowsClient,
   locale: 'zh',
-  auto_check_updates: true,
+  auto_check_updates: false,
   shell: 'auto',
   shell_path: null,
   wsl_distro: null,

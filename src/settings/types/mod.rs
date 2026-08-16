@@ -399,7 +399,7 @@ impl Default for Settings {
             reload_after_supervise_tabs: false,
             space_confirms_dialogs: false,
             locale: default_locale(),
-            auto_check_updates: true,
+            auto_check_updates: false,
             panel_position: PanelPosition::default(),
             monitor: MonitorConfig::default(),
             notification: NotificationConfig::default(),

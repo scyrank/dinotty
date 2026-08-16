@@ -10,7 +10,11 @@
         <label>{{ t('settings.about.version') }}</label>
         <span class="about-val">{{ info.version || '—' }}</span>
       </div>
-      <div v-if="update.status.value === 'update_available'" class="update-card" role="status">
+      <div
+        v-if="UPDATE_CHECKS_ENABLED && update.status.value === 'update_available'"
+        class="update-card"
+        role="status"
+      >
         <div class="update-card-copy">
           <strong>{{
             t('settings.about.updateAvailable', { version: `v${update.latestVersion.value}` })
@@ -59,7 +63,7 @@
           https://github.com/xichan96/dinotty/issues
         </a>
       </div>
-      <div class="settings-row auto-update-row">
+      <div v-if="UPDATE_CHECKS_ENABLED" class="settings-row auto-update-row">
         <div class="auto-update-copy">
           <label for="auto-check-updates">{{ t('settings.about.autoCheckUpdates') }}</label>
           <span>{{ t('settings.about.autoCheckUpdatesHint') }}</span>
@@ -86,7 +90,7 @@ import { useI18n } from '../../composables/useI18n'
 import { apiUrl, authFetch, getApiBase } from '../../composables/apiBase'
 import { getIsAppForeground, onAppForegroundGain } from '../../composables/useAppForeground'
 import { useSettings } from '../../composables/useSettings'
-import { useUpdateCheck } from '../../composables/useUpdateCheck'
+import { UPDATE_CHECKS_ENABLED, useUpdateCheck } from '../../composables/useUpdateCheck'
 import { openExternalUrl } from '../../utils/openExternalUrl'
 
 const emit = defineEmits<{
@@ -132,6 +136,7 @@ async function openRelease() {
 }
 
 function showUpdatePromptIfVisible() {
+  if (!UPDATE_CHECKS_ENABLED) return
   if (!settings.auto_check_updates || !getIsAppForeground()) return
   const prompt = update.takeAvailablePrompt()
   if (!prompt) return
