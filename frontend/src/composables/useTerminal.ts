@@ -8,7 +8,7 @@ import {
   readText as readClipboardText,
 } from '@tauri-apps/plugin-clipboard-manager'
 import type { ClientMsg, ServerMsg } from '../types/protocol'
-import { isTauri, createTransport, type Transport } from './useTransport'
+import { isTauri, tauriInvoke, createTransport, type Transport } from './useTransport'
 import { onThemeChange, settings, type MobileInputMode } from './useSettings'
 import {
   FONT_SIZE_MAX,
@@ -76,17 +76,19 @@ function resolveTerminalFontFamily(configuredFamily: string, cssFallback: string
 
 async function pasteTerminalClipboard(
   terminal: XTerm,
-  forwardNonText?: () => void
+  handlers: {
+    forwardImage?: () => void | Promise<void>
+    forwardUnknown?: () => void
+  } = {}
 ): Promise<void> {
-  // OpenCode and similar TUIs handle image paste by receiving Ctrl+V and
-  // reading the native clipboard themselves. Prefer that path when the
-  // Windows desktop clipboard exposes an image, even if it also exposes a
-  // text/URL flavor.
-  if (isTauri() && forwardNonText) {
+  // Image-capable TUIs read the native clipboard in response to their own
+  // shortcut. Prefer that path whenever the Windows clipboard exposes an
+  // image, even if it also exposes a text/URL flavor.
+  if (isTauri() && handlers.forwardImage) {
     try {
       const image = await readClipboardImage()
       await image.close()
-      forwardNonText()
+      await handlers.forwardImage()
       return
     } catch {
       // No image flavor — continue with Dinotty's text paste path.
@@ -100,12 +102,12 @@ async function pasteTerminalClipboard(
     if (text) {
       terminal.paste(text)
     } else {
-      forwardNonText?.()
+      handlers.forwardUnknown?.()
     }
   } catch {
     // If Dinotty cannot classify/read the clipboard, preserve the foreground
     // TUI's native Ctrl+V behavior instead of swallowing the key.
-    forwardNonText?.()
+    handlers.forwardUnknown?.()
   }
 }
 
@@ -297,6 +299,18 @@ export class TerminalInstance {
     this.paneId = paneId
   }
 
+  private async _forwardClipboardImage() {
+    let target = 'unknown'
+    try {
+      target = String(await tauriInvoke('pty_clipboard_paste_target', { paneId: this.paneId }))
+    } catch {
+      // Older desktop backends and transient process-scan failures use the
+      // established Ctrl+V fallback.
+    }
+    if (this._destroyed) return
+    this.sendInput(target === 'claude' ? '\x1bv' : '\x16')
+  }
+
   attach(wrapper: HTMLElement) {
     this._wrapper = wrapper
 
@@ -406,7 +420,10 @@ export class TerminalInstance {
           !e.metaKey &&
           e.code === 'KeyV'
         ) {
-          void pasteTerminalClipboard(xt, () => this.sendInput('\x16'))
+          void pasteTerminalClipboard(xt, {
+            forwardImage: () => this._forwardClipboardImage(),
+            forwardUnknown: () => this.sendInput('\x16'),
+          })
           e.preventDefault()
           return false
         }

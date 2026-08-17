@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   isTauri: vi.fn<() => boolean>(),
   readClipboardImage: vi.fn<() => Promise<{ close: () => Promise<void> }>>(),
   readClipboardText: vi.fn<() => Promise<string>>(),
+  tauriInvoke: vi.fn<(cmd: string, args?: Record<string, unknown>) => Promise<unknown>>(),
 }))
 
 vi.mock('@xterm/xterm', () => ({
@@ -50,6 +51,7 @@ vi.mock('@xterm/addon-webgl', () => ({ WebglAddon: class { onContextLoss() {}; d
 vi.mock('@xterm/addon-search', () => ({ SearchAddon: class {} }))
 vi.mock('../composables/useTransport', () => ({
   isTauri: mocks.isTauri,
+  tauriInvoke: mocks.tauriInvoke,
   createTransport: () => ({
     onConnect() {}, onMessage() {}, onDisconnect() {}, connect() {}, disconnect() {}, send() {},
   }),
@@ -110,6 +112,8 @@ describe('useTerminal device text integration', () => {
     mocks.readClipboardImage.mockReset()
     mocks.readClipboardImage.mockRejectedValue(new Error('clipboard has no image'))
     mocks.readClipboardText.mockReset()
+    mocks.tauriInvoke.mockReset()
+    mocks.tauriInvoke.mockResolvedValue('unknown')
     const storage = new MemoryStorage()
     Object.defineProperty(window, 'localStorage', { value: storage, configurable: true })
     vi.stubGlobal('localStorage', storage)
@@ -164,10 +168,11 @@ describe('useTerminal device text integration', () => {
       expect(mocks.readClipboardText).toHaveBeenCalledOnce()
       expect(xterm.paste).toHaveBeenCalledWith('pasted into OpenCode')
     })
+    expect(mocks.tauriInvoke).not.toHaveBeenCalled()
     term.destroy()
   })
 
-  it('forwards Windows desktop Ctrl+V to a TUI when the clipboard contains an image', async () => {
+  it('uses the Ctrl+V fallback for an image when the foreground TUI is unknown', async () => {
     mocks.hostTarget.mockReturnValue('windows-x86_64')
     const close = vi.fn(async () => {})
     mocks.readClipboardImage.mockResolvedValue({ close })
@@ -189,8 +194,73 @@ describe('useTerminal device text integration', () => {
       expect(close).toHaveBeenCalledOnce()
       expect(input).toHaveBeenCalledWith('\x16')
     })
+    expect(mocks.tauriInvoke).toHaveBeenCalledWith('pty_clipboard_paste_target', { paneId: 'p1' })
     expect(mocks.readClipboardText).not.toHaveBeenCalled()
     expect(xterm.paste).not.toHaveBeenCalled()
+    term.destroy()
+  })
+
+  it('translates image Ctrl+V into Alt+V for Claude Code', async () => {
+    mocks.hostTarget.mockReturnValue('windows-x86_64')
+    const close = vi.fn(async () => {})
+    mocks.readClipboardImage.mockResolvedValue({ close })
+    mocks.readClipboardText.mockResolvedValue('image fallback text')
+    mocks.tauriInvoke.mockResolvedValue('claude')
+    const term = attach('claude-pane')
+    const input = vi.fn()
+    term.onInput = input
+    const event = new KeyboardEvent('keydown', {
+      key: 'v',
+      code: 'KeyV',
+      ctrlKey: true,
+      cancelable: true,
+    })
+
+    expect(lastXterm().keyHandler(event)).toBe(false)
+    await vi.waitFor(() => expect(input).toHaveBeenCalledWith('\x1bv'))
+    expect(mocks.tauriInvoke).toHaveBeenCalledWith('pty_clipboard_paste_target', {
+      paneId: 'claude-pane',
+    })
+    expect(mocks.readClipboardText).not.toHaveBeenCalled()
+    expect(lastXterm().paste).not.toHaveBeenCalled()
+    term.destroy()
+  })
+
+  it('keeps image Ctrl+V for OpenCode', async () => {
+    mocks.hostTarget.mockReturnValue('windows-x86_64')
+    mocks.readClipboardImage.mockResolvedValue({ close: vi.fn(async () => {}) })
+    mocks.tauriInvoke.mockResolvedValue('opencode')
+    const term = attach('opencode-pane')
+    const input = vi.fn()
+    term.onInput = input
+    const event = new KeyboardEvent('keydown', {
+      key: 'v',
+      code: 'KeyV',
+      ctrlKey: true,
+      cancelable: true,
+    })
+
+    expect(lastXterm().keyHandler(event)).toBe(false)
+    await vi.waitFor(() => expect(input).toHaveBeenCalledWith('\x16'))
+    term.destroy()
+  })
+
+  it('uses image Ctrl+V when foreground classification fails', async () => {
+    mocks.hostTarget.mockReturnValue('windows-x86_64')
+    mocks.readClipboardImage.mockResolvedValue({ close: vi.fn(async () => {}) })
+    mocks.tauriInvoke.mockRejectedValue(new Error('IPC unavailable'))
+    const term = attach('p1')
+    const input = vi.fn()
+    term.onInput = input
+    const event = new KeyboardEvent('keydown', {
+      key: 'v',
+      code: 'KeyV',
+      ctrlKey: true,
+      cancelable: true,
+    })
+
+    expect(lastXterm().keyHandler(event)).toBe(false)
+    await vi.waitFor(() => expect(input).toHaveBeenCalledWith('\x16'))
     term.destroy()
   })
 
@@ -210,6 +280,7 @@ describe('useTerminal device text integration', () => {
 
     expect(xterm.keyHandler(event)).toBe(false)
     await vi.waitFor(() => expect(input).toHaveBeenCalledWith('\x16'))
+    expect(mocks.tauriInvoke).not.toHaveBeenCalled()
     expect(xterm.paste).not.toHaveBeenCalled()
     term.destroy()
   })

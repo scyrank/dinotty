@@ -1,6 +1,9 @@
 #![cfg_attr(all(not(debug_assertions), windows), windows_subsystem = "windows")]
 
 use base64::Engine;
+#[cfg(windows)]
+use dinotty_server::platform::process::clipboard_paste_target_for_process_tree;
+use dinotty_server::platform::process::ClipboardPasteTarget;
 use dinotty_server::session::{
     CloseReason, SessionClientEvent, SessionManager, SessionStatus, TauriOnExit,
 };
@@ -299,6 +302,46 @@ fn pty_spawn(
     spawn_tauri_write_task(Arc::clone(&session), pane_id.clone());
 
     Ok(session.shell_type.clone())
+}
+
+#[tauri::command]
+async fn pty_clipboard_paste_target(
+    pane_id: String,
+    state: State<'_, Arc<SessionManager>>,
+) -> Result<ClipboardPasteTarget, String> {
+    #[cfg(not(windows))]
+    {
+        let _ = (pane_id, state);
+        Ok(ClipboardPasteTarget::Unknown)
+    }
+
+    #[cfg(windows)]
+    {
+        let session = match state.sessions.get(&pane_id) {
+            Some(entry) => Arc::clone(entry.value()),
+            None => return Ok(ClipboardPasteTarget::Unknown),
+        };
+        if session.is_exited() || session.is_ssh() {
+            return Ok(ClipboardPasteTarget::Unknown);
+        }
+        let Some(root_pid) = session.local_process_id().await else {
+            return Ok(ClipboardPasteTarget::Unknown);
+        };
+
+        Ok(
+            match tokio::task::spawn_blocking(move || {
+                clipboard_paste_target_for_process_tree(root_pid)
+            })
+            .await
+            {
+                Ok(target) => target,
+                Err(error) => {
+                    tracing::warn!(pane_id, %error, "Failed to classify clipboard paste target");
+                    ClipboardPasteTarget::Unknown
+                }
+            },
+        )
+    }
 }
 
 #[tauri::command]
@@ -889,6 +932,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             pty_spawn,
+            pty_clipboard_paste_target,
             pty_write,
             pty_resize,
             pty_snapshot_request,

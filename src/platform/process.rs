@@ -52,6 +52,216 @@ impl CommandNoWindowExt for tokio::process::Command {
     }
 }
 
+/// Foreground TUI families whose image-paste shortcuts differ on Windows.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClipboardPasteTarget {
+    Claude,
+    OpenCode,
+    #[default]
+    Unknown,
+}
+
+#[derive(Clone, Debug)]
+struct ProcessDescriptor {
+    pid: u32,
+    parent_pid: Option<u32>,
+    name: String,
+    command_line: String,
+}
+
+fn classify_clipboard_paste_process(
+    name: &str,
+    command_line: &str,
+) -> Option<ClipboardPasteTarget> {
+    let normalized_name = name.replace('\\', "/").to_ascii_lowercase();
+    let executable = normalized_name
+        .rsplit('/')
+        .next()
+        .unwrap_or(normalized_name.as_str())
+        .trim_end_matches(".exe")
+        .trim_end_matches(".com");
+    let command = command_line.replace('\\', "/").to_ascii_lowercase();
+
+    if executable == "claude" || command.contains("@anthropic-ai/claude-code") {
+        return Some(ClipboardPasteTarget::Claude);
+    }
+    if executable == "opencode" || command.contains("node_modules/opencode-ai/") {
+        return Some(ClipboardPasteTarget::OpenCode);
+    }
+    None
+}
+
+fn classify_clipboard_paste_process_tree(
+    root_pid: u32,
+    processes: &[ProcessDescriptor],
+) -> ClipboardPasteTarget {
+    use std::collections::{HashMap, HashSet, VecDeque};
+
+    let by_pid: HashMap<u32, &ProcessDescriptor> =
+        processes.iter().map(|process| (process.pid, process)).collect();
+    let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
+    for process in processes {
+        if let Some(parent_pid) = process.parent_pid {
+            children.entry(parent_pid).or_default().push(process.pid);
+        }
+    }
+    for process_children in children.values_mut() {
+        process_children.sort_unstable();
+    }
+
+    let mut pending = VecDeque::from([root_pid]);
+    let mut visited = HashSet::new();
+    while let Some(pid) = pending.pop_front() {
+        if !visited.insert(pid) {
+            continue;
+        }
+        if let Some(process) = by_pid.get(&pid) {
+            if let Some(target) =
+                classify_clipboard_paste_process(&process.name, &process.command_line)
+            {
+                return target;
+            }
+        }
+        if let Some(process_children) = children.get(&pid) {
+            pending.extend(process_children);
+        }
+    }
+
+    ClipboardPasteTarget::Unknown
+}
+
+/// Inspect the local process tree rooted at a PTY child and identify the nearest
+/// TUI with a non-standard image-paste shortcut.
+#[must_use]
+pub fn clipboard_paste_target_for_process_tree(root_pid: u32) -> ClipboardPasteTarget {
+    #[cfg(windows)]
+    {
+        let system = sysinfo::System::new_all();
+        let processes: Vec<ProcessDescriptor> = system
+            .processes()
+            .iter()
+            .map(|(pid, process)| ProcessDescriptor {
+                pid: pid.as_u32(),
+                parent_pid: process.parent().map(sysinfo::Pid::as_u32),
+                name: process.name().to_string_lossy().into_owned(),
+                command_line: process
+                    .cmd()
+                    .iter()
+                    .map(|part| part.to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            })
+            .collect();
+        classify_clipboard_paste_process_tree(root_pid, &processes)
+    }
+
+    #[cfg(not(windows))]
+    {
+        let _ = root_pid;
+        ClipboardPasteTarget::Unknown
+    }
+}
+
+#[cfg(test)]
+mod clipboard_paste_target_tests {
+    use super::{
+        classify_clipboard_paste_process, classify_clipboard_paste_process_tree,
+        ClipboardPasteTarget, ProcessDescriptor,
+    };
+
+    fn process(
+        pid: u32,
+        parent_pid: Option<u32>,
+        name: &str,
+        command_line: &str,
+    ) -> ProcessDescriptor {
+        ProcessDescriptor { pid, parent_pid, name: name.into(), command_line: command_line.into() }
+    }
+
+    #[test]
+    fn recognizes_native_and_node_tui_processes() {
+        for (name, command, expected) in [
+            (
+                "claude.exe",
+                r#""C:\Users\test\.local\bin\claude.exe" -c"#,
+                ClipboardPasteTarget::Claude,
+            ),
+            (
+                "node.exe",
+                r#"node C:\npm\node_modules\@anthropic-ai\claude-code\cli.js"#,
+                ClipboardPasteTarget::Claude,
+            ),
+            (
+                "opencode.exe",
+                r#"D:\npm\node_modules\opencode-ai\bin\opencode.exe"#,
+                ClipboardPasteTarget::OpenCode,
+            ),
+            (
+                "node.exe",
+                r#"node D:\npm\node_modules\opencode-ai\bin\opencode"#,
+                ClipboardPasteTarget::OpenCode,
+            ),
+        ] {
+            assert_eq!(classify_clipboard_paste_process(name, command), Some(expected));
+        }
+    }
+
+    #[test]
+    fn ignores_unrelated_process_names_and_arguments() {
+        assert_eq!(
+            classify_clipboard_paste_process("cargo.exe", "cargo test claude opencode"),
+            None
+        );
+    }
+
+    #[test]
+    fn chooses_the_nearest_recognized_descendant() {
+        let processes = vec![
+            process(10, None, "pwsh.exe", "pwsh"),
+            process(20, Some(10), "claude.exe", "claude -c"),
+            process(30, Some(20), "opencode.exe", "opencode"),
+        ];
+
+        assert_eq!(
+            classify_clipboard_paste_process_tree(10, &processes),
+            ClipboardPasteTarget::Claude
+        );
+    }
+
+    #[test]
+    fn recognizes_an_opencode_shim_below_the_pty_shell() {
+        let processes = vec![
+            process(10, None, "pwsh.exe", "pwsh"),
+            process(
+                20,
+                Some(10),
+                "cmd.exe",
+                r#"cmd /c D:\npm\node_modules\opencode-ai\bin\opencode.exe"#,
+            ),
+        ];
+
+        assert_eq!(
+            classify_clipboard_paste_process_tree(10, &processes),
+            ClipboardPasteTarget::OpenCode
+        );
+    }
+
+    #[test]
+    fn ignores_recognized_processes_outside_the_pty_tree() {
+        let processes = vec![
+            process(10, None, "pwsh.exe", "pwsh"),
+            process(20, Some(10), "git.exe", "git status"),
+            process(30, None, "claude.exe", "claude"),
+        ];
+
+        assert_eq!(
+            classify_clipboard_paste_process_tree(10, &processes),
+            ClipboardPasteTarget::Unknown
+        );
+    }
+}
+
 /// Resolve a program used by the direct terminal argv API.
 ///
 /// Unix keeps the existing `execvp`-style behavior. Windows resolves only

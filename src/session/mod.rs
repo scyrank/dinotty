@@ -321,6 +321,18 @@ impl Session {
         self.ssh_params.is_some()
     }
 
+    /// Return the root process id for a live local PTY session.
+    ///
+    /// SSH and already-exited sessions deliberately return `None`: their
+    /// foreground process tree is not available to the desktop host.
+    pub async fn local_process_id(&self) -> Option<u32> {
+        let backend = self.backend.lock().await;
+        match &*backend {
+            SessionBackend::Local { child, .. } => child.process_id(),
+            SessionBackend::Ssh | SessionBackend::Exited => None,
+        }
+    }
+
     /// Check if the child process has exited.
     pub fn is_exited(&self) -> bool {
         *self.exited.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
