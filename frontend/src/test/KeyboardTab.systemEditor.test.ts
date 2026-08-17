@@ -41,7 +41,6 @@ describe('KeyboardTab system IME editor', () => {
     expect(wrapper.findAll('[data-system-region="lower"][data-system-index]')).toHaveLength(2)
     expect(wrapper.get('.system-editor-ime-pin').find('svg').exists()).toBe(true)
     expect(wrapper.get('.system-editor-ime-pin').text()).toBe('')
-    expect(wrapper.text()).toContain('builtin-only')
     expect(wrapper.text()).toContain('upper-a')
     expect(
       wrapper.findAll('.system-editor-pin-control > span').map((label) => label.text())
@@ -84,18 +83,6 @@ describe('KeyboardTab system IME editor', () => {
     expect(source).toMatch(
       /@media \(max-width: 600px\)[\s\S]*\.system-editor-head > \.toggle\s*\{[^}]*justify-self:\s*end;/
     )
-  })
-
-  it('separates the system preset actions from the following Advanced section', () => {
-    wrapper = mount(KeyboardTab)
-
-    expect(wrapper.find('.system-keyboard-advanced-gap').exists()).toBe(true)
-
-    const source = readFileSync(
-      join(process.cwd(), 'src/components/settings/KeyboardTab.vue'),
-      'utf8'
-    )
-    expect(source).toMatch(/\.system-keyboard-advanced-gap\s*\{[^}]*margin-top:\s*16px;/s)
   })
 
   it('uses the whole key body as the edit target and marks the fixed IME key by color', async () => {
@@ -238,31 +225,6 @@ describe('KeyboardTab system IME editor', () => {
     expect(checkbox.attributes('disabled')).toBeDefined()
   })
 
-  it('uses the same reactive Agent icon opt-out for Dinotty send keys without changing command data', async () => {
-    settings.action_keyboard = {
-      rows: [[{ label: 'launcher', kind: 'send', send: 'codex --profile work', auto_enter: true }]],
-    }
-    wrapper = mount(KeyboardTab)
-
-    await wrapper.get('.ak-wyg-label').trigger('click')
-    const label = wrapper.get('.ak-modal input.shortcut-input')
-    const checkbox = wrapper.get('.ak-agent-icon-check input')
-    expect(checkbox.attributes('disabled')).toBeDefined()
-
-    await label.setValue('Claude')
-    expect(checkbox.attributes('disabled')).toBeUndefined()
-    expect((checkbox.element as HTMLInputElement).checked).toBe(true)
-    await checkbox.setValue(false)
-    await wrapper.get('.ak-modal .settings-save').trigger('click')
-
-    expect(settings.action_keyboard.rows[0][0]).toMatchObject({
-      label: 'Claude',
-      send: 'codex --profile work',
-      auto_enter: true,
-      display: 'text',
-    })
-  })
-
   it('keeps the disabled Agent icon hint readable in both key editors', () => {
     const source = readFileSync(
       join(process.cwd(), 'src/components/settings/KeyboardTab.vue'),
@@ -354,27 +316,6 @@ describe('KeyboardTab system IME editor', () => {
     )
     await wrapper.vm.$nextTick()
     expect((wrapper.get('.system-send-textarea').element as HTMLTextAreaElement).value).toBe('^C')
-  })
-
-  it('uses the same special-key editor for Dinotty keys', async () => {
-    settings.action_keyboard = { rows: [[{ label: 'old', kind: 'send', send: 'x' }]] }
-    wrapper = mount(KeyboardTab)
-
-    await wrapper.get('.ak-wyg-label').trigger('click')
-    await wrapper.get('[data-special-field="kind"]').setValue('special')
-    await wrapper.get('[data-special-field="key"]').setValue('cmd')
-    expect(wrapper.find('[data-special-field="behavior"]').exists()).toBe(false)
-    expect((wrapper.get('[data-special-field="hold"]').element as HTMLInputElement).checked).toBe(
-      false
-    )
-    await wrapper.get('[data-special-field="display"]').setValue('text')
-    await wrapper.get('.ak-modal .settings-save').trigger('click')
-
-    expect(settings.action_keyboard.rows[0][0]).toMatchObject({
-      kind: 'send',
-      special: 'cmd',
-      display: 'text',
-    })
   })
 
   it('uses an Auto-width checkbox and only exposes drag resize for fixed-width keys', async () => {

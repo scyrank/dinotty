@@ -21,7 +21,7 @@ import {
   getAppAction,
   isDispatchableAppAction,
 } from '../utils/appActionCatalog'
-import { akDropGripThreshold, akResolveDropIndex } from '../components/settings/KeyboardTab.vue'
+import { akDropGripThreshold, akResolveDropIndex } from '../composables/useActionKeyboardGesture'
 
 function normalize(cfg: ActionKeyboardConfig): ActionKeyboardConfig {
   return normalizeActionKeyboard(cfg) as ActionKeyboardConfig

@@ -405,20 +405,10 @@ export const SystemKeyboardToolbarStub = defineComponent({
   name: 'SystemKeyboardToolbar',
   props: {
     visible: Boolean,
-    paneId: { type: String, required: true },
-    getSendFn: { type: Function as PropType<() => unknown>, required: true },
     actionOpen: Boolean,
-    imeOpen: Boolean,
+    ctx: { type: Object, required: true },
   },
-  emits: [
-    'update:actionOpen',
-    'modifier-change',
-    'app-action',
-    'dismiss',
-    'toggle-ime',
-    'focus-xterm',
-    'paste-text',
-  ],
+  emits: ['update:actionOpen'],
   setup(props) {
     return () =>
       h('div', {

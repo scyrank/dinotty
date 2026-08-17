@@ -8,7 +8,8 @@ import type { KeyboardGuardMode } from '../utils/keyboardGuardMode'
 import type { KeyBinding } from './useKeybindings'
 import type { SavedTheme } from './useDeviceThemeSelection'
 export type WorkspaceBadgeMode = 'off' | 'tab' | 'icon' | 'both'
-export type MobileInputMode = 'builtin' | 'system'
+/** 'builtin' | 'system' 为宿主键盘；其余字符串为键盘插件 id（keyboard-plugin-design.md §3.2C） */
+export type MobileInputMode = 'builtin' | 'system' | (string & {})
 export type SystemToolbarMode = 'follow_ime' | 'persistent_mobile'
 export const SETTINGS_SCHEMA_VERSION = 12
 
