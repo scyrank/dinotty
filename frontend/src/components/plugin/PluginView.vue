@@ -10,6 +10,7 @@
         :is-visible="isVisible"
         :is-focused="isFocused"
       />
+      <component v-else-if="plugin.state === 'active' && hostView && !hasError" :is="hostView" />
       <div v-else-if="hasError" class="plugin-error">
         <p>Plugin runtime error: {{ errorMsg }}</p>
       </div>
@@ -24,10 +25,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onErrorCaptured } from 'vue'
+import { ref, computed, onErrorCaptured } from 'vue'
+import { HOST_PLUGIN_VIEWS } from '../../utils/hostPluginViews'
 import type { LoadedPlugin, PluginContext } from '../../composables/usePluginLoader'
 
-defineProps<{
+const props = defineProps<{
   plugin: LoadedPlugin
   api: PluginContext
   paneId: string
@@ -36,6 +38,7 @@ defineProps<{
   isFocused: boolean
 }>()
 
+const hostView = computed(() => HOST_PLUGIN_VIEWS[props.plugin.id])
 const hasError = ref(false)
 const errorMsg = ref('')
 

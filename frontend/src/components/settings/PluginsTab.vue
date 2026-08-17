@@ -339,6 +339,7 @@ import { useI18n } from '../../composables/useI18n'
 import { authFetch, apiUrl } from '../../composables/apiBase'
 import { usePluginLoader } from '../../composables/usePluginLoader'
 import { useMarketplace, type MarketPlugin } from '../../composables/useMarketplace'
+import { hasHostPluginView } from '../../utils/hostPluginViews'
 import { describeHttpError, describeRequestError } from '../../utils/httpError'
 import { uiConfirm } from '../../composables/useConfirm'
 import { settings, saveSettings } from '../../composables/useSettings'
@@ -390,7 +391,7 @@ const settingsPlugins = computed(() =>
       description: p.manifest.description,
       state: p.state,
       error: p.error,
-      hasComponent: !!p.exports?.component,
+      hasComponent: !!p.exports?.component || hasHostPluginView(p.id),
       permissions: p.manifest.permissions ?? [],
       isDevLink: p.isDevLink,
       category: p.manifest.category,
