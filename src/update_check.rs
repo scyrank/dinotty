@@ -22,6 +22,9 @@ const FAILURE_BACKOFF: StdDuration = StdDuration::from_mins(10);
 const MAX_FAILURE_BACKOFF: StdDuration = StdDuration::from_hours(6);
 const RELEASE_GRACE_PERIOD: Duration = Duration::hours(24);
 
+/// Personal fork policy: never contact the upstream release feed.
+pub const UPDATE_CHECKS_ENABLED: bool = false;
+
 pub type UpdateCheckState = Arc<UpdateChecker>;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -332,6 +335,14 @@ fn retry_delay(headers: &HeaderMap, now: OffsetDateTime) -> Option<StdDuration> 
 pub async fn get_update_status(State(checker): State<UpdateCheckState>) -> Response {
     let mut headers = HeaderMap::new();
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    if !UPDATE_CHECKS_ENABLED {
+        return (
+            StatusCode::NOT_FOUND,
+            headers,
+            Json(serde_json::json!({ "error": "update_check_disabled" })),
+        )
+            .into_response();
+    }
     match checker.check().await {
         Ok(status) => (StatusCode::OK, headers, Json(status)).into_response(),
         Err(_) => (
@@ -596,36 +607,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn handler_sets_no_store_for_success_and_stable_failures() {
+    async fn handler_rejects_personal_build_checks_without_contacting_upstream() {
         let now = OffsetDateTime::now_utc();
-        let success_state = MockState {
-            calls: Arc::new(AtomicUsize::new(0)),
+        let calls = Arc::new(AtomicUsize::new(0));
+        let state = MockState {
+            calls: calls.clone(),
             saw_etag: Arc::new(AtomicBool::new(false)),
             published_at: (now - Duration::hours(48)).format(&Rfc3339).unwrap(),
             delay: StdDuration::ZERO,
             return_not_modified: false,
             fail_after_first: false,
         };
-        let (success_url, success_task) = spawn_mock(success_state).await;
-        let response = get_update_status(State(test_checker(success_url, SUCCESS_TTL))).await;
-        assert_eq!(response.status(), StatusCode::OK);
-        assert_eq!(response.headers().get(header::CACHE_CONTROL).unwrap(), "no-store");
-        success_task.abort();
+        let (api_url, task) = spawn_mock(state).await;
+        let response = get_update_status(State(test_checker(api_url, SUCCESS_TTL))).await;
 
-        let failure_state = MockState {
-            calls: Arc::new(AtomicUsize::new(1)),
-            saw_etag: Arc::new(AtomicBool::new(false)),
-            published_at: now.format(&Rfc3339).unwrap(),
-            delay: StdDuration::ZERO,
-            return_not_modified: false,
-            fail_after_first: true,
-        };
-        let (failure_url, failure_task) = spawn_mock(failure_state).await;
-        let response = get_update_status(State(test_checker(failure_url, SUCCESS_TTL))).await;
-        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert!(!UPDATE_CHECKS_ENABLED);
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
         assert_eq!(response.headers().get(header::CACHE_CONTROL).unwrap(), "no-store");
         let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        assert_eq!(body, r#"{"error":"update_check_unavailable"}"#);
-        failure_task.abort();
+        assert_eq!(body, r#"{"error":"update_check_disabled"}"#);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        task.abort();
     }
 }

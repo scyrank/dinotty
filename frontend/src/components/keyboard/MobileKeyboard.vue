@@ -139,7 +139,7 @@
           :k="key"
           :state="modState"
           @key-press="onKeyPress"
-          @app-action="onAppAction"
+          @app-action="onToolbarAppAction"
           @special="onSpecial"
         />
       </div>
@@ -361,7 +361,18 @@ import {
 import { useKeyboardLayout } from '../../composables/useKeyboardLayout'
 import type { SendDataFn } from '../../utils/frozenSend'
 import { hasCollapseGuard } from '../../utils/keyboardGuardMode'
-import { isTouchDevice } from '../../utils/terminalInput'
+import {
+  applyMobileTerminalModifiers,
+  emptyMobileTerminalModifiers,
+  isTouchDevice,
+  mobileTerminalModifierActive,
+  type MobileTerminalModifiers,
+} from '../../utils/terminalInput'
+import {
+  parseKeyboardSpecial,
+  type KeyboardModifierFamily,
+  type KeyboardSpecialId,
+} from '../../utils/keyboardSpecialKeys'
 import { resolveResponsiveToastPosition } from '../../utils/toastPosition'
 
 const props = defineProps<{
@@ -449,11 +460,23 @@ const {
   fetchSuggestions,
 })
 
-const modState = reactive<ModState>({
-  shift: false,
-  ctrl: false,
-  alt: false,
-})
+const modifierModes = reactive<MobileTerminalModifiers>(emptyMobileTerminalModifiers())
+const activeModifierSpecial = reactive<Partial<Record<KeyboardModifierFamily, KeyboardSpecialId>>>(
+  {}
+)
+const modState = computed<ModState>(() => ({
+  ctrl: mobileTerminalModifierActive(modifierModes.ctrl),
+  shift: mobileTerminalModifierActive(modifierModes.shift),
+  alt: mobileTerminalModifierActive(modifierModes.alt),
+  meta: mobileTerminalModifierActive(modifierModes.meta),
+  locked: {
+    ctrl: modifierModes.ctrl === 'locked',
+    shift: modifierModes.shift === 'locked',
+    alt: modifierModes.alt === 'locked',
+    meta: modifierModes.meta === 'locked',
+  },
+  activeSpecial: activeModifierSpecial,
+}))
 
 const {
   row1,
@@ -544,8 +567,7 @@ async function sendTextInput() {
     return
   }
 
-  const direct =
-    settings.quick_send_threshold > 0 && text.length <= settings.quick_send_threshold
+  const direct = settings.quick_send_threshold > 0 && text.length <= settings.quick_send_threshold
   if (!direct) {
     send(text)
     clearSentText()
@@ -569,43 +591,26 @@ async function sendTextInput() {
 
 function onKeyPress(ch: string) {
   if (sendLocked) return
-  let data = ch
-  if (data.length !== 1) {
-    if (data === '\r' || data === '\n') inputBuffer.value = ''
-    else if (data === '\x1b[A' || data === '\x1b[B') inputBuffer.value = ''
-    modState.ctrl = false
-    modState.alt = false
-    modState.shift = false
-    props.getSendFn()?.(data)
-    if (kbMode.value === 'default') fetchDebounced(inputBuffer.value || undefined)
-    return
-  }
-  const cc = data.charCodeAt(0)
-  if (cc < 32 || cc === 127) {
-    if (cc === 13 || cc === 10) inputBuffer.value = ''
-    else if (cc === 127 || cc === 8) inputBuffer.value = inputBuffer.value.slice(0, -1)
-    modState.ctrl = false
-    modState.alt = false
-    modState.shift = false
-    props.getSendFn()?.(data)
-    if (kbMode.value === 'default') fetchDebounced(inputBuffer.value || undefined)
-    return
-  }
-  if (modState.ctrl) {
-    const code = data.toUpperCase().charCodeAt(0) - 64
-    if (code >= 1 && code <= 26) data = String.fromCharCode(code)
-    modState.ctrl = false
+  const before = { ...modifierModes }
+  const applied = applyMobileTerminalModifiers(ch, before)
+  Object.assign(modifierModes, applied.modifiers)
+  const cc = ch.length === 1 ? ch.charCodeAt(0) : -1
+  if (ch === '\r' || ch === '\n' || ch === '\x1b[A' || ch === '\x1b[B') {
     inputBuffer.value = ''
+  } else if (cc === 127 || cc === 8) {
+    inputBuffer.value = inputBuffer.value.slice(0, -1)
+  } else if (
+    mobileTerminalModifierActive(before.ctrl) ||
+    mobileTerminalModifierActive(before.meta)
+  ) {
+    inputBuffer.value = ''
+  } else if (ch.length === 1 && cc >= 32) {
+    inputBuffer.value += applied.data.startsWith('\x1b') ? applied.data.slice(1) : applied.data
   } else {
-    inputBuffer.value += data
+    inputBuffer.value = ''
   }
-  if (modState.alt) {
-    data = '\x1b' + data
-    modState.alt = false
-  }
-  if (modState.shift) modState.shift = false
 
-  props.getSendFn()?.(data)
+  props.getSendFn()?.(applied.data)
   if (kbMode.value === 'default') fetchDebounced(inputBuffer.value || undefined)
 }
 
@@ -614,10 +619,38 @@ function onAppAction(id: string, options: AppActionOptions) {
   emit('app-action', id, options)
 }
 
+function onToolbarAppAction(id: string, options: AppActionOptions) {
+  if (id === 'insertWorkspaceFile') {
+    showFilePicker.value = true
+    return
+  }
+  if (id === 'uploadMobileFile') {
+    openPhoneFilePicker()
+    return
+  }
+  if (id === 'pasteTerminal') {
+    void onPhonePaste()
+    return
+  }
+  if (id === 'term.newline') {
+    insertTextAtCaret('\n')
+    return
+  }
+  if (id === 'term.deleteToLineStart') {
+    deleteSelectedOrLogicalLine()
+    return
+  }
+  onAppAction(id, options)
+}
+
 function onSpecial(sp: string) {
-  if (sp === 'shift') modState.shift = !modState.shift
-  if (sp === 'ctrl') modState.ctrl = !modState.ctrl
-  if (sp === 'alt') modState.alt = !modState.alt
+  const parsed = parseKeyboardSpecial(sp)
+  if (parsed?.entry.modifier) {
+    const family = parsed.entry.modifier
+    modifierModes[family] =
+      modifierModes[family] === 'off' ? (parsed.behavior === 'lock' ? 'locked' : 'once') : 'off'
+    if (modifierModes[family] !== 'off') activeModifierSpecial[family] = parsed.id
+  }
   if (sp === 'kbswitch') {
     switchMode(kbMode.value === 'action' ? 'default' : 'action')
   }
@@ -832,11 +865,9 @@ function onViewportChange() {
   if (!window.visualViewport) return
   const vh = window.visualViewport.height
   if (vh > naturalVH) naturalVH = vh
-  const off = window.innerHeight - (window.visualViewport.offsetTop + vh)
   const wasSysKbOpen = sysKbOpen
   sysKbOpen = naturalVH - vh > 120
   if (sysKbOpen && !wasSysKbOpen) sysKbArmed = textInputFocused.value
-  // Set --kb-open: either system keyboard or custom keyboard is visible
   document.documentElement.style.setProperty('--kb-open', sysKbOpen || props.visible ? '1' : '0')
   if (barRef.value) {
     if (!props.visible) {
@@ -844,12 +875,10 @@ function onViewportChange() {
     } else if (sysKbOpen && textInputFocused.value) {
       // System keyboard open with our input focused: show bar, hide panels via v-show
       barRef.value.style.display = ''
-      barRef.value.style.bottom = `${Math.max(0, off)}px`
     } else if (sysKbOpen) {
       barRef.value.style.display = 'none'
     } else {
       barRef.value.style.display = ''
-      barRef.value.style.bottom = `${Math.max(0, off)}px`
     }
   }
   if (textInputFocused.value) resizeTextInput()
@@ -882,7 +911,7 @@ function onViewportChange() {
 watch(
   () => props.visible,
   (v) => {
-    // Keep --kb-open in sync when custom keyboard opens/closes
+    if (!v) Object.assign(modifierModes, emptyMobileTerminalModifiers())
     document.documentElement.style.setProperty('--kb-open', v || sysKbOpen ? '1' : '0')
     nextTick(applyHeight)
   }
@@ -945,6 +974,7 @@ function onOrientationChange() {
 
 onBeforeUnmount(() => {
   componentMounted = false
+  Object.assign(modifierModes, emptyMobileTerminalModifiers())
   // Release typing mode explicitly. The pending blur timer would otherwise fire
   // after this component is gone, when its emit no longer reaches the parent —
   // leaving the parent's typing flag stuck true and, with it, the sticky guard

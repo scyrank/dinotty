@@ -2,6 +2,11 @@ import { readonly, ref } from 'vue'
 import { apiUrl, authFetch, getApiBase } from './apiBase'
 import { isOfficialDinottyReleaseUrl } from '../utils/openExternalUrl'
 
+// Personal fork policy: release discovery is intentionally disabled. Keep the
+// implementation available for painless upstream merges, but make every entry
+// point a no-op so persisted settings cannot re-enable network checks.
+export const UPDATE_CHECKS_ENABLED = false
+
 export type UpdateCheckStatus =
   | 'idle'
   | 'checking'
@@ -59,6 +64,10 @@ function applyResponse(value: unknown): boolean {
 }
 
 function runCheck(force: boolean): Promise<void> {
+  if (!UPDATE_CHECKS_ENABLED) {
+    status.value = 'idle'
+    return Promise.resolve()
+  }
   if (inFlight) return inFlight
   if (started && !force) return Promise.resolve()
   started = true
@@ -112,6 +121,7 @@ function dispose(): void {
 }
 
 function takeAvailablePrompt(): { currentVersion: string; latestVersion: string } | null {
+  if (!UPDATE_CHECKS_ENABLED) return null
   if (promptConsumed || status.value !== 'update_available') return null
   promptConsumed = true
   return {

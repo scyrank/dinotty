@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   hostTarget: vi.fn<() => string | null>(),
   instances: [] as any[],
   isTauri: vi.fn<() => boolean>(),
+  readClipboardImage: vi.fn<() => Promise<{ close: () => Promise<void> }>>(),
   readClipboardText: vi.fn<() => Promise<string>>(),
 }))
 
@@ -13,6 +14,9 @@ vi.mock('@xterm/xterm', () => ({
     unicode = { activeVersion: '' }
     parser = { registerOscHandler() {} }
     buffer = { active: { getLine: () => null, cursorY: 0, cursorX: 0 } }
+    keyHandler: ((event: KeyboardEvent) => boolean) | null = null
+    dataHandler: ((data: string) => void) | null = null
+    modes = { applicationCursorKeysMode: false }
     constructor(options: Record<string, any>) {
       this.options = { ...options }
       mocks.instances.push(this)
@@ -22,14 +26,16 @@ vi.mock('@xterm/xterm', () => ({
       const el = document.createElement('div')
       el.className = 'xterm'
       wrapper.appendChild(el)
+      const textarea = document.createElement('textarea')
+      textarea.className = 'xterm-helper-textarea'
+      wrapper.appendChild(textarea)
     }
-    keyHandler: ((event: KeyboardEvent) => boolean) | null = null
     attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean) {
       this.keyHandler = handler
     }
     registerLinkProvider() {}
     onTitleChange() {}
-    onData() {}
+    onData(handler: (data: string) => void) { this.dataHandler = handler }
     hasSelection() { return false }
     paste = vi.fn()
     dispose() {}
@@ -53,6 +59,7 @@ vi.mock('../utils/clientPlatform', () => ({
   isWindowsClient: true,
 }))
 vi.mock('@tauri-apps/plugin-clipboard-manager', () => ({
+  readImage: mocks.readClipboardImage,
   readText: mocks.readClipboardText,
 }))
 vi.mock('../composables/useTerminalWheel', () => ({
@@ -91,11 +98,17 @@ function attach(id: string) {
   return term
 }
 
+function lastXterm() {
+  return mocks.instances[mocks.instances.length - 1]
+}
+
 describe('useTerminal device text integration', () => {
   beforeEach(() => {
     mocks.instances.length = 0
     mocks.hostTarget.mockReturnValue('linux-x86_64')
     mocks.isTauri.mockReturnValue(true)
+    mocks.readClipboardImage.mockReset()
+    mocks.readClipboardImage.mockRejectedValue(new Error('clipboard has no image'))
     mocks.readClipboardText.mockReset()
     const storage = new MemoryStorage()
     Object.defineProperty(window, 'localStorage', { value: storage, configurable: true })
@@ -151,6 +164,53 @@ describe('useTerminal device text integration', () => {
       expect(mocks.readClipboardText).toHaveBeenCalledOnce()
       expect(xterm.paste).toHaveBeenCalledWith('pasted into OpenCode')
     })
+    term.destroy()
+  })
+
+  it('forwards Windows desktop Ctrl+V to a TUI when the clipboard contains an image', async () => {
+    mocks.hostTarget.mockReturnValue('windows-x86_64')
+    const close = vi.fn(async () => {})
+    mocks.readClipboardImage.mockResolvedValue({ close })
+    mocks.readClipboardText.mockResolvedValue('image fallback text')
+    const term = attach('p1')
+    const input = vi.fn()
+    term.onInput = input
+    const xterm = mocks.instances[mocks.instances.length - 1]
+    const event = new KeyboardEvent('keydown', {
+      key: 'v',
+      code: 'KeyV',
+      ctrlKey: true,
+      cancelable: true,
+    })
+
+    expect(xterm.keyHandler(event)).toBe(false)
+    expect(event.defaultPrevented).toBe(true)
+    await vi.waitFor(() => {
+      expect(close).toHaveBeenCalledOnce()
+      expect(input).toHaveBeenCalledWith('\x16')
+    })
+    expect(mocks.readClipboardText).not.toHaveBeenCalled()
+    expect(xterm.paste).not.toHaveBeenCalled()
+    term.destroy()
+  })
+
+  it('forwards Windows desktop Ctrl+V when the clipboard has no readable text', async () => {
+    mocks.hostTarget.mockReturnValue('windows-x86_64')
+    mocks.readClipboardText.mockResolvedValue('')
+    const term = attach('p1')
+    const input = vi.fn()
+    term.onInput = input
+    const xterm = mocks.instances[mocks.instances.length - 1]
+    const event = new KeyboardEvent('keydown', {
+      key: 'v',
+      code: 'KeyV',
+      ctrlKey: true,
+      cancelable: true,
+    })
+
+    expect(xterm.keyHandler(event)).toBe(false)
+    await vi.waitFor(() => expect(input).toHaveBeenCalledWith('\x16'))
+    expect(xterm.paste).not.toHaveBeenCalled()
     term.destroy()
   })
 
@@ -230,6 +290,90 @@ describe('useTerminal device text integration', () => {
     notifyTextChange()
     expect(term.xterm?.options.scrollback).toBe(20000)
     expect(refit).toHaveBeenCalledTimes(1)
+    term.destroy()
+  })
+
+  it.each([
+    ['touch system input', false, 1, 'system', 'ios'],
+    ['Windows Tauri touch input', true, 1, 'builtin', 'windows-x86_64'],
+    ['Linux Tauri desktop input', true, 0, 'builtin', 'linux-x86_64'],
+  ] as const)(
+    'reconciles an auto-pair and later closer on %s',
+    (_surface, tauri, touchPoints, inputMode, target) => {
+      mocks.isTauri.mockReturnValue(tauri)
+      mocks.hostTarget.mockReturnValue(target)
+      Object.defineProperty(navigator, 'maxTouchPoints', {
+        configurable: true,
+        value: touchPoints,
+      })
+      settings.mobile_input_mode = inputMode
+      const term = attach('p1')
+      const input = vi.fn()
+      term.onInput = input
+      const textarea = (term as any)._wrapper.querySelector(
+        '.xterm-helper-textarea',
+      ) as HTMLTextAreaElement
+      const keyHandler = lastXterm().keyHandler!
+      const edit = (value: string, caret: number, data: string) => {
+        keyHandler(new KeyboardEvent('keydown', { keyCode: 229, key: 'Process' }))
+        textarea.value = value
+        textarea.setSelectionRange(caret, caret)
+        textarea.dispatchEvent(
+          new InputEvent('input', { inputType: 'insertText', data, isComposing: false }),
+        )
+        keyHandler(new KeyboardEvent('keyup', { keyCode: 229, key: 'Process' }))
+      }
+
+      edit('()', 1, '(')
+      edit('())', 2, ')')
+
+      expect(input.mock.calls.map(([data]) => data)).toEqual(['()\x1b[D', '\x1b[C)'])
+      expect([textarea.selectionStart, textarea.selectionEnd]).toEqual([3, 3])
+      term.destroy()
+    },
+  )
+
+  it('does not duplicate a Tauri 229 symbol through the input rescue path', () => {
+    mocks.isTauri.mockReturnValue(true)
+    Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 0 })
+    const term = attach('p1')
+    const input = vi.fn()
+    term.onInput = input
+    const textarea = (term as any)._wrapper.querySelector(
+      '.xterm-helper-textarea',
+    ) as HTMLTextAreaElement
+    const keyHandler = lastXterm().keyHandler!
+
+    keyHandler(new KeyboardEvent('keydown', { keyCode: 229, key: 'Process' }))
+    textarea.value = '!'
+    textarea.setSelectionRange(1, 1)
+    textarea.dispatchEvent(
+      new InputEvent('input', { inputType: 'insertText', data: '!', isComposing: false }),
+    )
+    lastXterm().dataHandler!('!')
+    keyHandler(new KeyboardEvent('keyup', { keyCode: 229, key: 'Process' }))
+
+    expect(input.mock.calls.map(([data]) => data)).toEqual(['!'])
+    term.destroy()
+  })
+
+  it('rescues a touch-web punctuation input when the IME emits no 229 event', () => {
+    mocks.isTauri.mockReturnValue(false)
+    Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 1 })
+    settings.mobile_input_mode = 'system'
+    const term = attach('p1')
+    const input = vi.fn()
+    term.onInput = input
+    const textarea = (term as any)._wrapper.querySelector(
+      '.xterm-helper-textarea',
+    ) as HTMLTextAreaElement
+
+    textarea.dispatchEvent(
+      new InputEvent('input', { inputType: 'insertText', data: '！', isComposing: false }),
+    )
+    lastXterm().dataHandler!('！')
+
+    expect(input.mock.calls.map(([data]) => data)).toEqual(['！'])
     term.destroy()
   })
 })
