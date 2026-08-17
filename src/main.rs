@@ -288,6 +288,13 @@ async fn main() {
     let plugins =
         Arc::new(plugin::PluginManager::new(format!("http://127.0.0.1:{port}"), "server".into()));
     plugins.scan();
+    // Seed the bundled keyboard plugin (installs when missing, updates when the
+    // installed copy is older). Best-effort: a missing/corrupt seed must not
+    // block startup.
+    if let Err(error) = plugins.ensure_seed().await {
+        tracing::warn!(%error, "failed to ensure bundled seed plugin");
+    }
+    plugins.scan();
     tracing::info!("Loaded {} plugins", plugins.list().len());
 
     // Initialize new modules
