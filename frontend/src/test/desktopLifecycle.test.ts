@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import TrayVisibilityDialog from '../components/ui/TrayVisibilityDialog.vue'
 import WindowCloseDialog from '../components/ui/WindowCloseDialog.vue'
 import {
+  resolveWindowCloseAction,
   TRAY_VISIBILITY_CONFIRM_KEY,
   useDesktopLifecycle,
 } from '../composables/useDesktopLifecycle'
@@ -50,6 +51,13 @@ afterEach(() => {
 })
 
 describe('desktop lifecycle', () => {
+  it('resolves remembered close behavior with a safe tray fallback', () => {
+    expect(resolveWindowCloseAction('ask', true)).toBe('prompt')
+    expect(resolveWindowCloseAction('hide_to_tray', true)).toBe('hide')
+    expect(resolveWindowCloseAction('hide_to_tray', false)).toBe('prompt')
+    expect(resolveWindowCloseAction('quit', false)).toBe('quit')
+  })
+
   it('fails closed when the capability query fails', async () => {
     const lifecycle = useDesktopLifecycle({
       persistNow: vi.fn(),
@@ -182,6 +190,7 @@ describe('WindowCloseDialog', () => {
     hideText: 'Hide',
     quitText: 'Quit',
     cancelText: 'Cancel',
+    rememberText: 'Remember my choice',
   }
 
   it('shows three independent actions when hiding is available', async () => {
@@ -203,6 +212,22 @@ describe('WindowCloseDialog', () => {
     })
     expect(document.body.querySelector('.close-action.hide')).toBeNull()
     expect(document.body.querySelectorAll('.close-action')).toHaveLength(2)
+    wrapper.unmount()
+  })
+
+  it('emits the remembered choice and resets it when reopened', async () => {
+    const wrapper = mount(WindowCloseDialog, { props: baseProps, attachTo: document.body })
+    const remember = document.body.querySelector('.close-remember input') as HTMLInputElement
+
+    remember.click()
+    ;(document.body.querySelector('.close-action.quit') as HTMLButtonElement).click()
+    expect(wrapper.emitted('quit')).toEqual([[true]])
+
+    await wrapper.setProps({ visible: false })
+    await wrapper.setProps({ visible: true })
+    expect(
+      (document.body.querySelector('.close-remember input') as HTMLInputElement).checked
+    ).toBe(false)
     wrapper.unmount()
   })
 })

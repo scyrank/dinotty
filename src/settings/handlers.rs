@@ -78,6 +78,7 @@ pub(crate) fn preserve_current_system_settings_on_legacy_put(
         incoming.system_keyboard.clone_from(&existing.system_keyboard);
         incoming.system_keyboard_user_default.clone_from(&existing.system_keyboard_user_default);
         incoming.system_toolbar_mode = existing.system_toolbar_mode;
+        incoming.close_window_behavior = existing.close_window_behavior;
     }
 }
 

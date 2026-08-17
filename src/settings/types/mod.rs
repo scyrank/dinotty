@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-pub const CURRENT_SETTINGS_VERSION: u32 = 12;
+pub const CURRENT_SETTINGS_VERSION: u32 = 13;
 pub(crate) const LEGACY_UPLOAD_DIR: &str = "~/.dinotty/uploads";
 
 #[derive(Serialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -52,6 +52,29 @@ pub enum SystemToolbarMode {
     #[default]
     FollowIme,
     PersistentMobile,
+}
+
+#[derive(Serialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CloseWindowBehavior {
+    #[default]
+    Ask,
+    HideToTray,
+    Quit,
+}
+
+impl<'de> Deserialize<'de> for CloseWindowBehavior {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        Ok(match value.as_str() {
+            Some("hide_to_tray") => Self::HideToTray,
+            Some("quit") => Self::Quit,
+            _ => Self::Ask,
+        })
+    }
 }
 
 impl<'de> Deserialize<'de> for SystemToolbarMode {
@@ -172,6 +195,8 @@ pub struct Settings {
     pub windows_alt_as_cmd: bool,
     #[serde(default = "default_true")]
     pub confirm_before_close_tab: bool,
+    #[serde(default)]
+    pub close_window_behavior: CloseWindowBehavior,
     #[serde(default = "default_true")]
     pub restore_session_on_startup: bool,
     #[serde(default)]
@@ -396,6 +421,7 @@ impl Default for Settings {
             workspace_badge_mode: None,
             windows_alt_as_cmd: false,
             confirm_before_close_tab: true,
+            close_window_behavior: CloseWindowBehavior::Ask,
             restore_session_on_startup: true,
             reload_after_supervise_tabs: false,
             space_confirms_dialogs: false,

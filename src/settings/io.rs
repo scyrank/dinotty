@@ -200,6 +200,8 @@ pub(crate) fn migrate_settings(settings: &mut Settings) -> bool {
     // The optional field uses its serde default, so existing layouts need no data transform.
     // v12 adds an independent lower pinned prefix and expands both pinned limits to five.
     // Serde defaults legacy lower counts to zero while existing upper counts remain intact.
+    // v13 adds the remembered desktop window-close behavior. Missing or invalid legacy
+    // values safely default to asking every time, so no explicit data transform is needed.
     settings.settings_version = CURRENT_SETTINGS_VERSION;
     true
 }

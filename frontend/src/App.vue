@@ -229,6 +229,7 @@
       :hide-text="t('confirm.closeWindowHide')"
       :quit-text="t('confirm.closeWindowQuit')"
       :cancel-text="t('confirm.closeWindowCancel')"
+      :remember-text="t('confirm.closeWindowRemember')"
       @hide="onWindowCloseHide"
       @quit="onWindowCloseQuit"
       @cancel="onWindowCloseCancel"
@@ -415,7 +416,10 @@ import { useSshAuth } from './composables/useSshAuth'
 import { useCursorPicker } from './composables/useCursorPicker'
 import { useOverviewCallbacks } from './composables/useOverviewCallbacks'
 import { useTabPersistence } from './composables/useTabPersistence'
-import { useDesktopLifecycle } from './composables/useDesktopLifecycle'
+import {
+  resolveWindowCloseAction,
+  useDesktopLifecycle,
+} from './composables/useDesktopLifecycle'
 import { useViewportResize } from './composables/useViewportResize'
 import { useDeviceKeyboardSettings } from './composables/useDeviceKeyboardSettings'
 import type { MobileInputMode } from './composables/useSettings'
@@ -525,6 +529,7 @@ const desktopLifecycle = useDesktopLifecycle({
 
 const windowCloseConfirmVisible = ref(false)
 const trayVisibilityDialogVisible = ref(false)
+let rememberHideAfterTrayConfirmation = false
 const previewMenuOpen = ref(false)
 
 let linkJustActivated = false
@@ -2128,28 +2133,47 @@ function setupTauriWindowClose() {
     if (Date.now() - lastTabCloseShortcutAt < 500) {
       return
     }
-    windowCloseConfirmVisible.value = true
+    const action = resolveWindowCloseAction(
+      appSettings.close_window_behavior,
+      desktopLifecycle.capabilities.value.canHideToTray
+    )
+    if (action === 'hide') {
+      void onWindowCloseHide(false)
+    } else if (action === 'quit') {
+      void desktopLifecycle.requestQuit('window')
+    } else {
+      windowCloseConfirmVisible.value = true
+    }
   }).then((fn: () => void) => {
     unlistenWindowClose = fn
   })
 }
-async function onWindowCloseHide() {
+async function rememberCloseWindowBehavior(behavior: 'hide_to_tray' | 'quit') {
+  appSettings.close_window_behavior = behavior
+  await settingsStore.save()
+}
+async function onWindowCloseHide(remember: boolean) {
   windowCloseConfirmVisible.value = false
   if (desktopLifecycle.needsTrayVisibilityConfirmation()) {
+    rememberHideAfterTrayConfirmation = remember
     trayVisibilityDialogVisible.value = true
     return
   }
-  await performHideToTray()
+  if ((await performHideToTray()) && remember) {
+    await rememberCloseWindowBehavior('hide_to_tray')
+  }
 }
 async function performHideToTray() {
   try {
     await desktopLifecycle.hideToTray()
+    return true
   } catch (error) {
     const message =
       typeof error === 'object' && error && 'message' in error
         ? String((error as { message: unknown }).message)
         : String(error)
     toast.error(message)
+    return false
   }
 }
 async function onOpenSystemTraySettings() {
@@ -2166,13 +2190,19 @@ async function onOpenSystemTraySettings() {
 async function onTrayVisibilityConfirmed() {
   desktopLifecycle.confirmTrayVisibility()
   trayVisibilityDialogVisible.value = false
-  await performHideToTray()
+  const remember = rememberHideAfterTrayConfirmation
+  rememberHideAfterTrayConfirmation = false
+  if ((await performHideToTray()) && remember) {
+    await rememberCloseWindowBehavior('hide_to_tray')
+  }
 }
 function onTrayVisibilityCancel() {
+  rememberHideAfterTrayConfirmation = false
   trayVisibilityDialogVisible.value = false
 }
-function onWindowCloseQuit() {
+function onWindowCloseQuit(remember: boolean) {
   windowCloseConfirmVisible.value = false
+  if (remember) appSettings.close_window_behavior = 'quit'
   void desktopLifecycle.requestQuit('window')
 }
 function onWindowCloseCancel() {

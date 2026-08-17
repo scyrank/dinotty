@@ -16,13 +16,13 @@ pub use io::{create_settings_state, load_settings, load_token, save_settings_syn
 pub use logging::{get_log, init_logging, log_dir, log_file_path};
 pub use types::{
     default_upload_dir, ActionBottomCluster, ActionKey, ActionKeyboardConfig, AuthConfig,
-    BackgroundConfig, BellNotificationConfig, CommandBookmark, CommandCompleteConfig, CustomColors,
-    KeyBinding, KeywordRule, LogConfig, MobileInputMode, MonitorConfig, NotificationChannels,
-    NotificationConfig, NotificationHook, NotificationSounds, NotificationType, OpenApiConfig,
-    PanelPosition, PreviewConfig, RecentEntry, SavedTheme, SensitiveString, Settings,
-    SettingsState, SoundConfig, SshAuthMethod, SshProfile, SystemKeyboardConfig, SystemToolbarMode,
-    TextConfig, ThemeColors, ThemeConfig, WebBookmark, WorkspaceBadgeMode, WorkspaceBookmark,
-    CURRENT_SETTINGS_VERSION,
+    BackgroundConfig, BellNotificationConfig, CloseWindowBehavior, CommandBookmark,
+    CommandCompleteConfig, CustomColors, KeyBinding, KeywordRule, LogConfig, MobileInputMode,
+    MonitorConfig, NotificationChannels, NotificationConfig, NotificationHook, NotificationSounds,
+    NotificationType, OpenApiConfig, PanelPosition, PreviewConfig, RecentEntry, SavedTheme,
+    SensitiveString, Settings, SettingsState, SoundConfig, SshAuthMethod, SshProfile,
+    SystemKeyboardConfig, SystemToolbarMode, TextConfig, ThemeColors, ThemeConfig, WebBookmark,
+    WorkspaceBadgeMode, WorkspaceBookmark, CURRENT_SETTINGS_VERSION,
 };
 
 #[cfg(test)]

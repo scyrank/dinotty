@@ -10,7 +10,8 @@ import type { SavedTheme } from './useDeviceThemeSelection'
 export type WorkspaceBadgeMode = 'off' | 'tab' | 'icon' | 'both'
 export type MobileInputMode = 'builtin' | 'system'
 export type SystemToolbarMode = 'follow_ime' | 'persistent_mobile'
-export const SETTINGS_SCHEMA_VERSION = 12
+export type CloseWindowBehavior = 'ask' | 'hide_to_tray' | 'quit'
+export const SETTINGS_SCHEMA_VERSION = 13
 
 export interface SettingsData {
   settings_version: number
@@ -61,6 +62,7 @@ export interface SettingsData {
   keyboard_guard_mode: KeyboardGuardMode
   workspace_badge_mode: WorkspaceBadgeMode | null
   confirm_before_close_tab: boolean
+  close_window_behavior: CloseWindowBehavior
   restore_session_on_startup: boolean
   reload_after_supervise_tabs: boolean
   space_confirms_dialogs: boolean
@@ -488,6 +490,7 @@ export const settings = reactive<SettingsData>({
   keyboard_guard_mode: 'off',
   workspace_badge_mode: null,
   confirm_before_close_tab: true,
+  close_window_behavior: 'ask',
   restore_session_on_startup: true,
   reload_after_supervise_tabs: false,
   space_confirms_dialogs: false,

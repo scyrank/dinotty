@@ -19,6 +19,12 @@ describe('useSettings - confirm_before_close_tab mirror', () => {
     expect(settings.confirm_before_close_tab).toBe(true)
   })
 
+  it('defaults close_window_behavior to ask', () => {
+    const _field: keyof SettingsData = 'close_window_behavior'
+    expect(_field).toBe('close_window_behavior')
+    expect(settings.close_window_behavior).toBe('ask')
+  })
+
   it('defaults space_confirms_dialogs to false', () => {
     // The reactive settings object should have space_confirms_dialogs
     // set to false out of the box, matching the backend serde default.

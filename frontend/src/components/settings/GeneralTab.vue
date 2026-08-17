@@ -495,6 +495,25 @@
 
       <section class="settings-section">
         <h3>{{ t('settings.behavior') }}</h3>
+        <template v-if="isTauri()">
+          <div class="settings-row">
+            <label>{{ t('settings.closeWindowBehavior') }}</label>
+            <select
+              v-model="settings.close_window_behavior"
+              data-setting="close-window-behavior"
+              @change="saveSettings()"
+            >
+              <option value="ask">{{ t('settings.closeWindowBehaviorAsk') }}</option>
+              <option value="hide_to_tray">
+                {{ t('settings.closeWindowBehaviorHide') }}
+              </option>
+              <option value="quit">{{ t('settings.closeWindowBehaviorQuit') }}</option>
+            </select>
+          </div>
+          <p class="settings-hint" data-hint="close-window-behavior">
+            {{ t('settings.closeWindowBehaviorHint') }}
+          </p>
+        </template>
         <div class="settings-row">
           <label>{{ t('settings.confirmBeforeCloseTab') }}</label>
           <label class="toggle">

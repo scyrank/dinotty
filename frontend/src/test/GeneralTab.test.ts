@@ -53,6 +53,7 @@ describe('GeneralTab - confirm-before-close-tab toggle', () => {
   beforeEach(async () => {
     // Reset the shared reactive settings to the documented default.
     settings.confirm_before_close_tab = true
+    settings.close_window_behavior = 'ask'
     settings.space_confirms_dialogs = false
     settings.workspace_badge_mode = null
     settings.upload_dir = ''
@@ -131,6 +132,29 @@ describe('GeneralTab - confirm-before-close-tab toggle', () => {
     const hint = wrapper.find('p.settings-hint[data-hint="confirm-before-close-tab"]')
     expect(hint.exists()).toBe(true)
     expect(hint.text().trim().length).toBeGreaterThan(0)
+  })
+
+  it('selects and persists the remembered window-close behavior', async () => {
+    generalMocks.isTauri = true
+    const wrapper = mount(GeneralTab)
+    const select = wrapper.find<HTMLSelectElement>('[data-setting="close-window-behavior"]')
+
+    expect(select.exists()).toBe(true)
+    expect(select.element.value).toBe('ask')
+    await select.setValue('hide_to_tray')
+    await flush()
+
+    expect(settings.close_window_behavior).toBe('hide_to_tray')
+    const putCall = generalMocks.authFetch.mock.calls.find(
+      ([url, init]) => url === '/api/settings' && init?.method === 'PUT'
+    )
+    expect(putCall).toBeDefined()
+    expect(JSON.parse(String(putCall?.[1]?.body)).close_window_behavior).toBe('hide_to_tray')
+  })
+
+  it('does not show desktop window-close behavior in the web client', () => {
+    const wrapper = mount(GeneralTab)
+    expect(wrapper.find('[data-setting="close-window-behavior"]').exists()).toBe(false)
   })
 
   it('toggling the checkbox updates settings.confirm_before_close_tab', async () => {

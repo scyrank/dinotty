@@ -748,6 +748,12 @@ export const messages: Record<Locale, Record<string, string>> = {
     'settings.confirmBeforeCloseTab': 'Confirm before closing terminal tab',
     'settings.confirmBeforeCloseTabHint':
       'Show a confirmation dialog before closing a terminal tab',
+    'settings.closeWindowBehavior': 'When closing the window',
+    'settings.closeWindowBehaviorAsk': 'Ask every time',
+    'settings.closeWindowBehaviorHide': 'Hide to system tray',
+    'settings.closeWindowBehaviorQuit': 'Quit Dinotty',
+    'settings.closeWindowBehaviorHint':
+      'If the system tray is unavailable, Dinotty will ask before closing instead.',
     'settings.restoreSessionOnStartup': 'Restore tabs on startup',
     'settings.restoreSessionOnStartupHint':
       'Reopen the tabs and panes from your last session when dinotty starts',
@@ -798,6 +804,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'confirm.closeWindowHide': 'Hide to system tray',
     'confirm.closeWindowQuit': 'Quit Dinotty',
     'confirm.closeWindowCancel': 'Cancel',
+    'confirm.closeWindowRemember': 'Remember my choice and do not ask again',
     'traySetup.title': 'Keep Dinotty accessible',
     'traySetup.message':
       'Windows may hide the Dinotty system tray icon and may not show a ^ overflow button. Before hiding this window, enable Dinotty under Other system tray icons.',
@@ -1675,6 +1682,11 @@ export const messages: Record<Locale, Record<string, string>> = {
     'settings.about.updateToast': '发现新版本 {version}，点击查看详情',
     'settings.confirmBeforeCloseTab': '关闭终端 tab 前显示确认',
     'settings.confirmBeforeCloseTabHint': '关闭终端 tab 前弹出确认对话框',
+    'settings.closeWindowBehavior': '关闭窗口时',
+    'settings.closeWindowBehaviorAsk': '每次询问',
+    'settings.closeWindowBehaviorHide': '隐藏到系统托盘',
+    'settings.closeWindowBehaviorQuit': '退出 Dinotty',
+    'settings.closeWindowBehaviorHint': '系统托盘不可用时，Dinotty 仍会在关闭前询问。',
     'settings.restoreSessionOnStartup': '启动时恢复 tabs',
     'settings.restoreSessionOnStartupHint': 'dinotty 启动时重新打开上次会话的 tabs 和 panes',
     'settings.spaceConfirmsDialogs': '使用空格键确认对话框',
@@ -1716,6 +1728,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'confirm.closeWindowHide': '隐藏到系统托盘',
     'confirm.closeWindowQuit': '退出 Dinotty',
     'confirm.closeWindowCancel': '取消',
+    'confirm.closeWindowRemember': '记住我的选择，不再提醒',
     'traySetup.title': '让 Dinotty 保持可访问',
     'traySetup.message':
       'Windows 可能隐藏 Dinotty 的系统托盘图标，并且当前可能没有 ^ 隐藏图标入口。请在“其他系统托盘图标”中开启 Dinotty，然后再隐藏窗口。',

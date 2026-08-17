@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { isTauri, tauriInvoke } from './useTransport'
+import type { CloseWindowBehavior } from './useSettings'
 
 export interface DesktopCapabilities {
   platform: 'windows' | 'macos' | 'linux' | 'unknown'
@@ -27,6 +28,17 @@ const unavailable: DesktopCapabilities = {
 }
 
 export const TRAY_VISIBILITY_CONFIRM_KEY = 'dinotty_tray_visibility_confirmed_v1'
+
+export type WindowCloseAction = 'prompt' | 'hide' | 'quit'
+
+export function resolveWindowCloseAction(
+  behavior: CloseWindowBehavior,
+  canHideToTray: boolean
+): WindowCloseAction {
+  if (behavior === 'quit') return 'quit'
+  if (behavior === 'hide_to_tray' && canHideToTray) return 'hide'
+  return 'prompt'
+}
 
 export function useDesktopLifecycle(options: DesktopLifecycleOptions) {
   const capabilities = ref<DesktopCapabilities>({ ...unavailable })

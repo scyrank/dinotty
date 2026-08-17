@@ -14,6 +14,10 @@
           </button>
         </header>
         <p>{{ message }}</p>
+        <label class="close-remember">
+          <input v-model="rememberChoice" type="checkbox" />
+          <span>{{ rememberText }}</span>
+        </label>
         <footer>
           <button type="button" class="close-action cancel" @click="choose('cancel')">
             {{ cancelText }}
@@ -46,23 +50,28 @@ const props = defineProps<{
   hideText: string
   quitText: string
   cancelText: string
+  rememberText: string
 }>()
 
-const emit = defineEmits<{ hide: []; quit: []; cancel: [] }>()
+const emit = defineEmits<{ hide: [remember: boolean]; quit: [remember: boolean]; cancel: [] }>()
 const actionTaken = ref(false)
+const rememberChoice = ref(false)
 
 watch(
   () => props.visible,
   (visible) => {
-    if (visible) actionTaken.value = false
+    if (visible) {
+      actionTaken.value = false
+      rememberChoice.value = false
+    }
   }
 )
 
 function choose(action: 'hide' | 'quit' | 'cancel') {
   if (actionTaken.value) return
   actionTaken.value = true
-  if (action === 'hide') emit('hide')
-  else if (action === 'quit') emit('quit')
+  if (action === 'hide') emit('hide', rememberChoice.value)
+  else if (action === 'quit') emit('quit', rememberChoice.value)
   else emit('cancel')
 }
 </script>
@@ -105,6 +114,21 @@ p {
   color: var(--fg);
   font-size: 13px;
   line-height: 1.5;
+}
+
+.close-remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 16px 6px;
+  color: var(--fg-muted);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.close-remember input {
+  margin: 0;
 }
 
 footer {
