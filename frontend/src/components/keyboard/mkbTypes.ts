@@ -1,4 +1,4 @@
-import type { KeyboardModifierFamily, KeyboardSpecialId } from '../../utils/keyboardSpecialKeys'
+import type { KeyboardModifierFamily, KeyboardSpecialId } from '@/utils/keyboardSpecialKeys'
 
 export interface KeyDef {
   l: string // label

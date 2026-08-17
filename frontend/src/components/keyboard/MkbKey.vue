@@ -24,8 +24,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, type CSSProperties } from 'vue'
 import type { AppActionOptions, KeyDef, ModState } from './mkbTypes'
-import { settings } from '../../composables/useSettings'
-import { parseKeyboardSpecial } from '../../utils/keyboardSpecialKeys'
+import { settings } from '@/composables/useSettings'
+import { parseKeyboardSpecial } from '@/utils/keyboardSpecialKeys'
 
 let audioCtx: AudioContext | null = null
 
