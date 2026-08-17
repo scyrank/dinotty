@@ -63,14 +63,16 @@ describe('App.vue - system keyboard dismissal', () => {
     fallbackInput.remove()
   })
 
-  it('blurs the active element when the MobileKeyboard stub emits dismiss', async () => {
+  it('blurs the active element when the MobileKeyboard ctx emits dismiss', async () => {
     const wrapper = await mountWithTabs()
     const input = document.createElement('input')
     document.body.appendChild(input)
     input.focus()
     const blur = vi.spyOn(input, 'blur')
 
-    await wrapper.findComponent(MobileKeyboardStub).vm.$emit('dismiss')
+    const keyboard = wrapper.findComponent(MobileKeyboardStub)
+    const ctx = keyboard.props('ctx') as { events: { emit(event: string, data: unknown): void } }
+    ctx.events.emit('dismiss', undefined)
 
     expect(blur).toHaveBeenCalledOnce()
     input.remove()

@@ -269,14 +269,7 @@
 
     <MobileKeyboard
       v-else-if="effectiveMobileInputMode === 'builtin'"
-      :visible="kbVisible && hasActiveTerminalLeaf"
-      :pane-id="activeTerminalLeaf?.paneId ?? ''"
-      :get-send-fn="getSendFn"
-      @update:visible="onBuiltinKeyboardVisibilityChange"
-      @bookmarks="bookmarksRef?.open()"
-      @app-action="dispatchAppAction"
-      @dismiss="onKeyboardDismiss"
-      @typing-change="(v: boolean) => (kbTyping = v)"
+      :ctx="keyboardCtx"
     />
 
     <SystemKeyboardToolbar
@@ -569,7 +562,7 @@ const hasActiveTerminalLeaf = computed(() => activeTerminalLeaf.value !== null)
 
 // ── KeyboardContext (keyboard-plugin-design.md §4.3, Phase 1b-iv) ──────────
 // Handed to plugin-contributed keyboard providers. The in-core MobileKeyboard
-// keeps its legacy prop surface and renders when no plugin component plays.
+// (single-sourced, ctx-based) renders when no plugin component plays.
 const activeKeyboardProvider = computed(() => {
   const providerId = resolveActiveKeyboardProvider(appSettings.mobile_input_mode)
   return keyboardProviders.value.get(providerId)

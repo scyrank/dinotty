@@ -54,7 +54,10 @@ export function createKeyboardContext(deps: KeyboardHostDeps): KeyboardContext {
     offsetTop: number
     baseline: number
   }) => void) {
-    const vv = window.visualViewport!
+    // jsdom and non-visualViewport embeddings have no vv; no-op so callers can
+    // subscribe unconditionally.
+    const vv = window.visualViewport
+    if (!vv) return { dispose() {} }
     // resize + scroll only, deliberately no orientationchange: rotation also
     // fires a vv resize, and delivering the callback at orientationchange time
     // would run keyboard viewport logic before the keyboard's own rotation

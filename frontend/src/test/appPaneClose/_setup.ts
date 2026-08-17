@@ -395,7 +395,9 @@ export const ConfirmCloseDialogStub = defineComponent({
 
 export const MobileKeyboardStub = defineComponent({
   name: 'MobileKeyboard',
-  emits: ['app-action', 'dismiss'],
+  props: {
+    ctx: { type: Object, required: true },
+  },
   setup() {
     return () => h('div', { class: 'mobile-keyboard-stub' })
   },
