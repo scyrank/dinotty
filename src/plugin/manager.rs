@@ -373,25 +373,48 @@ impl PluginManager {
     }
 
     /// Ensure the bundled seed plugin (builtin-keyboard) is installed and up to
-    /// date. No-op when no seed archive is embedded (dev checkout without a
-    /// packed seed) or when the installed version is not older than the seed.
+    /// date. No-op when no seed directory is embedded (dev checkout without a
+    /// built seed) or when the installed version is not older than the seed.
     ///
     /// # Errors
-    /// Returns `Err` if the seed archive is invalid or cannot be installed.
+    /// Returns `Err` if the seed directory is invalid or cannot be installed.
     pub async fn ensure_seed(&self) -> Result<(), String> {
-        let Some(bytes) = crate::seed::SeedAssets::get("builtin-keyboard.tar.gz") else {
-            return Ok(());
-        };
-        self.ensure_seed_archive(bytes.data.as_ref()).await
-    }
-
-    pub(super) async fn ensure_seed_archive(&self, archive: &[u8]) -> Result<(), String> {
         std::fs::create_dir_all(&self.plugin_dir).map_err(|e| e.to_string())?;
         let tmp = self.staging_dir("seed-")?;
-        extract_tar_gz(archive, tmp.path())?;
+        let staged = tmp.path();
 
+        let mut found = false;
+        for file in crate::seed::SeedAssets::iter() {
+            let Some(rest) = file.strip_prefix("builtin-keyboard/") else {
+                continue;
+            };
+            found = true;
+            let path = staged.join(rest);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            let content = crate::seed::SeedAssets::get(&file)
+                .ok_or_else(|| format!("failed to read embedded seed file: {file}"))?;
+            std::fs::write(&path, content.data).map_err(|e| e.to_string())?;
+        }
+        if !found {
+            return Ok(());
+        }
+        self.install_seed_staged(staged).await
+    }
+
+    /// Test helper: stage the contents of `src` and install it as the seed.
+    #[cfg(test)]
+    pub(super) async fn ensure_seed_dir(&self, src: &std::path::Path) -> Result<(), String> {
+        std::fs::create_dir_all(&self.plugin_dir).map_err(|e| e.to_string())?;
+        let tmp = self.staging_dir("seed-")?;
+        copy_plugin_dir(src, tmp.path())?;
+        self.install_seed_staged(tmp.path()).await
+    }
+
+    pub(super) async fn install_seed_staged(&self, staged: &std::path::Path) -> Result<(), String> {
         let manifest: PluginManifest = serde_json::from_str(
-            &std::fs::read_to_string(tmp.path().join("plugin.json"))
+            &std::fs::read_to_string(staged.join("plugin.json"))
                 .map_err(|_| "plugin.json not found in seed".to_string())?,
         )
         .map_err(|e| format!("invalid seed plugin.json: {e}"))?;
@@ -407,15 +430,15 @@ impl PluginManager {
                 return Ok(()); // already current; the update channel owns the plugin
             }
             // Older installed copy: replace in place with the seed contents.
-            self.replace_with_staged(&manifest.id, tmp.path())?;
+            self.replace_with_staged(&manifest.id, staged)?;
         } else if platform_fs::path_exists_or_symlink(&self.plugin_dir.join(&manifest.id)) {
             // Directory present but unregistered (corrupt manifest / failed scan):
             // swap it so the next scan registers a healthy plugin.
             let dest = self.plugin_dir.join(&manifest.id);
             platform_fs::remove_plugin_path(&dest)?;
-            std::fs::rename(tmp.path(), &dest).map_err(|e| e.to_string())?;
+            std::fs::rename(staged, &dest).map_err(|e| e.to_string())?;
         } else {
-            std::fs::rename(tmp.path(), self.plugin_dir.join(&manifest.id))
+            std::fs::rename(staged, self.plugin_dir.join(&manifest.id))
                 .map_err(|e| e.to_string())?;
         }
 

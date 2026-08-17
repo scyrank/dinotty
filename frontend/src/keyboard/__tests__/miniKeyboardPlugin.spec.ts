@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeAll, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { copyFileSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { resolve as resolvePath } from 'node:path'
 import { nextTick, ref, type Component } from 'vue'
 import * as hostVue from 'vue'
@@ -30,6 +30,7 @@ const BUNDLE_DIR = resolvePath(
   '../../../../../dinotty-plugins/mini-keyboard',
 )
 const FIXTURE = './__plugin_bundles__/mini-keyboard/main.js'
+const bundleAvailable = existsSync(resolvePath(BUNDLE_DIR, 'main.js'))
 
 type BundleModule = {
   activate: () => {
@@ -88,7 +89,9 @@ async function loadBundle(): Promise<BundleModule> {
   return (await import(FIXTURE)) as BundleModule
 }
 
-describe('mini-keyboard plugin bundle', () => {
+const bundleDescribe = bundleAvailable ? describe : describe.skip
+
+bundleDescribe('mini-keyboard plugin bundle', () => {
   it('contributes the keyboard provider with its own id and a fixed band', async () => {
     const mod = await loadBundle()
     const { keyboard } = mod.activate()
@@ -202,3 +205,10 @@ describe('mini-keyboard plugin bundle', () => {
     wrapper.unmount()
   })
 })
+
+if (!bundleAvailable) {
+  it.skip(
+    'mini-keyboard bundle tests (sibling dinotty-plugins/mini-keyboard checkout missing)',
+    () => {},
+  )
+}

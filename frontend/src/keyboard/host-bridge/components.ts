@@ -17,3 +17,4 @@ if (!host) {
 }
 
 export const FilePickerModal = host.FilePickerModal
+export default FilePickerModal
