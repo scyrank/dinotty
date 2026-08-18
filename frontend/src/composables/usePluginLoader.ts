@@ -701,7 +701,9 @@ async function loadPlugin(id: string): Promise<LoadedPlugin> {
     mod = await dynamicImport(blobUrl)
   } catch (e: any) {
     URL.revokeObjectURL(blobUrl)
-    throw new Error(`Plugin ${id}: failed to load ${jsUrl}: ${e.message}`, { cause: e })
+    throw Object.assign(new Error(`Plugin ${id}: failed to load ${jsUrl}: ${e.message}`), {
+      cause: e,
+    })
   } finally {
     URL.revokeObjectURL(blobUrl)
   }
@@ -761,7 +763,7 @@ async function loadPlugin(id: string): Promise<LoadedPlugin> {
     for (const [qpId, entry] of pluginQuickPicks) {
       if (entry.pluginId === id) pluginQuickPicks.delete(qpId)
     }
-    throw new Error(`Plugin ${id}: activate() threw: ${e.message}`, { cause: e })
+    throw Object.assign(new Error(`Plugin ${id}: activate() threw: ${e.message}`), { cause: e })
   }
 
   // 5. Register monitor series contributions
