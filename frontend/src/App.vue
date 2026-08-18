@@ -75,10 +75,7 @@
               type="button"
               class="preview-menu-item"
               role="menuitem"
-              @click="
-                previewMenuOpen = false
-                openOrFocusPreview('files')
-              "
+              @click="((previewMenuOpen = false), openOrFocusPreview('files'))"
             >
               <FolderTree :size="14" />
               <span>{{ t('previewPanel.switchFiles') }}</span>
@@ -87,10 +84,7 @@
               type="button"
               class="preview-menu-item"
               role="menuitem"
-              @click="
-                previewMenuOpen = false
-                openOrFocusPreview('web')
-              "
+              @click="((previewMenuOpen = false), openOrFocusPreview('web'))"
             >
               <Globe :size="14" />
               <span>{{ t('previewPanel.switchWeb') }}</span>
