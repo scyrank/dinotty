@@ -16,9 +16,7 @@ const host = (
   }
 ).__DINOTTY_HOST__?.useI18n
 if (!host) {
-  throw new Error(
-    'host bridge missing: window.__DINOTTY_HOST__.useI18n not assigned',
-  )
+  throw new Error('host bridge missing: window.__DINOTTY_HOST__.useI18n not assigned')
 }
 
 export const useI18n = host.useI18n

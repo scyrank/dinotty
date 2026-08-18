@@ -76,7 +76,6 @@ describe('useViewportResize system keyboard lifecycle', () => {
           activePaneId: ref(null),
           tabs: ref<Tab[]>([]),
           termRefs: {},
-          terminalImeFocused: ref(true),
           builtinTextareaFocused,
           onSystemKeyboardClose,
         })
@@ -107,7 +106,6 @@ describe('useViewportResize system keyboard lifecycle', () => {
           activePaneId: ref('tab-1'),
           tabs: ref<Tab[]>([terminalTab]),
           termRefs: { 'pane-1': { fit } },
-          terminalImeFocused: ref(false),
           builtinTextareaFocused,
         })
         return () => h('div')
@@ -132,12 +130,10 @@ describe('useViewportResize system keyboard lifecycle', () => {
 
     window.dispatchEvent(new Event(hideEvent))
     expect(state.systemKeyboardOpen.value).toBe(false)
-    expect(state.toolbarBottom.value).toBe(0)
 
     window.dispatchEvent(new Event(showEvent))
     expect(state.systemKeyboardOpen.value).toBe(true)
     expect(state.systemKeyboardHeight.value).toBe(300)
-    expect(state.toolbarBottom.value).toBe(300)
   })
 
   it('preserves detection when the browser resizes the layout viewport for the keyboard', () => {
@@ -171,7 +167,6 @@ describe('useViewportResize system keyboard lifecycle', () => {
     expect(state.isLandscape.value).toBe(true)
     expect(state.systemKeyboardOpen.value).toBe(true)
     expect(state.systemKeyboardHeight.value).toBe(250)
-    expect(state.toolbarBottom.value).toBe(250)
   })
 
   it('retains the known-open state across rotation when the layout viewport is resized', async () => {
@@ -205,7 +200,6 @@ describe('useViewportResize system keyboard lifecycle', () => {
 
     expect(onSystemKeyboardClose).toHaveBeenCalledOnce()
     expect(state.systemKeyboardOpen.value).toBe(false)
-    expect(state.toolbarBottom.value).toBe(0)
   })
 
   it('retains the close edge across a transient reset', () => {

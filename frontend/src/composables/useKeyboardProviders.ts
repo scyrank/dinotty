@@ -60,7 +60,7 @@ export function useKeyboardProviders() {
     id: string,
     kind: KeyboardProviderKind,
     component: Component,
-    desiredHeight?: number | 'auto',
+    desiredHeight?: number | 'auto'
   ) {
     if (id === SYSTEM_KEYBOARD_ID) return
     const existing = providers.value.get(id)
@@ -71,11 +71,7 @@ export function useKeyboardProviders() {
   function unregisterComponent(id: string) {
     const existing = providers.value.get(id)
     if (!existing) return
-    const {
-      component: _component,
-      desiredHeight: _desiredHeight,
-      ...base
-    } = existing
+    const { component: _component, desiredHeight: _desiredHeight, ...base } = existing
     if (base.kind === 'host') providers.value.set(id, base)
     else providers.value.delete(id)
   }

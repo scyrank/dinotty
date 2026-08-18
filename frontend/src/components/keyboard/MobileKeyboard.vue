@@ -1,7 +1,7 @@
 <template>
-  <div ref="barRef" id="mobile-kb" v-show="visible">
+  <div v-show="visible" id="mobile-kb" ref="barRef">
     <!-- Default mode: suggestion bar on top -->
-    <div class="mkb-kb-bar" v-show="kbMode === 'default'">
+    <div v-show="kbMode === 'default'" class="mkb-kb-bar">
       <SuggestionBar
         :suggestions="suggestions"
         @select="onSuggestionSelect"
@@ -19,16 +19,16 @@
     </div>
 
     <!-- Action mode: text input on top -->
-    <div class="mkb-kb-bar" v-show="kbMode === 'action'">
+    <div v-show="kbMode === 'action'" class="mkb-kb-bar">
       <div class="mkb-text-input-glow" :class="{ 'mkb-glow-active': !textInputFocused }">
         <textarea
           ref="textInputRef"
+          v-model="textInput"
           class="mkb-text-input"
           :class="{ 'mkb-text-input-focused': textInputFocused }"
           :placeholder="t('mobileKb.actionPlaceholder')"
           enterkeyhint="send"
           rows="1"
-          v-model="textInput"
           @focus="onTextInputFocus"
           @blur="onTextInputBlur"
           @input="resizeTextInput"
@@ -49,7 +49,7 @@
     </div>
 
     <!-- Toolbar (visible when textarea focused) -->
-    <div class="mkb-toolbar" v-show="textInputFocused">
+    <div v-show="textInputFocused" class="mkb-toolbar">
       <button
         type="button"
         class="mkb-tool-btn"
@@ -153,7 +153,7 @@
     </div>
 
     <!-- Swipeable panels container -->
-    <div ref="swipeContainerRef" class="mkb-swipe-container" v-show="!textInputFocused">
+    <div v-show="!textInputFocused" ref="swipeContainerRef" class="mkb-swipe-container">
       <div class="mkb-swipe-track" :style="swipeTrackStyle">
         <!-- Main keyboard panel -->
         <div id="mkb-main-panel">
@@ -177,10 +177,10 @@
           <MkbRow
             :keys="row3"
             :state="modState"
+            stagger="asdf"
             @key-press="onKeyPress"
             @app-action="onAppAction"
             @special="onSpecial"
-            stagger="asdf"
           />
           <!-- Rows 4-5 with arrow cluster -->
           <div class="mkb-rows-45">
@@ -286,8 +286,8 @@
 
     <!-- Swipe indicator dots (outside overflow-hidden container) -->
     <div
-      class="mkb-swipe-dots"
       v-show="!textInputFocused"
+      class="mkb-swipe-dots"
       @touchstart.passive="onSwipeStart"
       @touchmove.passive="onSwipeMove"
       @touchend="onSwipeEnd"
@@ -905,7 +905,11 @@ watch(visible, (v) => {
 })
 
 watch(globalSelectedPath, () => {
-  if (globalSelectedPath.value && visible.value && !hasCollapseGuard(settings.keyboard_guard_mode)) {
+  if (
+    globalSelectedPath.value &&
+    visible.value &&
+    !hasCollapseGuard(settings.keyboard_guard_mode)
+  ) {
     props.ctx.visible.value = false
   }
 })

@@ -11,9 +11,7 @@ const host = (
   }
 ).__DINOTTY_HOST__?.useFileNavigation
 if (!host) {
-  throw new Error(
-    'host bridge missing: window.__DINOTTY_HOST__.useFileNavigation not assigned',
-  )
+  throw new Error('host bridge missing: window.__DINOTTY_HOST__.useFileNavigation not assigned')
 }
 
 export const useSelectedPath = host.useSelectedPath

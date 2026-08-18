@@ -25,10 +25,7 @@ vi.mock('../../composables/useEventBridge', () => ({
 // vite-node refuses to load files from the sibling dinotty-plugins checkout,
 // so beforeAll copies the bundle bytes into __plugin_bundles__/ (gitignored).
 
-const BUNDLE_DIR = resolvePath(
-  __dirname,
-  '../../../../../dinotty-plugins/mini-keyboard',
-)
+const BUNDLE_DIR = resolvePath(__dirname, '../../../../../dinotty-plugins/mini-keyboard')
 const FIXTURE = './__plugin_bundles__/mini-keyboard/main.js'
 const bundleAvailable = existsSync(resolvePath(BUNDLE_DIR, 'main.js'))
 
@@ -103,7 +100,7 @@ bundleDescribe('mini-keyboard plugin bundle', () => {
   it('contains no bare module imports', () => {
     const src = readFileSync(
       resolvePath(__dirname, '__plugin_bundles__/mini-keyboard/main.js'),
-      'utf8',
+      'utf8'
     )
     const bare = [...src.matchAll(/from\s*["']([^"']+)["']/g)]
       .map((m) => m[1])
@@ -207,8 +204,5 @@ bundleDescribe('mini-keyboard plugin bundle', () => {
 })
 
 if (!bundleAvailable) {
-  it.skip(
-    'mini-keyboard bundle tests (sibling dinotty-plugins/mini-keyboard checkout missing)',
-    () => {},
-  )
+  it.skip('mini-keyboard bundle tests (sibling dinotty-plugins/mini-keyboard checkout missing)', () => {})
 }

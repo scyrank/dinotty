@@ -18,7 +18,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-pub const CURRENT_SETTINGS_VERSION: u32 = 12;
+pub const CURRENT_SETTINGS_VERSION: u32 = 13;
 pub(crate) const LEGACY_UPLOAD_DIR: &str = "~/.dinotty/uploads";
 
 #[derive(Serialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -184,6 +184,10 @@ pub struct Settings {
     pub mobile_input_mode: Option<MobileInputMode>,
     #[serde(default)]
     pub keyboard_guard_mode: KeyboardGuardMode,
+    /// Synchronized overlap for the mobile IME toolbar. `None` means no v13
+    /// client has initialized the value yet; `Some(0)` is an intentional zero.
+    #[serde(default)]
+    pub ime_keyboard_overlap_px: Option<u32>,
     // Legacy v6 input retained only so v7 migration can deserialize it.
     #[serde(default, deserialize_with = "tolerant_legacy_bool", skip_serializing)]
     pub keyboard_keep_on_scroll: bool,
@@ -414,6 +418,7 @@ impl Default for Settings {
             show_virtual_keyboard: false,
             mobile_input_mode: None,
             keyboard_guard_mode: KeyboardGuardMode::default(),
+            ime_keyboard_overlap_px: None,
             keyboard_keep_on_scroll: false,
             show_workspace_badge_on_tab: None,
             workspace_badge_mode: None,

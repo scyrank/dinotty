@@ -31,11 +31,11 @@ export function makeMobileKeyboardCtx(
   options: MakeMobileKeyboardCtxOptions = {}
 ): MobileKeyboardCtxHarness {
   const visible =
-    typeof options.visible === 'boolean' ? ref(options.visible) : options.visible ?? ref(false)
+    typeof options.visible === 'boolean' ? ref(options.visible) : (options.visible ?? ref(false))
   const activePaneId =
     typeof options.activePaneId === 'string' || options.activePaneId === null
       ? ref<string | null>(options.activePaneId)
-      : options.activePaneId ?? ref<string | null>('p1')
+      : (options.activePaneId ?? ref<string | null>('p1'))
   const onHostEvent =
     options.onHostEvent ??
     vi.fn((event: string, data: unknown) => {
@@ -53,7 +53,7 @@ export function makeMobileKeyboardCtx(
     nativeImeOpen:
       typeof options.nativeImeOpen === 'boolean'
         ? ref(options.nativeImeOpen)
-        : options.nativeImeOpen ?? ref(false),
+        : (options.nativeImeOpen ?? ref(false)),
     setNativeImeOpen: options.setNativeImeOpen ?? vi.fn(),
     onHostEvent,
   })

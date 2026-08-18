@@ -26,10 +26,7 @@ export interface KeyboardHostDeps {
   sendToPane(paneId: string, data: string): Promise<void>
   nativeImeOpen: Ref<boolean>
   setNativeImeOpen(open: boolean): void
-  onHostEvent<K extends keyof KeyboardHostEventMap>(
-    event: K,
-    data: KeyboardHostEventMap[K],
-  ): void
+  onHostEvent<K extends keyof KeyboardHostEventMap>(event: K, data: KeyboardHostEventMap[K]): void
 }
 
 export function createKeyboardContext(deps: KeyboardHostDeps): KeyboardContext {
@@ -49,11 +46,9 @@ export function createKeyboardContext(deps: KeyboardHostDeps): KeyboardContext {
     document.documentElement.style.setProperty('--mkb-height', `${h}px`)
   }
 
-  function onViewportResize(cb: (info: {
-    height: number
-    offsetTop: number
-    baseline: number
-  }) => void) {
+  function onViewportResize(
+    cb: (info: { height: number; offsetTop: number; baseline: number }) => void
+  ) {
     // jsdom and non-visualViewport embeddings have no vv; no-op so callers can
     // subscribe unconditionally.
     const vv = window.visualViewport
@@ -79,7 +74,7 @@ export function createKeyboardContext(deps: KeyboardHostDeps): KeyboardContext {
     const stop = watch(
       () => settings,
       (s) => cb(s as unknown as Record<string, any>),
-      { deep: true },
+      { deep: true }
     )
     return { dispose: () => stop() }
   }
@@ -114,12 +109,15 @@ export function createKeyboardContext(deps: KeyboardHostDeps): KeyboardContext {
       },
       on<K extends keyof KeyboardIncomingEventMap>(
         event: K,
-        cb: (data: KeyboardIncomingEventMap[K]) => void,
+        cb: (data: KeyboardIncomingEventMap[K]) => void
       ) {
         if (event === 'modifiers-consumed') {
           const handler = (e: Event) => {
             const detail = (
-              e as CustomEvent<{ paneId?: string; modifiers?: KeyboardIncomingEventMap['modifiers-consumed']['modifiers'] }>
+              e as CustomEvent<{
+                paneId?: string
+                modifiers?: KeyboardIncomingEventMap['modifiers-consumed']['modifiers']
+              }>
             ).detail
             cb({
               paneId: detail?.paneId ?? '',
@@ -128,8 +126,7 @@ export function createKeyboardContext(deps: KeyboardHostDeps): KeyboardContext {
           }
           window.addEventListener('dinotty-mobile-modifiers-consumed', handler)
           return {
-            dispose: () =>
-              window.removeEventListener('dinotty-mobile-modifiers-consumed', handler),
+            dispose: () => window.removeEventListener('dinotty-mobile-modifiers-consumed', handler),
           }
         }
         return { dispose() {} }
@@ -141,7 +138,8 @@ export function createKeyboardContext(deps: KeyboardHostDeps): KeyboardContext {
 
     history: {
       suggestions: history.suggestions,
-      fetchSuggestions: (prefix?: string, limit?: number) => history.fetchSuggestions(prefix, limit),
+      fetchSuggestions: (prefix?: string, limit?: number) =>
+        history.fetchSuggestions(prefix, limit),
       fetchDebounced: (prefix?: string) => history.fetchDebounced(prefix),
       deleteSuggestion: (command: string) => history.deleteSuggestion(command),
     },

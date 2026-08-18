@@ -13,9 +13,7 @@ const host = (
   }
 ).__DINOTTY_HOST__?.useUpload
 if (!host) {
-  throw new Error(
-    'host bridge missing: window.__DINOTTY_HOST__.useUpload not assigned',
-  )
+  throw new Error('host bridge missing: window.__DINOTTY_HOST__.useUpload not assigned')
 }
 
 export const useUpload = host.useUpload

@@ -1,9 +1,5 @@
 import { nextTick, onBeforeUnmount, ref, type Ref } from 'vue'
-import {
-  escapeForDisplay,
-  keyEventToLabel,
-  keyEventToSequence,
-} from './useKeySequenceUtils'
+import { escapeForDisplay, keyEventToLabel, keyEventToSequence } from './useKeySequenceUtils'
 
 /**
  * "录制按键" 交互：把用户按下的物理键序列写进编辑中的快捷键 sendRaw。

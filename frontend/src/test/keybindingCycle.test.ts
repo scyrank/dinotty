@@ -1,11 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { settings } from '../composables/useSettings'
 import { defs, useKeybindings } from '../composables/useKeybindings'
-import {
-  APP_ACTIONS,
-  getAppAction,
-  getTerminalSequenceAppAction,
-} from '../utils/appActionCatalog'
+import { APP_ACTIONS, getAppAction, getTerminalSequenceAppAction } from '../utils/appActionCatalog'
 import { canonicalizeSystemKeyboard } from '../utils/systemKeyboardLayout'
 import { handleTerminalShortcutKeydown } from '../composables/useTerminal'
 

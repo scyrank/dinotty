@@ -1,7 +1,4 @@
-import {
-  terminalKeyBindingDefs,
-  useKeybindings,
-} from '../composables/useKeybindings'
+import { terminalKeyBindingDefs, useKeybindings } from '../composables/useKeybindings'
 import { trailingPathDeleteLen } from './shell'
 import { terminalKeybindingMatches } from './terminalInputCore'
 

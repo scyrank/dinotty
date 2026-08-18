@@ -17,7 +17,7 @@ const source = readFileSync(join(process.cwd(), 'src/App.vue'), 'utf8')
 describe('App.vue keyboard render contract (Phase 3)', () => {
   it('gates the plugin component slot on the resolved provider component', () => {
     expect(source).toMatch(
-      /<component\s+ref="keyboardHostRef"\s+:is="keyboardProviderComponent"\s+v-if="keyboardProviderComponent"\s+:ctx="keyboardCtx"\s*\/>/
+      /<component\s+:is="keyboardProviderComponent"\s+v-if="keyboardProviderComponent"\s+ref="keyboardHostRef"\s+:ctx="keyboardCtx"\s*\/>/
     )
   })
 

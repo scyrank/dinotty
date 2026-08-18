@@ -19,9 +19,7 @@ const host = (
   }
 ).__DINOTTY_HOST__?.toast
 if (!host) {
-  throw new Error(
-    'host bridge missing: window.__DINOTTY_HOST__.toast not assigned',
-  )
+  throw new Error('host bridge missing: window.__DINOTTY_HOST__.toast not assigned')
 }
 
 export const useToast = host.useToast

@@ -9,7 +9,7 @@ const host = (
           suggestions: { command: string; frequency: number }[] & { [k: string]: unknown }
           fetchSuggestions(
             prefix?: string,
-            limit?: number,
+            limit?: number
           ): Promise<Array<{ command: string; frequency: number }>>
           fetchDebounced(prefix?: string): void
           deleteSuggestion(command: string): Promise<void>
@@ -19,9 +19,7 @@ const host = (
   }
 ).__DINOTTY_HOST__?.useHistory
 if (!host) {
-  throw new Error(
-    'host bridge missing: window.__DINOTTY_HOST__.useHistory not assigned',
-  )
+  throw new Error('host bridge missing: window.__DINOTTY_HOST__.useHistory not assigned')
 }
 
 export const useHistory = host.useHistory

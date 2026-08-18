@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import KeyboardTab from '../components/settings/KeyboardTab.vue'
-import { DEFAULT_ACTION_BOTTOM, settings } from '../composables/useSettings'
-import { imeKeyboardOverlapPx } from '../composables/useDeviceKeyboardSettings'
+import { DEFAULT_ACTION_BOTTOM, imeKeyboardOverlapPx, settings } from '../composables/useSettings'
 
 let wrapper: VueWrapper | null = null
 
@@ -132,7 +131,7 @@ describe('KeyboardTab action keyboard editor', () => {
 
     await actionSelect.setValue('pasteTerminal')
     const autoEnter = wrapper.get<HTMLInputElement>(
-      '.ak-modal .ak-auto-enter-check input[type="checkbox"]',
+      '.ak-modal .ak-auto-enter-check input[type="checkbox"]'
     )
     expect(autoEnter.element.checked).toBe(true)
     await autoEnter.setValue(false)

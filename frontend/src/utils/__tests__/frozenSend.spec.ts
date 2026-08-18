@@ -44,7 +44,12 @@ describe('createFrozenSendFn (contract: broadcast semantics, §二 #6)', () => {
 
   it('still delivers to remaining senders when one throws synchronously', () => {
     const ok = vi.fn()
-    const send = createFrozenSendFn([() => { throw new Error('boom') }, ok])
+    const send = createFrozenSendFn([
+      () => {
+        throw new Error('boom')
+      },
+      ok,
+    ])
     send('data')
     expect(ok).toHaveBeenCalledWith('data')
   })

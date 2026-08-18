@@ -562,10 +562,12 @@ export const messages: Record<Locale, Record<string, string>> = {
     'settings.plugins.installedBadge': 'Installed',
     'settings.plugins.refresh': 'Refresh',
     'plugin.builtinKeyboard.title': 'Built-in Keyboard',
-    'plugin.builtinKeyboard.subtitle': 'Bundled with the app — always available, cannot be uninstalled.',
+    'plugin.builtinKeyboard.subtitle':
+      'Bundled with the app — always available, cannot be uninstalled.',
     'plugin.builtinKeyboard.feature.layout': 'Editable quick-key & action-key layout',
     'plugin.builtinKeyboard.feature.bottom': 'Bottom send cluster (Enter, Space, backspace)',
-    'plugin.builtinKeyboard.feature.behavior': 'Mobile input behaviors (threshold, sound, guard, IME overlap)',
+    'plugin.builtinKeyboard.feature.behavior':
+      'Mobile input behaviors (threshold, sound, guard, IME overlap)',
     'plugin.builtinKeyboard.settingsHint':
       'The keyboard settings are app-level and apply whichever keyboard plugin is active, so they live in Settings → Keyboard.',
     'plugin.builtinKeyboard.goSettings': 'Configure in Settings → Keyboard',
@@ -1502,7 +1504,8 @@ export const messages: Record<Locale, Record<string, string>> = {
     'plugin.builtinKeyboard.subtitle': '随应用内置，始终可用，不可卸载。',
     'plugin.builtinKeyboard.feature.layout': '可编辑的快捷键区与动作键布局',
     'plugin.builtinKeyboard.feature.bottom': '底部发送簇（回车、空格、退格）',
-    'plugin.builtinKeyboard.feature.behavior': '移动端输入行为（单次确认阈值、按键音、键盘守卫、IME 重叠）',
+    'plugin.builtinKeyboard.feature.behavior':
+      '移动端输入行为（单次确认阈值、按键音、键盘守卫、IME 重叠）',
     'plugin.builtinKeyboard.settingsHint':
       '键盘设置属于应用级设置，作用于当前激活的键盘插件，因此统一放在「设置 → 键盘」中。',
     'plugin.builtinKeyboard.goSettings': '去设置 → 键盘配置',

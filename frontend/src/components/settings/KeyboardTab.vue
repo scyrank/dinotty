@@ -17,7 +17,7 @@
       <div v-if="isWindowsClient" class="settings-row">
         <label>{{ t('keybinding.windowsAltAsCmd') }}</label>
         <label class="toggle">
-          <input type="checkbox" v-model="settings.windowsAltAsCmd" @change="saveSettings()" />
+          <input v-model="settings.windowsAltAsCmd" type="checkbox" @change="saveSettings()" />
           <span class="toggle-track"><span class="toggle-thumb"></span></span>
         </label>
       </div>
@@ -183,8 +183,8 @@
                 <label>{{ t('keybinding.superviseTabsReload') }}</label>
                 <label class="toggle">
                   <input
-                    type="checkbox"
                     v-model="reloadAfterSuperviseTabs"
+                    type="checkbox"
                     data-setting="reload-after-supervise-tabs"
                   />
                   <span class="toggle-track"><span class="toggle-thumb"></span></span>
@@ -373,7 +373,11 @@
                   </div>
                 </div>
               </div>
-              <button type="button" class="mkb-btn mkb-mod ak-wyg-add-key" @click="addActionKey(ri)">
+              <button
+                type="button"
+                class="mkb-btn mkb-mod ak-wyg-add-key"
+                @click="addActionKey(ri)"
+              >
                 +
               </button>
             </div>
@@ -441,7 +445,11 @@
                     </div>
                   </div>
                 </div>
-                <button type="button" class="mkb-btn mkb-mod ak-wyg-add-key" @click="addBottomKey(ri)">
+                <button
+                  type="button"
+                  class="mkb-btn mkb-mod ak-wyg-add-key"
+                  @click="addBottomKey(ri)"
+                >
                   +
                 </button>
               </div>
@@ -471,7 +479,12 @@
         </div>
         <div class="ak-zone-head">
           <span class="ak-zone-title">{{ t('settings.akZoneBottom') }}</span>
-          <button type="button" class="shortcut-add" :title="t('settings.addRow')" @click="addBottomRow">
+          <button
+            type="button"
+            class="shortcut-add"
+            :title="t('settings.addRow')"
+            @click="addBottomRow"
+          >
             {{ t('settings.akAddRowBottom') }}
           </button>
         </div>
@@ -666,10 +679,10 @@
             </select>
           </label>
           <label v-if="akSupportsAutoEnter" class="shortcut-check ak-auto-enter-check">
-            <input type="checkbox" v-model="akEdit.auto_enter" /> {{ t('settings.appendEnter') }}
+            <input v-model="akEdit.auto_enter" type="checkbox" /> {{ t('settings.appendEnter') }}
           </label>
           <label v-if="!akIsEnterEdit && akSupportsRepeat" class="shortcut-check ak-repeat-check">
-            <input type="checkbox" v-model="akEdit.repeat" /> {{ t('settings.repeatHold') }}
+            <input v-model="akEdit.repeat" type="checkbox" /> {{ t('settings.repeatHold') }}
           </label>
           <div class="ak-modal-actions">
             <button class="settings-save" :disabled="!akCanSave" @click="saveActionKey">
@@ -1122,11 +1135,11 @@
             v-if="systemEdit.kind === 'send' || systemEdit.action === 'pasteTerminal'"
             class="shortcut-check"
           >
-            <input type="checkbox" v-model="systemEdit.auto_enter" />
+            <input v-model="systemEdit.auto_enter" type="checkbox" />
             {{ t('settings.appendEnter') }}
           </label>
           <label v-if="systemSupportsRepeat" class="shortcut-check">
-            <input type="checkbox" v-model="systemEdit.repeat" /> {{ t('settings.repeatHold') }}
+            <input v-model="systemEdit.repeat" type="checkbox" /> {{ t('settings.repeatHold') }}
           </label>
           <div class="ak-modal-actions">
             <button class="settings-save" :disabled="!systemCanSave" @click="saveSystemKey">
@@ -1140,7 +1153,11 @@
       </div>
     </CollapsibleSection>
 
-    <CollapsibleSection class="system-keyboard-advanced-gap" :title="t('settings.advancedText')" level="group">
+    <CollapsibleSection
+      class="system-keyboard-advanced-gap"
+      :title="t('settings.advancedText')"
+      level="group"
+    >
       <div class="settings-row">
         <label>{{ t('settings.keyboard.quickSendThreshold') }}</label>
         <input
@@ -1158,7 +1175,7 @@
       <div class="settings-row">
         <label>{{ t('settings.keyboard.sound') }}</label>
         <label class="toggle">
-          <input type="checkbox" v-model="settings.keyboard_sound" @change="saveSettings()" />
+          <input v-model="settings.keyboard_sound" type="checkbox" @change="saveSettings()" />
           <span class="toggle-track"><span class="toggle-thumb"></span></span>
         </label>
       </div>
@@ -1184,6 +1201,7 @@
           step="8"
           class="settings-input-number"
           data-setting="ime-keyboard-overlap-px"
+          @change="saveSettings()"
         />
       </div>
       <p class="settings-hint">{{ t('settings.text.imeKeyboardOverlapHint') }}</p>
@@ -1194,7 +1212,7 @@
       <div class="settings-row">
         <label>{{ t('settings.keyboard.openApiEnabled') }}</label>
         <label class="toggle">
-          <input type="checkbox" v-model="settings.open_api.enabled" @change="saveSettings()" />
+          <input v-model="settings.open_api.enabled" type="checkbox" @change="saveSettings()" />
           <span class="toggle-track"><span class="toggle-thumb"></span></span>
         </label>
       </div>
@@ -1217,19 +1235,19 @@
           <div class="api-field">
             <label>pane_id</label>
             <input
-              type="text"
               v-model="openApiPaneId"
+              type="text"
               :placeholder="t('settings.keyboard.openApiPaneHint')"
             />
           </div>
           <div class="api-field">
             <label>data <span class="required">*</span></label>
-            <input type="text" v-model="openApiData" placeholder="hello\n" />
+            <input v-model="openApiData" type="text" placeholder="hello\n" />
           </div>
         </template>
 
         <template v-else>
-          <textarea class="raw-editor" v-model="openApiRawJson" rows="5" spellcheck="false" />
+          <textarea v-model="openApiRawJson" class="raw-editor" rows="5" spellcheck="false" />
           <span v-if="openApiRawError" class="api-result err">{{ openApiRawError }}</span>
         </template>
 
@@ -1283,11 +1301,16 @@ import {
   resetActionKeyboard,
   restoreActionKeyboardUserDefault,
   saveActionKeyboardUserDefault,
+  imeKeyboardOverlapPx,
 } from '../../composables/useSettings'
 import CollapsibleSection from './CollapsibleSection.vue'
 import { useI18n } from '../../composables/useI18n'
 import { useKeybindings } from '../../composables/useKeybindings'
-import { useKeyboardProviders, BUILTIN_KEYBOARD_ID, SYSTEM_KEYBOARD_ID } from '../../composables/useKeyboardProviders'
+import {
+  useKeyboardProviders,
+  BUILTIN_KEYBOARD_ID,
+  SYSTEM_KEYBOARD_ID,
+} from '../../composables/useKeyboardProviders'
 import { usePluginLoader } from '../../composables/usePluginLoader'
 import type {
   ActionBottomCluster,
@@ -1324,7 +1347,6 @@ import {
   TOOLBAR_CONTEXT_ACTION_IDS,
 } from '../../utils/appActionCatalog'
 import { useActionKeyboardGesture } from '../../composables/useActionKeyboardGesture'
-import { imeKeyboardOverlapPx } from '../../composables/useDeviceKeyboardSettings'
 import type { KeyboardGuardMode } from '../../utils/keyboardGuardMode'
 import { isWindowsClient } from '../../utils/clientPlatform'
 import { useDeviceSuperviseReload } from '../../composables/useDeviceSuperviseReload'
@@ -1335,15 +1357,11 @@ import { useKbRecording } from '../../composables/useKbRecording'
 import { useSystemKeyboardGesture } from '../../composables/useSystemKeyboardGesture'
 import { useKeyEditRecording } from '../../composables/useKeyEditRecording'
 import { applyAfterTerminalComposition } from '../../utils/terminalInput'
-import {
-  escapeForDisplay,
-  unescapeFromDisplay,
-} from '../../composables/useKeySequenceUtils'
+import { escapeForDisplay, unescapeFromDisplay } from '../../composables/useKeySequenceUtils'
 
 const { settings, saveSettings } = useSettings()
 const { hasOverride, reloadAfterSuperviseTabs, resetOverride } = useDeviceSuperviseReload()
 const { t } = useI18n()
-
 
 const mobileInputModeOptions = computed(() => {
   const options = [
@@ -1367,7 +1385,6 @@ function onMobileInputModeChange(value: string) {
     void saveSettings()
   })
 }
-
 
 function onSystemToolbarModeChange(event: Event) {
   settings.system_toolbar_mode = (event.target as HTMLInputElement).checked

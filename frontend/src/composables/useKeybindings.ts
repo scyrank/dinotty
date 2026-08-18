@@ -9,13 +9,7 @@ import {
 } from '../utils/keybindingCatalog'
 import { settings } from './useSettings'
 
-export {
-  defs,
-  keyBindingDefs,
-  terminalKeyBindingDefs,
-  appKeyBindingDefs,
-  keyEventMatchesBinding,
-}
+export { defs, keyBindingDefs, terminalKeyBindingDefs, appKeyBindingDefs, keyEventMatchesBinding }
 export type { KeyBinding, KeyBindingDef }
 
 export function useKeybindings() {

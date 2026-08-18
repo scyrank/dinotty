@@ -11,9 +11,7 @@ const host = (
   }
 ).__DINOTTY_HOST__?.components
 if (!host) {
-  throw new Error(
-    'host bridge missing: window.__DINOTTY_HOST__.components not assigned',
-  )
+  throw new Error('host bridge missing: window.__DINOTTY_HOST__.components not assigned')
 }
 
 export const FilePickerModal = host.FilePickerModal

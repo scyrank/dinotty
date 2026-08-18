@@ -89,9 +89,7 @@ describe('createKeyboardContext', () => {
   it('setDesiredHeight writes the --mkb-height CSS variable', () => {
     const ctx = createKeyboardContext(deps)
     ctx.setDesiredHeight(280)
-    expect(
-      document.documentElement.style.getPropertyValue('--mkb-height'),
-    ).toBe('280px')
+    expect(document.documentElement.style.getPropertyValue('--mkb-height')).toBe('280px')
   })
 
   it('onViewportResize reports height/offsetTop/baseline and disposes', () => {
@@ -107,7 +105,6 @@ describe('createKeyboardContext', () => {
     // via the keyboard's own handler, and vv fires resize anyway.
     window.dispatchEvent(new Event('orientationchange'))
     expect(cb).toHaveBeenCalledTimes(1)
-
     ;(window.visualViewport as unknown as { fire: (t: string) => void }).fire('scroll')
     expect(cb).toHaveBeenCalledTimes(2)
 
@@ -139,15 +136,18 @@ describe('createKeyboardContext', () => {
     })
   })
 
-  it("events.on bridges the modifiers-consumed window CustomEvent and disposes", () => {
+  it('events.on bridges the modifiers-consumed window CustomEvent and disposes', () => {
     const ctx = createKeyboardContext(deps)
     const cb = vi.fn()
     const d = ctx.events.on('modifiers-consumed', cb)
 
     window.dispatchEvent(
       new CustomEvent('dinotty-mobile-modifiers-consumed', {
-        detail: { paneId: 'p1', modifiers: { ctrl: 'locked', shift: 'off', alt: 'off', meta: 'off' } },
-      }),
+        detail: {
+          paneId: 'p1',
+          modifiers: { ctrl: 'locked', shift: 'off', alt: 'off', meta: 'off' },
+        },
+      })
     )
     expect(cb).toHaveBeenCalledWith({
       paneId: 'p1',
@@ -158,7 +158,7 @@ describe('createKeyboardContext', () => {
     window.dispatchEvent(
       new CustomEvent('dinotty-mobile-modifiers-consumed', {
         detail: { paneId: 'p2' },
-      }),
+      })
     )
     expect(cb).toHaveBeenCalledTimes(1)
   })

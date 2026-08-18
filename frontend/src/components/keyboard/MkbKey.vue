@@ -1,7 +1,7 @@
 <template>
   <button
-    :class="['mkb-btn', k.cls, { 'mkb-active': isModActive, 'mkb-locked': isModLocked }]"
     :id="k.id"
+    :class="['mkb-btn', k.cls, { 'mkb-active': isModActive, 'mkb-locked': isModLocked }]"
     :disabled="isDisabled"
     :style="keyStyle"
     :aria-label="k.aria || k.l || undefined"
@@ -15,7 +15,7 @@
     @mouseup="onUp"
     @mouseleave="onUp"
   >
-    <component v-if="k.icon" :is="k.icon" :size="20" /><template v-else>{{
+    <component :is="k.icon" v-if="k.icon" :size="20" /><template v-else>{{
       displayLabel
     }}</template>
   </button>

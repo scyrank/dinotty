@@ -539,7 +539,7 @@ async fn git_channel_rejects_reserved_builtin_keyboard() {
 
 /// 故障演练 2 variant: the plugin directory exists on disk but the plugin is
 /// not registered (corrupt manifest / interrupted scan / partial delete).
-/// ensure_seed swaps the stale directory for a healthy seed copy instead of
+/// `ensure_seed` swaps the stale directory for a healthy seed copy instead of
 /// leaving the orphaned dir to shadow the seed on the next scan.
 #[tokio::test]
 async fn seed_replaces_unregistered_directory_with_healthy_copy() {

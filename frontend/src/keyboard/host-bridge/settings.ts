@@ -17,9 +17,7 @@ const host = (
   }
 ).__DINOTTY_HOST__?.useSettings
 if (!host) {
-  throw new Error(
-    'host bridge missing: window.__DINOTTY_HOST__.useSettings not assigned',
-  )
+  throw new Error('host bridge missing: window.__DINOTTY_HOST__.useSettings not assigned')
 }
 
 export const settings: Record<string, any> = host.settings

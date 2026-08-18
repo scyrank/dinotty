@@ -9,9 +9,15 @@
     </div>
 
     <ul class="bki-features">
-      <li><Check :size="14" /><span>{{ t('plugin.builtinKeyboard.feature.layout') }}</span></li>
-      <li><Check :size="14" /><span>{{ t('plugin.builtinKeyboard.feature.bottom') }}</span></li>
-      <li><Check :size="14" /><span>{{ t('plugin.builtinKeyboard.feature.behavior') }}</span></li>
+      <li>
+        <Check :size="14" /><span>{{ t('plugin.builtinKeyboard.feature.layout') }}</span>
+      </li>
+      <li>
+        <Check :size="14" /><span>{{ t('plugin.builtinKeyboard.feature.bottom') }}</span>
+      </li>
+      <li>
+        <Check :size="14" /><span>{{ t('plugin.builtinKeyboard.feature.behavior') }}</span>
+      </li>
     </ul>
 
     <p class="bki-hint">{{ t('plugin.builtinKeyboard.settingsHint') }}</p>

@@ -24,11 +24,7 @@ afterEach(() => {
 })
 
 function registerPluginKeyboard(id: string, name: string) {
-  useKeyboardProviders().registerComponent(
-    id,
-    'plugin',
-    defineComponent({ template: '<div />' }),
-  )
+  useKeyboardProviders().registerComponent(id, 'plugin', defineComponent({ template: '<div />' }))
   registeredIds.push(id)
   loadedPlugins.set(id, {
     id,

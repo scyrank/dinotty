@@ -29,7 +29,6 @@ describe('App.vue - terminal-sequence app actions', () => {
   })
 })
 
-
 describe('App.vue - records terminal shell type', () => {
   it('writes shell info into the matching leaf pane', async () => {
     // 步骤1：挂载包含两个本地终端 Pane 的应用。

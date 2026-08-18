@@ -16,9 +16,7 @@ const host = (
   }
 ).__DINOTTY_HOST__?.useKeyboardLayout
 if (!host) {
-  throw new Error(
-    'host bridge missing: window.__DINOTTY_HOST__.useKeyboardLayout not assigned',
-  )
+  throw new Error('host bridge missing: window.__DINOTTY_HOST__.useKeyboardLayout not assigned')
 }
 
 export const useKeyboardLayout = host.useKeyboardLayout

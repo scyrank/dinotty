@@ -61,6 +61,7 @@ const mocks = vi.hoisted(() => {
     apiActivateWorkspace: vi.fn<(id: string) => Promise<void>>(async () => {}),
     apiDeactivateWorkspace: vi.fn<() => Promise<void>>(async () => {}),
     onSystemKeyboardClose: undefined as undefined | (() => void),
+    systemKeyboardOpen: undefined as undefined | { value: boolean },
     setSystemImeAuthorized: vi.fn(),
     apiCreateTab: vi.fn(async () => ({
       tab_id: 't-new',
@@ -131,7 +132,9 @@ vi.mock('../../composables/useViewportResize', async () => {
   return {
     useViewportResize: (options: { onSystemKeyboardClose?: () => void }) => {
       mocks.onSystemKeyboardClose = options.onSystemKeyboardClose
-      return { isLandscape: ref(false), dispose: vi.fn() }
+      const systemKeyboardOpen = ref(false)
+      mocks.systemKeyboardOpen = systemKeyboardOpen
+      return { isLandscape: ref(false), systemKeyboardOpen, dispose: vi.fn() }
     },
   }
 })
@@ -492,6 +495,7 @@ afterEach(() => {
   mocks.apiDeactivateWorkspace.mockReset()
   mocks.apiDeactivateWorkspace.mockResolvedValue(undefined)
   mocks.onSystemKeyboardClose = undefined
+  mocks.systemKeyboardOpen = undefined
   mocks.setSystemImeAuthorized.mockReset()
   mocks.mintNotificationRequestId.mockClear()
   mocks.resetNotificationRequestIds()

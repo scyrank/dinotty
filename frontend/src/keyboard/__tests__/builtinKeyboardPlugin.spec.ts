@@ -118,8 +118,5 @@ bundleDescribe('builtin-keyboard plugin bundle', () => {
 })
 
 if (!seedBuilt) {
-  it.skip(
-    'builtin-keyboard bundle tests (seed artifact missing; run npm run build:builtin-kb)',
-    () => {},
-  )
+  it.skip('builtin-keyboard bundle tests (seed artifact missing; run npm run build:builtin-kb)', () => {})
 }

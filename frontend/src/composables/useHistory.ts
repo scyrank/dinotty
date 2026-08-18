@@ -17,10 +17,7 @@ onSuggestions((items) => {
 })
 
 export function useHistory() {
-  async function fetchSuggestions(
-    prefix?: string,
-    limit = 20,
-  ): Promise<SuggestionItem[]> {
+  async function fetchSuggestions(prefix?: string, limit = 20): Promise<SuggestionItem[]> {
     const params = new URLSearchParams()
     if (prefix) params.set('prefix', prefix)
     params.set('limit', String(limit))

@@ -7,6 +7,10 @@
   <div
     v-else
     id="app-root"
+    :class="{
+      'system-toolbar-docked': effectiveMobileInputMode === 'system' && systemToolbarVisible,
+      'system-ime-open': effectiveMobileInputMode === 'system' && systemKeyboardOpen,
+    }"
     @mousedown.capture="onAppMouseReplayCapture"
     @click.capture="onAppMouseReplayCapture"
     @touchstart.capture="onAppTouchStartCapture"
@@ -71,7 +75,7 @@
               type="button"
               class="preview-menu-item"
               role="menuitem"
-              @click="previewMenuOpen = false; openOrFocusPreview('files')"
+              @click="((previewMenuOpen = false), openOrFocusPreview('files'))"
             >
               <FolderTree :size="14" />
               <span>{{ t('previewPanel.switchFiles') }}</span>
@@ -80,7 +84,7 @@
               type="button"
               class="preview-menu-item"
               role="menuitem"
-              @click="previewMenuOpen = false; openOrFocusPreview('web')"
+              @click="((previewMenuOpen = false), openOrFocusPreview('web'))"
             >
               <Globe :size="14" />
               <span>{{ t('previewPanel.switchWeb') }}</span>
@@ -261,16 +265,13 @@
     />
 
     <component
-      ref="keyboardHostRef"
       :is="keyboardProviderComponent"
       v-if="keyboardProviderComponent"
+      ref="keyboardHostRef"
       :ctx="keyboardCtx"
     />
 
-    <MobileKeyboard
-      v-else-if="effectiveMobileInputMode === 'builtin'"
-      :ctx="keyboardCtx"
-    />
+    <MobileKeyboard v-else-if="effectiveMobileInputMode === 'builtin'" :ctx="keyboardCtx" />
 
     <SystemKeyboardToolbar
       v-if="effectiveMobileInputMode === 'system'"
@@ -413,8 +414,7 @@ import { useOverviewCallbacks } from './composables/useOverviewCallbacks'
 import { useTabPersistence } from './composables/useTabPersistence'
 import { useDesktopLifecycle } from './composables/useDesktopLifecycle'
 import { useViewportResize } from './composables/useViewportResize'
-import { useDeviceKeyboardSettings } from './composables/useDeviceKeyboardSettings'
-import type { MobileInputMode } from './composables/useSettings'
+import { imeKeyboardOverlapPx, type MobileInputMode } from './composables/useSettings'
 import {
   initHostKeyboardProviders,
   SYSTEM_KEYBOARD_ID,
@@ -428,10 +428,7 @@ import { setMcSender } from './composables/useMissionControlState'
 import { clearFileWorkspaceState } from './composables/useFileWorkspaceState'
 import { useSplitPane } from './composables/useSplitPane'
 import { useSuperviseTabs } from './composables/useSuperviseTabs'
-import {
-  emptyMobileTerminalModifiers,
-  type MobileTerminalModifiers,
-} from './utils/terminalInput'
+import { emptyMobileTerminalModifiers, type MobileTerminalModifiers } from './utils/terminalInput'
 import { useSyncWebSocket } from './composables/useSyncWebSocket'
 import type { SyncClientMsg } from './types/protocol'
 import { isWindowsClient } from './utils/clientPlatform'
@@ -542,7 +539,6 @@ const kbTyping = ref(false)
 const terminalImeFocused = ref(false)
 const mobileInputGuideVisible = ref(false)
 const systemActionKeyboardOpen = ref(false)
-const { imeKeyboardOverlapPx } = useDeviceKeyboardSettings()
 // Provider registry resolves which keyboard is active (keyboard-plugin-design.md §4.1).
 // Host providers map back onto the legacy enum so downstream behavior is unchanged.
 initHostKeyboardProviders()
@@ -590,7 +586,7 @@ function getBroadcastSendFn(): SendDataFn | null {
   if (!leaves.length) return null
   return createFrozenSendFn(
     leaves.map((leaf) => (d: string) => termRefs[leaf.paneId]?.sendData(d, true)),
-    leaves.length > 1 ? () => tab.broadcastActivity++ : undefined,
+    leaves.length > 1 ? () => tab.broadcastActivity++ : undefined
   )
 }
 
@@ -604,7 +600,7 @@ function sendToPaneData(paneId: string, data: string): Promise<void> {
 
 function onKeyboardHostEvent(
   event: keyof KeyboardHostEventMap,
-  data: KeyboardHostEventMap[keyof KeyboardHostEventMap],
+  data: KeyboardHostEventMap[keyof KeyboardHostEventMap]
 ) {
   switch (event) {
     case 'app-action': {
@@ -627,7 +623,7 @@ function onKeyboardHostEvent(
       // Forwarded as the legacy window event so existing subscribers
       // (useUploadManagement) keep working.
       window.dispatchEvent(
-        new CustomEvent('dinotty-upload-status', { detail: data as Record<string, unknown> }),
+        new CustomEvent('dinotty-upload-status', { detail: data as Record<string, unknown> })
       )
       break
     }
@@ -870,9 +866,12 @@ const termRefs = shallowReactive<Record<string, InstanceType<typeof TerminalPane
 const filesRefs = shallowReactive<Record<string, any>>({})
 const webRefs = shallowReactive<Record<string, any>>({})
 
-const { isLandscape, dispose: disposeViewport } = useViewportResize({
+const {
+  isLandscape,
+  systemKeyboardOpen,
+  dispose: disposeViewport,
+} = useViewportResize({
   kbVisible,
-  terminalImeFocused,
   activePaneId,
   tabs,
   termRefs,
@@ -1042,11 +1041,20 @@ const isSingleTerminalTab = computed(() => {
   const leaves = getAllLeaves(tab.layout)
   return leaves.length === 1 && paneKind(leaves[0]) === 'terminal'
 })
+const keyboardOverlapLayoutEligible = computed(() =>
+  effectiveMobileInputMode.value === 'system'
+    ? hasActiveTerminalLeaf.value
+    : isSingleTerminalTab.value
+)
 useKeyboardOverlap({
   settingPx: imeKeyboardOverlapPx,
   kbVisible,
-  textInputFocused: kbTyping,
-  isSingleTerminalTab,
+  textInputFocused: computed(() =>
+    effectiveMobileInputMode.value === 'builtin'
+      ? kbTyping.value
+      : terminalImeFocused.value && systemKeyboardOpen.value
+  ),
+  layoutEligible: keyboardOverlapLayoutEligible,
   hasVerticalPreview: computed(() => false),
 })
 
@@ -1295,8 +1303,7 @@ function openOrFocusPreview(kind: 'files' | 'web') {
     splitPane.focusPane(existing.paneId)
     return
   }
-  const payload: { path?: string; url?: string } =
-    kind === 'files' ? { path: tab.cwd || '' } : {}
+  const payload: { path?: string; url?: string } = kind === 'files' ? { path: tab.cwd || '' } : {}
   void splitPane.insertNonTerminalPane(kind, payload)
 }
 
@@ -1539,10 +1546,7 @@ function onTerminalRunCode(e: Event) {
 }
 
 function onLinkActivate() {
-  if (
-    effectiveMobileInputMode.value === 'system' &&
-    terminalTouchMouseReplayUntil > 0
-  ) {
+  if (effectiveMobileInputMode.value === 'system' && terminalTouchMouseReplayUntil > 0) {
     const withinReplayWindow = performance.now() < terminalTouchMouseReplayUntil
     terminalTouchMouseReplayUntil = 0
     if (withinReplayWindow) closeSystemIme()
@@ -2477,6 +2481,27 @@ onBeforeUnmount(() => {
   height: calc(
     100% - max(0px, var(--mkb-height, 0px) - var(--kb-overlap, 0px)) - var(--sys-kb-height, 0px)
   );
+}
+#app-root.system-toolbar-docked {
+  /* The shortcut toolbar is a flex child, so its own height already reduces the content area.
+   * Only reserve the native keyboard occlusion here. */
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: var(--sys-kb-height, 0px);
+  left: 0;
+  box-sizing: border-box;
+  height: auto;
+}
+#app-root.system-toolbar-docked.system-ime-open {
+  /* system-ime-open already owns the measured keyboard episode. The layout viewport can shrink
+   * with the IME, leaving --sys-kb-height at 0 even though the configured overlap must remain. */
+  --system-ime-overlap: var(--kb-overlap, 0px);
+  bottom: calc(var(--sys-kb-height, 0px) - var(--system-ime-overlap));
+}
+#app-root.system-toolbar-docked.system-ime-open > #system-mobile-kb {
+  /* The root grows by O; move only the shortcut toolbar back by O so its screen position stays. */
+  top: calc(-1 * var(--system-ime-overlap));
 }
 .broadcast-btn {
   position: relative;

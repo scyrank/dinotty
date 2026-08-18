@@ -10,7 +10,7 @@ import {
   SystemKeyboardToolbarStub,
   KbToggleButtonStub,
 } from './_setup'
-import { settings } from '../../composables/useSettings'
+import { imeKeyboardOverlapPx, settings } from '../../composables/useSettings'
 import { useUiStore } from '../../stores/uiStore'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useIsMobile } from '../../composables/useIsMobile'
@@ -19,6 +19,7 @@ import type { Tab } from '../../types/pane'
 afterEach(() => {
   settings.system_toolbar_mode = 'follow_ime'
   settings.keyboard_guard_mode = 'off'
+  imeKeyboardOverlapPx.value = 0
   useIsMobile().isMobile.value = false
 })
 
@@ -150,7 +151,135 @@ describe('App.vue - system keyboard state regressions', () => {
     expect(toolbar.props('ctx').nativeImeOpen.value).toBe(false)
   })
 
-  it('uses the fixed toolbar control to close and reopen the phone IME', async () => {
+  it('docks the root only while the system toolbar is visible', async () => {
+    settings.mobile_input_mode = 'system'
+    const wrapper = await mountWithTabs()
+
+    expect(wrapper.get('#app-root').classes()).not.toContain('system-toolbar-docked')
+
+    settings.system_toolbar_mode = 'persistent_mobile'
+    useIsMobile().isMobile.value = true
+    await nextTick()
+
+    expect(wrapper.get('#app-root').classes()).toContain('system-toolbar-docked')
+  })
+
+  it('publishes system overlap only while the measured software IME is open', async () => {
+    settings.mobile_input_mode = 'system'
+    settings.system_toolbar_mode = 'persistent_mobile'
+    useIsMobile().isMobile.value = true
+    imeKeyboardOverlapPx.value = 72
+    const wrapper = await mountWithTabs()
+    const session = useSessionStore()
+    const singleTerminalTab: Tab = {
+      type: 'terminal',
+      paneId: 'tab-1',
+      activePaneId: 'pane-1',
+      paneMru: ['pane-1'],
+      broadcastMode: false,
+      broadcastActivity: 0,
+      layout: {
+        type: 'leaf',
+        kind: 'terminal',
+        paneId: 'pane-1',
+        title: 'Terminal',
+        ratio: 1,
+        zoomed: false,
+      },
+    }
+    session.setTabs([singleTerminalTab])
+    session.setActivePane(singleTerminalTab.paneId)
+    await nextTick()
+    const activeTerminal = {
+      setOutputListener: vi.fn(),
+      setVirtualModifiers: vi.fn(),
+      focus: vi.fn(),
+      blur: vi.fn(),
+    }
+    await wrapper.findComponent(SplitContainerStub).vm.$emit('register', 'pane-1', activeTerminal)
+
+    const root = wrapper.get('#app-root')
+    const toolbar = wrapper.findComponent(SystemKeyboardToolbarStub)
+    expect(document.documentElement.style.getPropertyValue('--kb-overlap')).toBe('0px')
+    expect(root.classes()).not.toContain('system-ime-open')
+
+    toolbar.props('ctx').setNativeImeOpen(true)
+    await nextTick()
+    expect(toolbar.props('ctx').nativeImeOpen.value).toBe(true)
+    expect(document.documentElement.style.getPropertyValue('--kb-overlap')).toBe('0px')
+    expect(root.classes()).not.toContain('system-ime-open')
+
+    mocks.systemKeyboardOpen!.value = true
+    await nextTick()
+    expect(document.documentElement.style.getPropertyValue('--kb-overlap')).toBe('72px')
+    expect(root.classes()).toContain('system-ime-open')
+
+    mocks.systemKeyboardOpen!.value = false
+    await nextTick()
+    expect(document.documentElement.style.getPropertyValue('--kb-overlap')).toBe('0px')
+    expect(root.classes()).not.toContain('system-ime-open')
+  })
+
+  it('keeps system overlap active when the focused terminal has a sibling leaf', async () => {
+    settings.mobile_input_mode = 'system'
+    settings.system_toolbar_mode = 'persistent_mobile'
+    useIsMobile().isMobile.value = true
+    imeKeyboardOverlapPx.value = 72
+    const wrapper = await mountWithTabs()
+    const session = useSessionStore()
+    const splitTab: Tab = {
+      type: 'terminal',
+      paneId: 'split-tab',
+      activePaneId: 'terminal-leaf',
+      paneMru: ['terminal-leaf', 'tasks-leaf'],
+      broadcastMode: false,
+      broadcastActivity: 0,
+      layout: {
+        type: 'split',
+        id: 'split-root',
+        direction: 'horizontal',
+        ratios: [0.5, 0.5],
+        children: [
+          {
+            type: 'leaf',
+            kind: 'terminal',
+            paneId: 'terminal-leaf',
+            title: 'Terminal',
+            ratio: 0.5,
+            zoomed: false,
+          },
+          {
+            type: 'leaf',
+            kind: 'plugin',
+            paneId: 'tasks-leaf',
+            title: 'Tasks',
+            ratio: 0.5,
+            zoomed: false,
+          },
+        ],
+      },
+    }
+    session.setTabs([splitTab])
+    session.setActivePane(splitTab.paneId)
+    await nextTick()
+    await wrapper.findComponent(SplitContainerStub).vm.$emit('register', 'terminal-leaf', {
+      setOutputListener: vi.fn(),
+      setVirtualModifiers: vi.fn(),
+      focus: vi.fn(),
+      blur: vi.fn(),
+    })
+
+    const toolbar = wrapper.findComponent(SystemKeyboardToolbarStub)
+    toolbar.props('ctx').setNativeImeOpen(true)
+    await nextTick()
+    mocks.systemKeyboardOpen!.value = true
+    await nextTick()
+
+    expect(document.documentElement.style.getPropertyValue('--kb-overlap')).toBe('72px')
+    expect(wrapper.get('#app-root').classes()).toContain('system-ime-open')
+  })
+
+  it('uses the toolbar control to close and reopen the phone IME', async () => {
     settings.mobile_input_mode = 'system'
     settings.system_toolbar_mode = 'persistent_mobile'
     useIsMobile().isMobile.value = true
@@ -216,8 +345,7 @@ describe('App.vue - system keyboard state regressions', () => {
   )
 
   it('serializes an unguarded terminal touch until touchend', async () => {
-    const { wrapper, activeTerminal, terminalSurface, helper } =
-      await mountUnguardedTouchTerminal()
+    const { wrapper, activeTerminal, terminalSurface, helper } = await mountUnguardedTouchTerminal()
 
     terminalSurface.dispatchEvent(new TouchEvent('touchstart', { bubbles: true }))
     helper.focus()
@@ -230,13 +358,14 @@ describe('App.vue - system keyboard state regressions', () => {
     await nextTick()
     expect(touchEnd.defaultPrevented).toBe(false)
     expect(activeTerminal.focus).toHaveBeenCalledOnce()
-    expect(wrapper.findComponent(SystemKeyboardToolbarStub).props('ctx').nativeImeOpen.value).toBe(true)
+    expect(wrapper.findComponent(SystemKeyboardToolbarStub).props('ctx').nativeImeOpen.value).toBe(
+      true
+    )
     helper.remove()
   })
 
   it('keeps rejected terminal gestures from opening the system IME', async () => {
-    const { wrapper, activeTerminal, terminalSurface, helper } =
-      await mountUnguardedTouchTerminal()
+    const { wrapper, activeTerminal, terminalSurface, helper } = await mountUnguardedTouchTerminal()
 
     terminalSurface.dispatchEvent(new TouchEvent('touchstart', { bubbles: true }))
     helper.focus()
@@ -245,19 +374,22 @@ describe('App.vue - system keyboard state regressions', () => {
     await nextTick()
     expect(activeTerminal.focus).not.toHaveBeenCalled()
     expect(document.activeElement).not.toBe(helper)
-    expect(wrapper.findComponent(SystemKeyboardToolbarStub).props('ctx').nativeImeOpen.value).toBe(false)
+    expect(wrapper.findComponent(SystemKeyboardToolbarStub).props('ctx').nativeImeOpen.value).toBe(
+      false
+    )
 
     terminalSurface.dispatchEvent(new TouchEvent('touchstart', { bubbles: true }))
     terminalSurface.dispatchEvent(new TouchEvent('touchcancel', { bubbles: true }))
     await nextTick()
     expect(activeTerminal.focus).not.toHaveBeenCalled()
-    expect(wrapper.findComponent(SystemKeyboardToolbarStub).props('ctx').nativeImeOpen.value).toBe(false)
+    expect(wrapper.findComponent(SystemKeyboardToolbarStub).props('ctx').nativeImeOpen.value).toBe(
+      false
+    )
     helper.remove()
   })
 
   it('blocks only the compatibility mousedown after a long press', async () => {
-    const { wrapper, activeTerminal, terminalSurface, helper } =
-      await mountUnguardedTouchTerminal()
+    const { wrapper, activeTerminal, terminalSurface, helper } = await mountUnguardedTouchTerminal()
     const now = vi.spyOn(performance, 'now').mockReturnValue(100)
 
     terminalSurface.dispatchEvent(new TouchEvent('touchstart', { bubbles: true }))
@@ -278,7 +410,9 @@ describe('App.vue - system keyboard state regressions', () => {
     expect(xtermFocus).not.toHaveBeenCalled()
     expect(mouseDown.defaultPrevented).toBe(true)
     expect(document.activeElement).not.toBe(helper)
-    expect(wrapper.findComponent(SystemKeyboardToolbarStub).props('ctx').nativeImeOpen.value).toBe(false)
+    expect(wrapper.findComponent(SystemKeyboardToolbarStub).props('ctx').nativeImeOpen.value).toBe(
+      false
+    )
     helper.remove()
   })
 
@@ -312,8 +446,7 @@ describe('App.vue - system keyboard state regressions', () => {
   })
 
   it('does not open the system IME after terminal link activation', async () => {
-    const { wrapper, activeTerminal, terminalSurface, helper } =
-      await mountUnguardedTouchTerminal()
+    const { wrapper, activeTerminal, terminalSurface, helper } = await mountUnguardedTouchTerminal()
 
     terminalSurface.dispatchEvent(new TouchEvent('touchstart', { bubbles: true }))
     await wrapper.findComponent(SplitContainerStub).vm.$emit('link-activate')

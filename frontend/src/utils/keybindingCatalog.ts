@@ -215,9 +215,16 @@ export function keyEventMatchesBinding(e: KeyboardEvent, binding: KeyBinding): b
     // Single-char keys: prefer e.code (physical key) to handle Shift correctly.
     // e.key reports the produced char ('+' for Shift+=), but binding stores '='.
     const codeToKey: Record<string, string> = {
-      Equal: '=', Minus: '-',
-      BracketLeft: '[', BracketRight: ']', Backslash: '\\',
-      Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/',
+      Equal: '=',
+      Minus: '-',
+      BracketLeft: '[',
+      BracketRight: ']',
+      Backslash: '\\',
+      Semicolon: ';',
+      Quote: "'",
+      Comma: ',',
+      Period: '.',
+      Slash: '/',
       Backquote: '`',
     }
     let physicalKey: string

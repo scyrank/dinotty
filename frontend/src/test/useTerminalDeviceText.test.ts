@@ -33,22 +33,40 @@ vi.mock('@xterm/xterm', () => ({
     }
     registerLinkProvider() {}
     onTitleChange() {}
-    onData(handler: (data: string) => void) { this.dataHandler = handler }
-    hasSelection() { return false }
+    onData(handler: (data: string) => void) {
+      this.dataHandler = handler
+    }
+    hasSelection() {
+      return false
+    }
     dispose() {}
     focus() {}
     blur() {}
   },
 }))
 
-vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit = vi.fn() } }))
+vi.mock('@xterm/addon-fit', () => ({
+  FitAddon: class {
+    fit = vi.fn()
+  },
+}))
 vi.mock('@xterm/addon-unicode11', () => ({ Unicode11Addon: class {} }))
-vi.mock('@xterm/addon-webgl', () => ({ WebglAddon: class { onContextLoss() {}; dispose() {} } }))
+vi.mock('@xterm/addon-webgl', () => ({
+  WebglAddon: class {
+    onContextLoss() {}
+    dispose() {}
+  },
+}))
 vi.mock('@xterm/addon-search', () => ({ SearchAddon: class {} }))
 vi.mock('../composables/useTransport', () => ({
   isTauri: mocks.isTauri,
   createTransport: () => ({
-    onConnect() {}, onMessage() {}, onDisconnect() {}, connect() {}, disconnect() {}, send() {},
+    onConnect() {},
+    onMessage() {},
+    onDisconnect() {},
+    connect() {},
+    disconnect() {},
+    send() {},
   }),
 }))
 vi.mock('../utils/clientPlatform', () => ({
@@ -75,12 +93,24 @@ import {
 
 class MemoryStorage implements Storage {
   private data = new Map<string, string>()
-  get length() { return this.data.size }
-  clear() { this.data.clear() }
-  getItem(key: string) { return this.data.get(key) ?? null }
-  key(index: number) { return [...this.data.keys()][index] ?? null }
-  removeItem(key: string) { this.data.delete(key) }
-  setItem(key: string, value: string) { this.data.set(key, String(value)) }
+  get length() {
+    return this.data.size
+  }
+  clear() {
+    this.data.clear()
+  }
+  getItem(key: string) {
+    return this.data.get(key) ?? null
+  }
+  key(index: number) {
+    return [...this.data.keys()][index] ?? null
+  }
+  removeItem(key: string) {
+    this.data.delete(key)
+  }
+  setItem(key: string, value: string) {
+    this.data.set(key, String(value))
+  }
 }
 
 function attach(id: string) {
@@ -145,13 +175,22 @@ describe('useTerminal device text integration', () => {
     settings.text.cursor_blink = true
     settings.text.scrollback = 10000
     document.documentElement.style.setProperty('--font-mono', 'test-mono-stack')
-    vi.stubGlobal('ResizeObserver', class { observe() {}; disconnect() {} })
-    vi.stubGlobal('WebSocket', class {
-      static OPEN = 1
-      readyState = 0
-      close() {}
-      send() {}
-    })
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      }
+    )
+    vi.stubGlobal(
+      'WebSocket',
+      class {
+        static OPEN = 1
+        readyState = 0
+        close() {}
+        send() {}
+      }
+    )
   })
 
   it('initializes xterm from effective text', () => {
@@ -203,7 +242,7 @@ describe('useTerminal device text integration', () => {
       const term = attach('p1')
       expect(term.xterm?.options.fontFamily).toBe('test-mono-stack')
       term.destroy()
-    },
+    }
   )
 
   it('broadcasts local changes to two panes and refits each once', () => {
@@ -216,7 +255,8 @@ describe('useTerminal device text integration', () => {
     expect(two.xterm?.options.fontSize).toBe(26)
     expect(refitOne).toHaveBeenCalledTimes(1)
     expect(refitTwo).toHaveBeenCalledTimes(1)
-    one.destroy(); two.destroy()
+    one.destroy()
+    two.destroy()
   })
 
   it('zooms from the effective value, clamps, and reset returns the server default', () => {
@@ -266,7 +306,7 @@ describe('useTerminal device text integration', () => {
       const input = vi.fn()
       term.onInput = input
       const textarea = (term as any)._wrapper.querySelector(
-        '.xterm-helper-textarea',
+        '.xterm-helper-textarea'
       ) as HTMLTextAreaElement
       const keyHandler = lastXterm().keyHandler!
       const edit = (value: string, caret: number, data: string) => {
@@ -274,7 +314,7 @@ describe('useTerminal device text integration', () => {
         textarea.value = value
         textarea.setSelectionRange(caret, caret)
         textarea.dispatchEvent(
-          new InputEvent('input', { inputType: 'insertText', data, isComposing: false }),
+          new InputEvent('input', { inputType: 'insertText', data, isComposing: false })
         )
         keyHandler(new KeyboardEvent('keyup', { keyCode: 229, key: 'Process' }))
       }
@@ -285,7 +325,7 @@ describe('useTerminal device text integration', () => {
       expect(input.mock.calls.map(([data]) => data)).toEqual(['()\x1b[D', '\x1b[C)'])
       expect([textarea.selectionStart, textarea.selectionEnd]).toEqual([3, 3])
       term.destroy()
-    },
+    }
   )
 
   it('does not duplicate a Tauri 229 symbol through the input rescue path', () => {
@@ -295,7 +335,7 @@ describe('useTerminal device text integration', () => {
     const input = vi.fn()
     term.onInput = input
     const textarea = (term as any)._wrapper.querySelector(
-      '.xterm-helper-textarea',
+      '.xterm-helper-textarea'
     ) as HTMLTextAreaElement
     const keyHandler = lastXterm().keyHandler!
 
@@ -303,7 +343,7 @@ describe('useTerminal device text integration', () => {
     textarea.value = '!'
     textarea.setSelectionRange(1, 1)
     textarea.dispatchEvent(
-      new InputEvent('input', { inputType: 'insertText', data: '!', isComposing: false }),
+      new InputEvent('input', { inputType: 'insertText', data: '!', isComposing: false })
     )
     lastXterm().dataHandler!('!')
     keyHandler(new KeyboardEvent('keyup', { keyCode: 229, key: 'Process' }))
@@ -320,11 +360,11 @@ describe('useTerminal device text integration', () => {
     const input = vi.fn()
     term.onInput = input
     const textarea = (term as any)._wrapper.querySelector(
-      '.xterm-helper-textarea',
+      '.xterm-helper-textarea'
     ) as HTMLTextAreaElement
 
     textarea.dispatchEvent(
-      new InputEvent('input', { inputType: 'insertText', data: '！', isComposing: false }),
+      new InputEvent('input', { inputType: 'insertText', data: '！', isComposing: false })
     )
     lastXterm().dataHandler!('！')
 

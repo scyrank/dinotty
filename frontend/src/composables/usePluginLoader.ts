@@ -12,7 +12,7 @@ import { useKeyboardProviders } from './useKeyboardProviders'
 import type { KeyboardContribution } from '../../../plugin-api/index'
 
 // Bypass Vite's static analysis of import()
-// eslint-disable-next-line no-new-func
+
 const dynamicImport: (url: string) => Promise<any> = new Function('url', 'return import(url)') as (
   url: string
 ) => Promise<any>
@@ -192,11 +192,7 @@ export interface PluginContext {
 
   events: {
     subscribe<T = unknown>(eventName: string, handler: (data: T, e: SyncEvent) => void): Disposable
-    emit(
-      eventName: string,
-      data: unknown,
-      opts?: { target_plugin_id?: string },
-    ): void
+    emit(eventName: string, data: unknown, opts?: { target_plugin_id?: string }): void
   }
 
   workspace: {
@@ -293,7 +289,7 @@ export interface LoadedPlugin {
  */
 export function resolveKeyboardContributionId(
   pluginId: string,
-  contributionId: string | undefined,
+  contributionId: string | undefined
 ): string {
   const id = contributionId ?? pluginId
   if (id !== pluginId) {
@@ -705,7 +701,9 @@ async function loadPlugin(id: string): Promise<LoadedPlugin> {
     mod = await dynamicImport(blobUrl)
   } catch (e: any) {
     URL.revokeObjectURL(blobUrl)
-    throw new Error(`Plugin ${id}: failed to load ${jsUrl}: ${e.message}`)
+    throw Object.assign(new Error(`Plugin ${id}: failed to load ${jsUrl}: ${e.message}`), {
+      cause: e,
+    })
   } finally {
     URL.revokeObjectURL(blobUrl)
   }
@@ -765,7 +763,7 @@ async function loadPlugin(id: string): Promise<LoadedPlugin> {
     for (const [qpId, entry] of pluginQuickPicks) {
       if (entry.pluginId === id) pluginQuickPicks.delete(qpId)
     }
-    throw new Error(`Plugin ${id}: activate() threw: ${e.message}`)
+    throw Object.assign(new Error(`Plugin ${id}: activate() threw: ${e.message}`), { cause: e })
   }
 
   // 5. Register monitor series contributions
@@ -784,11 +782,18 @@ async function loadPlugin(id: string): Promise<LoadedPlugin> {
       keyboardContributionId,
       'plugin',
       exports.keyboard.component,
-      exports.keyboard.desiredHeight,
+      exports.keyboard.desiredHeight
     )
   }
 
-  const plugin: LoadedPlugin = { id, manifest, module: mod, exports, state: 'active', keyboardContributionId }
+  const plugin: LoadedPlugin = {
+    id,
+    manifest,
+    module: mod,
+    exports,
+    state: 'active',
+    keyboardContributionId,
+  }
   loadedPlugins.set(id, plugin)
   return plugin
 }

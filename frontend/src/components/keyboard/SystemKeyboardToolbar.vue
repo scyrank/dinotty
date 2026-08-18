@@ -2,7 +2,6 @@
   <div
     v-show="visible"
     id="system-mobile-kb"
-    ref="rootRef"
     :class="{ 'system-action-open': actionOpen, 'ime-open': imeOpen }"
   >
     <template v-if="!actionOpen">
@@ -116,8 +115,8 @@
         <div class="system-kb-page-dot-group upper">
           <button
             v-for="page in systemUpperPageCount"
-            :key="`u-${page}`"
             v-show="systemUpperPageCount > 1"
+            :key="`u-${page}`"
             type="button"
             class="system-kb-page-dot"
             :class="{ active: activeUpperPage === page - 1 }"
@@ -129,8 +128,8 @@
         <div v-if="systemLayout.lower_enabled !== false" class="system-kb-page-dot-group lower">
           <button
             v-for="page in systemLowerPageCount"
-            :key="`l-${page}`"
             v-show="systemLowerPageCount > 1"
+            :key="`l-${page}`"
             type="button"
             class="system-kb-page-dot"
             :class="{ active: activeLowerPage === page - 1 }"
@@ -155,12 +154,7 @@
         <strong>{{
           expandedPanel === 'termius' ? t('systemKb.terminalKeys') : t('systemKb.actions')
         }}</strong>
-        <button
-          type="button"
-          class="system-kb-ime-toggle"
-          @pointerdown.prevent
-          @click="toggleIme"
-        >
+        <button type="button" class="system-kb-ime-toggle" @pointerdown.prevent @click="toggleIme">
           <KeyboardOff v-if="imeOpen" :size="18" />
           <Keyboard v-else :size="18" />
         </button>
@@ -308,7 +302,6 @@ const emit = defineEmits<{
 const t = props.ctx.i18n.t
 const paneId = computed(() => props.ctx.activePaneId.value ?? '')
 const imeOpen = computed(() => props.ctx.nativeImeOpen.value)
-const rootRef = ref<HTMLElement>()
 const showHistoryPanel = ref(false)
 const showFilePicker = ref(false)
 const phoneFileInputRef = ref<HTMLInputElement>()
@@ -649,11 +642,6 @@ function onHistoryDelete(command: string) {
   historyItems.value = historyItems.value.filter((item) => item.command !== command)
 }
 
-function updateHeight() {
-  const height = props.visible && rootRef.value ? rootRef.value.getBoundingClientRect().height : 0
-  props.ctx.setDesiredHeight(height)
-}
-
 function onModifiersConsumed(data: KeyboardIncomingEventMap['modifiers-consumed']) {
   if (data.paneId !== paneId.value) return
   // Sync to the terminal's post-consumption residual state (locked modifiers
@@ -665,29 +653,16 @@ watch(
   () => props.visible,
   (visible) => {
     if (!visible) resetModifiers()
-    requestAnimationFrame(updateHeight)
   }
 )
-watch(
-  () => props.actionOpen,
-  () => requestAnimationFrame(updateHeight)
-)
-watch(paneId, resetModifiers)
 
-let resizeObserver: ResizeObserver | null = null
 let modifiersSub: { dispose(): void } | null = null
 onMounted(() => {
   modifiersSub = props.ctx.events.on('modifiers-consumed', onModifiersConsumed)
-  if (rootRef.value) {
-    resizeObserver = new ResizeObserver(updateHeight)
-    resizeObserver.observe(rootRef.value)
-  }
-  updateHeight()
 })
 
 onBeforeUnmount(() => {
   resetModifiers()
-  resizeObserver?.disconnect()
   modifiersSub?.dispose()
   props.ctx.setDesiredHeight(0)
 })

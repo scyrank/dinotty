@@ -2,15 +2,15 @@
   <div class="plugin-view" :class="plugin ? `plugin-host-${plugin.id}` : ''">
     <template v-if="plugin">
       <component
-        v-if="plugin.state === 'active' && plugin.exports?.component && !hasError"
         :is="plugin.exports.component"
+        v-if="plugin.state === 'active' && plugin.exports?.component && !hasError"
         :api="api"
         :pane-id="paneId"
         :workspace-id="workspaceId"
         :is-visible="isVisible"
         :is-focused="isFocused"
       />
-      <component v-else-if="plugin.state === 'active' && hostView && !hasError" :is="hostView" />
+      <component :is="hostView" v-else-if="plugin.state === 'active' && hostView && !hasError" />
       <div v-else-if="hasError" class="plugin-error">
         <p>Plugin runtime error: {{ errorMsg }}</p>
       </div>

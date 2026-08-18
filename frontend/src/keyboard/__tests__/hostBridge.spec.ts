@@ -34,8 +34,6 @@ describe('installHostBridge', () => {
     expect(b.useSettings.useSettings().settings).toBe(hostSettings)
     expect(b.useHistory.useHistory().suggestions).toBe(useHistory().suggestions)
     expect(b.useI18n.useI18n().t).toBeTypeOf('function')
-    expect(b.useFileNavigation.useSelectedPath().selectedPath).toBe(
-      useSelectedPath().selectedPath,
-    )
+    expect(b.useFileNavigation.useSelectedPath().selectedPath).toBe(useSelectedPath().selectedPath)
   })
 })

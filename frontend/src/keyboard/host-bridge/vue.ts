@@ -3,8 +3,7 @@
 // before any bridged plugin is loaded, so plugin components share the exact
 // same runtime instance as the host app (no second Vue copy, reactive state
 // stays connected).
-const vue = (window as unknown as { __DINOTTY_VUE__?: Record<string, unknown> })
-  .__DINOTTY_VUE__
+const vue = (window as unknown as { __DINOTTY_VUE__?: Record<string, unknown> }).__DINOTTY_VUE__
 if (!vue) {
   throw new Error('host vue bridge missing: window.__DINOTTY_VUE__ not assigned')
 }
