@@ -17,7 +17,7 @@
       <div v-if="isWindowsClient" class="settings-row">
         <label>{{ t('keybinding.windowsAltAsCmd') }}</label>
         <label class="toggle">
-          <input type="checkbox" v-model="settings.windowsAltAsCmd" @change="saveSettings()" />
+          <input v-model="settings.windowsAltAsCmd" type="checkbox" @change="saveSettings()" />
           <span class="toggle-track"><span class="toggle-thumb"></span></span>
         </label>
       </div>
@@ -183,8 +183,8 @@
                 <label>{{ t('keybinding.superviseTabsReload') }}</label>
                 <label class="toggle">
                   <input
-                    type="checkbox"
                     v-model="reloadAfterSuperviseTabs"
+                    type="checkbox"
                     data-setting="reload-after-supervise-tabs"
                   />
                   <span class="toggle-track"><span class="toggle-thumb"></span></span>
@@ -592,7 +592,7 @@
                 type="button"
                 class="ak-record-btn"
                 :class="{ recording: akRecording }"
-                @click.stop="toggleRecord('action')"
+                @click.stop="toggleAkRecord('action')"
               >
                 {{ akRecording ? t('settings.stop') : t('settings.record') }}
               </button>
@@ -679,10 +679,10 @@
             </select>
           </label>
           <label v-if="akSupportsAutoEnter" class="shortcut-check ak-auto-enter-check">
-            <input type="checkbox" v-model="akEdit.auto_enter" /> {{ t('settings.appendEnter') }}
+            <input v-model="akEdit.auto_enter" type="checkbox" /> {{ t('settings.appendEnter') }}
           </label>
           <label v-if="!akIsEnterEdit && akSupportsRepeat" class="shortcut-check ak-repeat-check">
-            <input type="checkbox" v-model="akEdit.repeat" /> {{ t('settings.repeatHold') }}
+            <input v-model="akEdit.repeat" type="checkbox" /> {{ t('settings.repeatHold') }}
           </label>
           <div class="ak-modal-actions">
             <button class="settings-save" :disabled="!akCanSave" @click="saveActionKey">
@@ -1032,7 +1032,7 @@
                 class="ak-record-btn"
                 :class="{ recording: systemRecording }"
                 data-system-record
-                @click.stop="toggleRecord('system')"
+                @click.stop="toggleSystemRecord('system')"
               >
                 {{ systemRecording ? t('settings.stop') : t('settings.record') }}
               </button>
@@ -1135,11 +1135,11 @@
             v-if="systemEdit.kind === 'send' || systemEdit.action === 'pasteTerminal'"
             class="shortcut-check"
           >
-            <input type="checkbox" v-model="systemEdit.auto_enter" />
+            <input v-model="systemEdit.auto_enter" type="checkbox" />
             {{ t('settings.appendEnter') }}
           </label>
           <label v-if="systemSupportsRepeat" class="shortcut-check">
-            <input type="checkbox" v-model="systemEdit.repeat" /> {{ t('settings.repeatHold') }}
+            <input v-model="systemEdit.repeat" type="checkbox" /> {{ t('settings.repeatHold') }}
           </label>
           <div class="ak-modal-actions">
             <button class="settings-save" :disabled="!systemCanSave" @click="saveSystemKey">
@@ -1175,7 +1175,7 @@
       <div class="settings-row">
         <label>{{ t('settings.keyboard.sound') }}</label>
         <label class="toggle">
-          <input type="checkbox" v-model="settings.keyboard_sound" @change="saveSettings()" />
+          <input v-model="settings.keyboard_sound" type="checkbox" @change="saveSettings()" />
           <span class="toggle-track"><span class="toggle-thumb"></span></span>
         </label>
       </div>
@@ -1212,7 +1212,7 @@
       <div class="settings-row">
         <label>{{ t('settings.keyboard.openApiEnabled') }}</label>
         <label class="toggle">
-          <input type="checkbox" v-model="settings.open_api.enabled" @change="saveSettings()" />
+          <input v-model="settings.open_api.enabled" type="checkbox" @change="saveSettings()" />
           <span class="toggle-track"><span class="toggle-thumb"></span></span>
         </label>
       </div>
@@ -1235,19 +1235,19 @@
           <div class="api-field">
             <label>pane_id</label>
             <input
-              type="text"
               v-model="openApiPaneId"
+              type="text"
               :placeholder="t('settings.keyboard.openApiPaneHint')"
             />
           </div>
           <div class="api-field">
             <label>data <span class="required">*</span></label>
-            <input type="text" v-model="openApiData" placeholder="hello\n" />
+            <input v-model="openApiData" type="text" placeholder="hello\n" />
           </div>
         </template>
 
         <template v-else>
-          <textarea class="raw-editor" v-model="openApiRawJson" rows="5" spellcheck="false" />
+          <textarea v-model="openApiRawJson" class="raw-editor" rows="5" spellcheck="false" />
           <span v-if="openApiRawError" class="api-result err">{{ openApiRawError }}</span>
         </template>
 
@@ -1277,8 +1277,6 @@
 </template>
 
 <script lang="ts">
-export { akDropGripThreshold, akResolveDropIndex } from '../../composables/useActionKeyboardGesture'
-
 export function normalizeQuickSendThreshold(value: unknown): number {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return 63
@@ -1287,27 +1285,33 @@ export function normalizeQuickSendThreshold(value: unknown): number {
 </script>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onBeforeUnmount, watch } from 'vue'
 import {
   useSettings,
-  DEFAULT_ACTION_KEYBOARD,
-  DEFAULT_ACTION_BOTTOM,
-  cloneWithoutIcons,
   cloneSystemKeyboardWithoutIcons,
+  effectiveSystemKeyboard,
+  resetSystemKeyboard,
+  restoreSystemKeyboardUserDefault,
+  saveSystemKeyboardUserDefault,
+  cloneWithoutIcons,
+  DEFAULT_ACTION_BOTTOM,
+  DEFAULT_ACTION_KEYBOARD,
   effectiveActionKeyboard,
   ensureBottom,
   resetActionKeyboard,
   restoreActionKeyboardUserDefault,
   saveActionKeyboardUserDefault,
-  effectiveSystemKeyboard,
-  resetSystemKeyboard,
-  restoreSystemKeyboardUserDefault,
-  saveSystemKeyboardUserDefault,
   imeKeyboardOverlapPx,
 } from '../../composables/useSettings'
 import CollapsibleSection from './CollapsibleSection.vue'
 import { useI18n } from '../../composables/useI18n'
 import { useKeybindings } from '../../composables/useKeybindings'
+import {
+  useKeyboardProviders,
+  BUILTIN_KEYBOARD_ID,
+  SYSTEM_KEYBOARD_ID,
+} from '../../composables/useKeyboardProviders'
+import { usePluginLoader } from '../../composables/usePluginLoader'
 import type {
   ActionBottomCluster,
   ActionKey,
@@ -1342,49 +1346,44 @@ import {
   SYSTEM_KEYBOARD_ACTION_IDS,
   TOOLBAR_CONTEXT_ACTION_IDS,
 } from '../../utils/appActionCatalog'
+import { useActionKeyboardGesture } from '../../composables/useActionKeyboardGesture'
+import type { KeyboardGuardMode } from '../../utils/keyboardGuardMode'
 import { isWindowsClient } from '../../utils/clientPlatform'
 import { useDeviceSuperviseReload } from '../../composables/useDeviceSuperviseReload'
 import { Keyboard, Pin, RotateCcw } from 'lucide-vue-next'
 import SegmentedControl from '../ui/SegmentedControl.vue'
-import type { KeyboardGuardMode } from '../../utils/keyboardGuardMode'
 import { useOpenApiTest } from '../../composables/useOpenApiTest'
 import { useKbRecording } from '../../composables/useKbRecording'
-import { useActionKeyboardGesture } from '../../composables/useActionKeyboardGesture'
 import { useSystemKeyboardGesture } from '../../composables/useSystemKeyboardGesture'
+import { useKeyEditRecording } from '../../composables/useKeyEditRecording'
 import { applyAfterTerminalComposition } from '../../utils/terminalInput'
-import {
-  escapeForDisplay,
-  unescapeFromDisplay,
-  keyEventToSequence,
-  keyEventToLabel,
-} from '../../composables/useKeySequenceUtils'
+import { escapeForDisplay, unescapeFromDisplay } from '../../composables/useKeySequenceUtils'
 
 const { settings, saveSettings } = useSettings()
 const { hasOverride, reloadAfterSuperviseTabs, resetOverride } = useDeviceSuperviseReload()
 const { t } = useI18n()
 
-const keyboardGuardModeOptions = computed(() => [
-  { value: 'off', label: t('settings.keyboard.guardMode.off') },
-  { value: 'collapse_only', label: t('settings.keyboard.guardMode.collapseOnly') },
-  { value: 'open_only', label: t('settings.keyboard.guardMode.openOnly') },
-  { value: 'both', label: t('settings.keyboard.guardMode.both') },
-])
-
-const mobileInputModeOptions = computed(() => [
-  { value: 'builtin', label: t('settings.keyboard.mobileInputMode.builtin') },
-  { value: 'system', label: t('settings.keyboard.mobileInputMode.system') },
-])
+const mobileInputModeOptions = computed(() => {
+  const options = [
+    { value: 'builtin', label: t('settings.keyboard.mobileInputMode.builtin') },
+    { value: 'system', label: t('settings.keyboard.mobileInputMode.system') },
+  ]
+  // Third-party keyboard plugins surface as extra choices once their provider
+  // is registered (Phase 3). builtin-keyboard/system are the two host-frozen
+  // entries and are already listed above.
+  const names = new Map(usePluginLoader().pluginList.value.map((p) => [p.id, p.name]))
+  for (const provider of useKeyboardProviders().providers.value.values()) {
+    if (provider.id === BUILTIN_KEYBOARD_ID || provider.id === SYSTEM_KEYBOARD_ID) continue
+    options.push({ value: provider.id, label: names.get(provider.id) ?? provider.id })
+  }
+  return options
+})
 
 function onMobileInputModeChange(value: string) {
   applyAfterTerminalComposition(() => {
     settings.mobile_input_mode = value as MobileInputMode
     void saveSettings()
   })
-}
-
-function onKeyboardGuardModeChange(value: string) {
-  settings.keyboard_guard_mode = value as KeyboardGuardMode
-  void saveSettings()
 }
 
 function onSystemToolbarModeChange(event: Event) {
@@ -1394,10 +1393,6 @@ function onSystemToolbarModeChange(event: Event) {
   void saveSettings()
 }
 
-function onQuickSendThresholdChange() {
-  settings.quick_send_threshold = normalizeQuickSendThreshold(settings.quick_send_threshold)
-  void saveSettings()
-}
 const { defs, getBinding, formatBinding, isReadOnly } = useKeybindings()
 const appDefs = computed(() => defs.filter((def) => (def.kind ?? 'app') === 'app'))
 const terminalDefs = computed(() => defs.filter((def) => def.kind === 'terminal'))
@@ -1447,6 +1442,23 @@ const { kbRecording, kbRecordError, startKbRecord, stopKbRecord, resetKbBinding 
   settings,
   t,
 })
+
+const keyboardGuardModeOptions = computed(() => [
+  { value: 'off', label: t('settings.keyboard.guardMode.off') },
+  { value: 'collapse_only', label: t('settings.keyboard.guardMode.collapseOnly') },
+  { value: 'open_only', label: t('settings.keyboard.guardMode.openOnly') },
+  { value: 'both', label: t('settings.keyboard.guardMode.both') },
+])
+
+function onKeyboardGuardModeChange(value: string) {
+  settings.keyboard_guard_mode = value as KeyboardGuardMode
+  void saveSettings()
+}
+
+function onQuickSendThresholdChange() {
+  settings.quick_send_threshold = normalizeQuickSendThreshold(settings.quick_send_threshold)
+  void saveSettings()
+}
 
 const akDraft = ref<ActionKeyboardConfig | null>(null)
 
@@ -1498,11 +1510,6 @@ function bottomPreviewSlotStyle(ri: number, ki: number) {
   return { flexGrow: d.g ?? 1, flexBasis: '0', minWidth: '0' }
 }
 
-function previewLabel(key: ActionKey) {
-  if (key.special === 'space') return ' '
-  return key.label || ' '
-}
-
 const akSendPreview = computed(() => {
   if (!akEdit.value) return ''
   return akEdit.value.sendRaw
@@ -1522,365 +1529,6 @@ function ensureToolbarQuickKeys() {
   if (!Array.isArray(settings.toolbar_quick_keys)) {
     settings.toolbar_quick_keys = []
   }
-}
-
-const systemDraft = ref<SystemKeyboardConfig | null>(null)
-const {
-  itemKey: systemItemKey,
-  draggedKey: systemDraggedKey,
-  dragPointerDown: systemDragPointerDown,
-  resizePointerDown: systemResizePointerDown,
-  abort: abortSystemGesture,
-} = useSystemKeyboardGesture({ draft: systemDraft, settings })
-const systemLayout = computed(() => systemDraft.value ?? effectiveSystemKeyboard())
-const systemUpper = computed(() => systemLayout.value.upper)
-const systemLower = computed(() => canonicalLowerKeys(systemLayout.value))
-const systemStatus = computed(() => systemKeyboardLayoutStatus(systemLayout.value))
-type SystemEditorItem = { key: ActionKey; index: number; units: number }
-type SystemEditorPage = { items: SystemEditorItem[]; pinnedCopies: SystemEditorItem[]; end: number }
-
-function indexedSystemPages(keys: ActionKey[], capacity: number, offset = 0): SystemEditorPage[] {
-  let index = offset
-  return packSystemKeys(keys, capacity).map((page) => ({
-    items: page.map(({ key, units }) => ({ key, units, index: index++ })),
-    pinnedCopies: [],
-    end: index,
-  }))
-}
-
-function pinnedSystemPages(keys: ActionKey[], pinnedCount: number, capacity: number) {
-  const pinned: SystemEditorItem[] = keys.slice(0, pinnedCount).map((key, index) => ({
-    key,
-    index,
-    units: systemKeyUnits(key, capacity),
-  }))
-  const pagerCapacity = Math.max(1, capacity - pinned.reduce((sum, item) => sum + item.units, 0))
-  return indexedSystemPages(keys.slice(pinned.length), pagerCapacity, pinned.length).map(
-    (page, index) => ({
-      ...page,
-      items: index === 0 ? [...pinned, ...page.items] : page.items,
-      pinnedCopies: index === 0 ? [] : pinned,
-    })
-  )
-}
-const systemUpperPages = computed(() =>
-  pinnedSystemPages(systemUpper.value, systemStatus.value.upperPinned, UPPER_USER_UNITS)
-)
-const systemLowerPages = computed(() =>
-  pinnedSystemPages(systemLower.value, systemStatus.value.lowerPinned, SYSTEM_ROW_UNITS)
-)
-const systemLayoutMessage = ref('')
-const pinnedOptions = (length: number) =>
-  Array.from({ length: Math.min(MAX_SYSTEM_PINNED, length) + 1 }, (_, index) => index)
-const systemUpperPinnedOptions = computed(() => pinnedOptions(systemUpper.value.length))
-const systemLowerPinnedOptions = computed(() => pinnedOptions(systemLower.value.length))
-
-type SystemEdit = {
-  region: 'upper' | 'lower'
-  index: number
-  label: string
-  kind: 'send' | 'special' | 'action'
-  action: string
-  display: 'icon' | 'text'
-  sendRaw: string
-  style: string
-  repeat: boolean
-  auto_enter: boolean
-  special?: string
-  specialId: KeyboardSpecialId
-  keepHeld: boolean
-  grow?: number
-}
-
-const systemEdit = ref<SystemEdit | null>(null)
-const systemSpecialEntry = computed(() => keyboardSpecialEntry(systemEdit.value?.specialId))
-const systemSupportsRepeat = computed(
-  () => systemEdit.value?.kind !== 'special' || !systemSpecialEntry.value?.modifier
-)
-function editHasAgentIcon(edit: { kind: 'send' | 'special' | 'action'; label: string }): boolean {
-  return edit.kind === 'send' && isAgentIconEnabled({ kind: 'send', label: edit.label })
-}
-const systemAgentIconAvailable = computed(
-  () => !!systemEdit.value && editHasAgentIcon(systemEdit.value)
-)
-watch(
-  () => [systemEdit.value?.kind, systemEdit.value?.label] as const,
-  ([kind, label], previous) => {
-    if (!systemEdit.value || previous[1] === undefined) return
-    const matched = kind === 'send' && editHasAgentIcon(systemEdit.value)
-    const previouslyMatched =
-      previous[0] === 'send' && isAgentIconEnabled({ kind: previous[0], label: previous[1] ?? '' })
-    if (matched && !previouslyMatched) systemEdit.value.display = 'icon'
-  }
-)
-const systemActionOptions = [...APP_ACTIONS, ...SYSTEM_KEYBOARD_ACTIONS]
-const systemCanSave = computed(() => {
-  if (!systemEdit.value) return false
-  if (systemEdit.value.kind === 'special') return !!systemSpecialEntry.value
-  return systemEdit.value.kind === 'send'
-    ? systemEdit.value.label.trim().length > 0
-    : APP_ACTION_IDS.has(systemEdit.value.action) ||
-        SYSTEM_KEYBOARD_ACTION_IDS.has(systemEdit.value.action)
-})
-
-function systemPreviewDef(key: ActionKey) {
-  return actionKeyToKeyDef(key)
-}
-
-function systemSlotStyle(units: number) {
-  return { gridColumn: `span ${units}` }
-}
-
-function beginSystemEdit(region: 'upper' | 'lower', index: number) {
-  const key = region === 'upper' ? systemUpper.value[index] : systemLower.value[index]
-  if (!key) return
-  const parsedSpecial = parseKeyboardSpecial(key.special)
-  systemEdit.value = {
-    region,
-    index,
-    label: key.label,
-    kind: key.kind === 'action' ? 'action' : parsedSpecial ? 'special' : 'send',
-    action: key.action ?? '',
-    display: key.display ?? 'icon',
-    sendRaw: escapeForDisplay(key.send),
-    style: key.style ?? '',
-    repeat: key.repeat ?? false,
-    auto_enter: resolveAutoEnterForEdit(key),
-    special: key.special,
-    specialId: parsedSpecial?.id ?? 'ctrl',
-    keepHeld: parsedSpecial?.behavior === 'lock',
-    grow: key.grow,
-  }
-}
-
-function addSystemKey(region: 'upper' | 'lower') {
-  const index = region === 'upper' ? systemUpper.value.length : systemLower.value.length
-  systemEdit.value = {
-    region,
-    index,
-    label: '',
-    kind: 'send',
-    action: '',
-    display: 'icon',
-    sendRaw: '',
-    style: '',
-    repeat: false,
-    auto_enter: true,
-    specialId: 'ctrl',
-    keepHeld: false,
-  }
-}
-
-function onSystemSpecialChange() {
-  if (!systemEdit.value) return
-  const entry = keyboardSpecialEntry(systemEdit.value.specialId)
-  if (!entry) return
-  systemEdit.value.label = entry.label
-  if (!entry.modifier) systemEdit.value.keepHeld = false
-}
-
-function onSystemKindChange() {
-  if (systemEdit.value?.kind === 'special') onSystemSpecialChange()
-  else stopRecord()
-}
-
-function commitSystemCandidate(mutator: (candidate: SystemKeyboardConfig) => void): boolean {
-  const source = effectiveSystemKeyboard()
-  const candidate = cloneSystemKeyboardWithoutIcons(source)
-  mutator(candidate)
-  const canonical = canonicalizeSystemKeyboard(candidate)
-  if (!systemKeyboardCandidateAllowed(source, canonical)) {
-    systemLayoutMessage.value = t('settings.systemKeyboardPageLimit')
-    return false
-  }
-  settings.system_keyboard = canonical
-  systemLayoutMessage.value = ''
-  return true
-}
-
-function saveSystemKey() {
-  const edit = systemEdit.value
-  if (!edit || !systemCanSave.value) return
-  const key: ActionKey =
-    edit.kind === 'action'
-      ? {
-          label: edit.label,
-          kind: 'action',
-          action: edit.action,
-          display: edit.display,
-          style: edit.style || undefined,
-          repeat: edit.repeat || undefined,
-          ...(edit.action === 'pasteTerminal' ? { auto_enter: edit.auto_enter } : {}),
-          grow: edit.grow,
-        }
-      : edit.kind === 'special'
-        ? {
-            label: edit.label || keyboardSpecialEntry(edit.specialId)?.label || '',
-            kind: 'send',
-            special: serializeKeyboardSpecial(edit.specialId, edit.keepHeld ? 'lock' : 'once'),
-            display: edit.display,
-            style: edit.style || undefined,
-            repeat: systemSpecialEntry.value?.modifier ? undefined : edit.repeat || undefined,
-            grow: edit.grow,
-          }
-        : {
-            label: edit.label,
-            kind: 'send',
-            send: unescapeFromDisplay(edit.sendRaw),
-            display: editHasAgentIcon(edit) ? edit.display : undefined,
-            style: edit.style || undefined,
-            repeat: edit.repeat || undefined,
-            auto_enter: edit.auto_enter,
-            special: parseKeyboardSpecial(edit.special) ? undefined : edit.special,
-            grow: edit.grow,
-          }
-  const saved = commitSystemCandidate((config) => {
-    const row = edit.region === 'upper' ? config.upper : config.pages[0]
-    if (edit.index < row.length) row[edit.index] = key
-    else row.push(key)
-  })
-  if (saved) systemEdit.value = null
-}
-
-function onSystemAutoWidthChange(event: Event) {
-  if (!systemEdit.value) return
-  const adaptive = (event.target as HTMLInputElement).checked
-  if (adaptive) {
-    systemEdit.value.grow = undefined
-    return
-  }
-  const edit = systemEdit.value
-  const capacity = edit.region === 'upper' ? UPPER_USER_UNITS : SYSTEM_ROW_UNITS
-  systemEdit.value.grow = systemKeyUnits(
-    {
-      label: edit.label,
-      kind: edit.kind === 'action' ? 'action' : 'send',
-      action: edit.action || undefined,
-      display: edit.display,
-    },
-    capacity
-  )
-}
-
-function removeSystemKey(region: 'upper' | 'lower', index: number) {
-  commitSystemCandidate((config) => {
-    const row = region === 'upper' ? config.upper : config.pages[0]
-    row.splice(index, 1)
-    const field = region === 'upper' ? 'upper_pinned' : 'lower_pinned'
-    config[field] = Math.min(config[field] ?? 0, row.length)
-  })
-}
-
-function onSystemLowerEnabledChange(event: Event) {
-  const enabled = (event.target as HTMLInputElement).checked
-  commitSystemCandidate((config) => {
-    config.lower_enabled = enabled
-  })
-}
-
-function onPinnedChange(region: 'upper' | 'lower', event: Event) {
-  const count = Number((event.target as HTMLSelectElement).value)
-  commitSystemCandidate((config) => {
-    config[region === 'upper' ? 'upper_pinned' : 'lower_pinned'] = count
-  })
-}
-
-function addActionRow() {
-  ensureActionKeyboard()
-  settings.action_keyboard!.rows.push([])
-}
-
-function removeActionRow(ri: number) {
-  ensureActionKeyboard()
-  settings.action_keyboard!.rows.splice(ri, 1)
-}
-
-function addActionKey(ri: number) {
-  ensureActionKeyboard()
-  settings.action_keyboard!.rows[ri].push({ label: 'new', send: '', auto_enter: true })
-}
-
-function resolveAutoEnterForEdit(key: ActionKey): boolean {
-  if (typeof key.auto_enter === 'boolean') return key.auto_enter
-  const s = key.send
-  if (!s) return true
-  if (s.charCodeAt(0) === 0x1b) return false
-  if (s.length === 1) {
-    const c = s.charCodeAt(0)
-    if (c < 32 || c === 127) return false
-  }
-  return true
-}
-
-function removeActionKey(ri: number, ki: number) {
-  ensureActionKeyboard()
-  settings.action_keyboard!.rows[ri].splice(ki, 1)
-}
-
-function addBottomRow() {
-  ensureBottom().rows.push([])
-}
-
-function removeBottomRow(ri: number) {
-  ensureBottom().rows.splice(ri, 1)
-}
-
-function addBottomKey(ri: number) {
-  ensureBottom().rows[ri].push({ label: 'new', send: '', auto_enter: true })
-}
-
-function removeBottomKey(ri: number, ki: number) {
-  ensureBottom().rows[ri].splice(ki, 1)
-}
-
-function addToolbarQuickKey() {
-  ensureToolbarQuickKeys()
-  if (toolbarQuickKeys.value.length >= 5) return
-  akEdit.value = {
-    scope: 'toolbar',
-    ri: -1,
-    ki: toolbarQuickKeys.value.length,
-    label: '',
-    kind: 'send',
-    action: '',
-    display: 'icon',
-    sendRaw: '',
-    style: '',
-    repeat: false,
-    auto_enter: true,
-    specialId: 'ctrl',
-    keepHeld: false,
-  }
-}
-
-function editToolbarQuickKey(ki: number) {
-  ensureToolbarQuickKeys()
-  const key = toolbarQuickKeys.value[ki]
-  if (!key) return
-  const parsedSpecial = parseKeyboardSpecial(key.special)
-  akEdit.value = {
-    scope: 'toolbar',
-    ri: -1,
-    ki,
-    label: key.label,
-    kind: key.kind === 'action' ? 'action' : parsedSpecial ? 'special' : 'send',
-    action: key.action || '',
-    display: key.display ?? 'icon',
-    sendRaw: escapeForDisplay(key.send),
-    style: key.style || '',
-    repeat: key.repeat || false,
-    auto_enter: resolveAutoEnterForEdit(key),
-    special: key.special,
-    specialId: parsedSpecial?.id ?? 'ctrl',
-    keepHeld: parsedSpecial?.behavior === 'lock',
-    grow: key.grow,
-    icon: key.icon,
-  }
-}
-
-function removeToolbarQuickKey(ki: number) {
-  ensureToolbarQuickKeys()
-  toolbarQuickKeys.value.splice(ki, 1)
 }
 
 type AkEditScope = 'action' | 'bottom' | 'bottom-enter' | 'toolbar'
@@ -1903,16 +1551,15 @@ const akEdit = ref<{
   grow?: number
   icon?: object
 } | null>(null)
-const recordingTarget = ref<'action' | 'system' | null>(null)
-const akRecording = computed(() => recordingTarget.value === 'action')
-const systemRecording = computed(() => recordingTarget.value === 'system')
-const recordFocusSinkRef = ref<HTMLElement | null>(null)
+
+const akRecordingRec = useKeyEditRecording(() => akEdit.value)
+const { toggleRecord: toggleAkRecord } = akRecordingRec
+const akRecording = computed(() => akRecordingRec.isRecording('action'))
+
 watch(akEdit, (edit) => {
-  if (!edit && recordingTarget.value === 'action') stopRecord()
+  if (!edit) akRecordingRec.stopRecord()
 })
-watch(systemEdit, (edit) => {
-  if (!edit && recordingTarget.value === 'system') stopRecord()
-})
+
 const akIsEnterEdit = computed(() => akEdit.value?.scope === 'bottom-enter')
 const akAgentIconAvailable = computed(() => !!akEdit.value && editHasAgentIcon(akEdit.value))
 const akSpecialEntry = computed(() => keyboardSpecialEntry(akEdit.value?.specialId))
@@ -2020,6 +1667,56 @@ function editBottomEnter() {
   }
 }
 
+function editToolbarQuickKey(ki: number) {
+  ensureToolbarQuickKeys()
+  const key = toolbarQuickKeys.value[ki]
+  if (!key) return
+  const parsedSpecial = parseKeyboardSpecial(key.special)
+  akEdit.value = {
+    scope: 'toolbar',
+    ri: -1,
+    ki,
+    label: key.label,
+    kind: key.kind === 'action' ? 'action' : parsedSpecial ? 'special' : 'send',
+    action: key.action || '',
+    display: key.display ?? 'icon',
+    sendRaw: escapeForDisplay(key.send),
+    style: key.style || '',
+    repeat: key.repeat || false,
+    auto_enter: resolveAutoEnterForEdit(key),
+    special: key.special,
+    specialId: parsedSpecial?.id ?? 'ctrl',
+    keepHeld: parsedSpecial?.behavior === 'lock',
+    grow: key.grow,
+    icon: key.icon,
+  }
+}
+
+function addToolbarQuickKey() {
+  ensureToolbarQuickKeys()
+  if (toolbarQuickKeys.value.length >= 5) return
+  akEdit.value = {
+    scope: 'toolbar',
+    ri: -1,
+    ki: toolbarQuickKeys.value.length,
+    label: '',
+    kind: 'send',
+    action: '',
+    display: 'icon',
+    sendRaw: '',
+    style: '',
+    repeat: false,
+    auto_enter: true,
+    specialId: 'ctrl',
+    keepHeld: false,
+  }
+}
+
+function removeToolbarQuickKey(ki: number) {
+  ensureToolbarQuickKeys()
+  toolbarQuickKeys.value.splice(ki, 1)
+}
+
 function onAkSpecialChange() {
   if (!akEdit.value) return
   const entry = keyboardSpecialEntry(akEdit.value.specialId)
@@ -2030,7 +1727,7 @@ function onAkSpecialChange() {
 
 function onAkKindChange() {
   if (akEdit.value?.kind === 'special') onAkSpecialChange()
-  else stopRecord()
+  else akRecordingRec.stopRecord()
 }
 
 function saveActionKey() {
@@ -2097,62 +1794,331 @@ function saveActionKey() {
   akEdit.value = null
 }
 
-let recordHandler: ((e: KeyboardEvent) => void) | null = null
+function addActionRow() {
+  ensureActionKeyboard()
+  settings.action_keyboard!.rows.push([])
+}
 
-function toggleRecord(target: 'action' | 'system') {
-  if (recordingTarget.value === target) {
-    stopRecord()
-  } else {
-    stopRecord()
-    startRecord(target)
+function removeActionRow(ri: number) {
+  ensureActionKeyboard()
+  settings.action_keyboard!.rows.splice(ri, 1)
+}
+
+function addActionKey(ri: number) {
+  ensureActionKeyboard()
+  settings.action_keyboard!.rows[ri].push({ label: 'new', send: '', auto_enter: true })
+}
+
+function removeActionKey(ri: number, ki: number) {
+  ensureActionKeyboard()
+  settings.action_keyboard!.rows[ri].splice(ki, 1)
+}
+
+function addBottomRow() {
+  ensureBottom().rows.push([])
+}
+
+function removeBottomRow(ri: number) {
+  ensureBottom().rows.splice(ri, 1)
+}
+
+function addBottomKey(ri: number) {
+  ensureBottom().rows[ri].push({ label: 'new', send: '', auto_enter: true })
+}
+
+function removeBottomKey(ri: number, ki: number) {
+  ensureBottom().rows[ri].splice(ki, 1)
+}
+
+const systemDraft = ref<SystemKeyboardConfig | null>(null)
+const {
+  itemKey: systemItemKey,
+  draggedKey: systemDraggedKey,
+  dragPointerDown: systemDragPointerDown,
+  resizePointerDown: systemResizePointerDown,
+  abort: abortSystemGesture,
+} = useSystemKeyboardGesture({ draft: systemDraft, settings })
+const systemLayout = computed(() => systemDraft.value ?? effectiveSystemKeyboard())
+const systemUpper = computed(() => systemLayout.value.upper)
+const systemLower = computed(() => canonicalLowerKeys(systemLayout.value))
+const systemStatus = computed(() => systemKeyboardLayoutStatus(systemLayout.value))
+type SystemEditorItem = { key: ActionKey; index: number; units: number }
+type SystemEditorPage = { items: SystemEditorItem[]; pinnedCopies: SystemEditorItem[]; end: number }
+
+function indexedSystemPages(keys: ActionKey[], capacity: number, offset = 0): SystemEditorPage[] {
+  let index = offset
+  return packSystemKeys(keys, capacity).map((page) => ({
+    items: page.map(({ key, units }) => ({ key, units, index: index++ })),
+    pinnedCopies: [],
+    end: index,
+  }))
+}
+
+function pinnedSystemPages(keys: ActionKey[], pinnedCount: number, capacity: number) {
+  const pinned: SystemEditorItem[] = keys.slice(0, pinnedCount).map((key, index) => ({
+    key,
+    index,
+    units: systemKeyUnits(key, capacity),
+  }))
+  const pagerCapacity = Math.max(1, capacity - pinned.reduce((sum, item) => sum + item.units, 0))
+  return indexedSystemPages(keys.slice(pinned.length), pagerCapacity, pinned.length).map(
+    (page, index) => ({
+      ...page,
+      items: index === 0 ? [...pinned, ...page.items] : page.items,
+      pinnedCopies: index === 0 ? [] : pinned,
+    })
+  )
+}
+const systemUpperPages = computed(() =>
+  pinnedSystemPages(systemUpper.value, systemStatus.value.upperPinned, UPPER_USER_UNITS)
+)
+const systemLowerPages = computed(() =>
+  pinnedSystemPages(systemLower.value, systemStatus.value.lowerPinned, SYSTEM_ROW_UNITS)
+)
+const systemLayoutMessage = ref('')
+const pinnedOptions = (length: number) =>
+  Array.from({ length: Math.min(MAX_SYSTEM_PINNED, length) + 1 }, (_, index) => index)
+const systemUpperPinnedOptions = computed(() => pinnedOptions(systemUpper.value.length))
+const systemLowerPinnedOptions = computed(() => pinnedOptions(systemLower.value.length))
+
+type SystemEdit = {
+  region: 'upper' | 'lower'
+  index: number
+  label: string
+  kind: 'send' | 'special' | 'action'
+  action: string
+  display: 'icon' | 'text'
+  sendRaw: string
+  style: string
+  repeat: boolean
+  auto_enter: boolean
+  special?: string
+  specialId: KeyboardSpecialId
+  keepHeld: boolean
+  grow?: number
+}
+
+const systemEdit = ref<SystemEdit | null>(null)
+const systemSpecialEntry = computed(() => keyboardSpecialEntry(systemEdit.value?.specialId))
+const systemSupportsRepeat = computed(
+  () => systemEdit.value?.kind !== 'special' || !systemSpecialEntry.value?.modifier
+)
+function editHasAgentIcon(edit: { kind: 'send' | 'special' | 'action'; label: string }): boolean {
+  return edit.kind === 'send' && isAgentIconEnabled({ kind: 'send', label: edit.label })
+}
+const systemAgentIconAvailable = computed(
+  () => !!systemEdit.value && editHasAgentIcon(systemEdit.value)
+)
+watch(
+  () => [systemEdit.value?.kind, systemEdit.value?.label] as const,
+  ([kind, label], previous) => {
+    if (!systemEdit.value || previous[1] === undefined) return
+    const matched = kind === 'send' && editHasAgentIcon(systemEdit.value)
+    const previouslyMatched =
+      previous[0] === 'send' && isAgentIconEnabled({ kind: previous[0], label: previous[1] ?? '' })
+    if (matched && !previouslyMatched) systemEdit.value.display = 'icon'
+  }
+)
+const systemActionOptions = [...APP_ACTIONS, ...SYSTEM_KEYBOARD_ACTIONS]
+const systemCanSave = computed(() => {
+  if (!systemEdit.value) return false
+  if (systemEdit.value.kind === 'special') return !!systemSpecialEntry.value
+  return systemEdit.value.kind === 'send'
+    ? systemEdit.value.label.trim().length > 0
+    : APP_ACTION_IDS.has(systemEdit.value.action) ||
+        SYSTEM_KEYBOARD_ACTION_IDS.has(systemEdit.value.action)
+})
+
+function systemPreviewDef(key: ActionKey) {
+  return actionKeyToKeyDef(key)
+}
+
+function previewLabel(key: ActionKey) {
+  if (key.special === 'space') return ' '
+  return key.label || ' '
+}
+
+function systemSlotStyle(units: number) {
+  return { gridColumn: `span ${units}` }
+}
+
+function beginSystemEdit(region: 'upper' | 'lower', index: number) {
+  const key = region === 'upper' ? systemUpper.value[index] : systemLower.value[index]
+  if (!key) return
+  const parsedSpecial = parseKeyboardSpecial(key.special)
+  systemEdit.value = {
+    region,
+    index,
+    label: key.label,
+    kind: key.kind === 'action' ? 'action' : parsedSpecial ? 'special' : 'send',
+    action: key.action ?? '',
+    display: key.display ?? 'icon',
+    sendRaw: escapeForDisplay(key.send),
+    style: key.style ?? '',
+    repeat: key.repeat ?? false,
+    auto_enter: resolveAutoEnterForEdit(key),
+    special: key.special,
+    specialId: parsedSpecial?.id ?? 'ctrl',
+    keepHeld: parsedSpecial?.behavior === 'lock',
+    grow: key.grow,
   }
 }
 
-function recordingEventIgnorable(e: KeyboardEvent): boolean {
-  if (e.repeat) return true
-  const k = e.key
-  return k === 'Shift' || k === 'Control' || k === 'Alt' || k === 'Meta'
+function addSystemKey(region: 'upper' | 'lower') {
+  const index = region === 'upper' ? systemUpper.value.length : systemLower.value.length
+  systemEdit.value = {
+    region,
+    index,
+    label: '',
+    kind: 'send',
+    action: '',
+    display: 'icon',
+    sendRaw: '',
+    style: '',
+    repeat: false,
+    auto_enter: true,
+    specialId: 'ctrl',
+    keepHeld: false,
+  }
 }
 
-function startRecord(target: 'action' | 'system') {
-  recordingTarget.value = target
-  recordHandler = (e: KeyboardEvent) => {
-    if (recordingEventIgnorable(e)) return
-    const edit = target === 'action' ? akEdit.value : systemEdit.value
-    if (!edit) return
-    const seq = keyEventToSequence(e)
-    if (!seq) return
-    e.preventDefault()
-    e.stopPropagation()
-    e.stopImmediatePropagation()
-    edit.sendRaw = escapeForDisplay(seq)
-    if (edit.label === 'new' || edit.label === '') {
-      edit.label = keyEventToLabel(e)
-    }
-    stopRecord()
+function onSystemSpecialChange() {
+  if (!systemEdit.value) return
+  const entry = keyboardSpecialEntry(systemEdit.value.specialId)
+  if (!entry) return
+  systemEdit.value.label = entry.label
+  if (!entry.modifier) systemEdit.value.keepHeld = false
+}
+
+function onSystemKindChange() {
+  if (systemEdit.value?.kind === 'special') onSystemSpecialChange()
+  else systemRecordingRec.stopRecord()
+}
+
+function commitSystemCandidate(mutator: (candidate: SystemKeyboardConfig) => void): boolean {
+  const source = effectiveSystemKeyboard()
+  const candidate = cloneSystemKeyboardWithoutIcons(source)
+  mutator(candidate)
+  const canonical = canonicalizeSystemKeyboard(candidate)
+  if (!systemKeyboardCandidateAllowed(source, canonical)) {
+    systemLayoutMessage.value = t('settings.systemKeyboardPageLimit')
+    return false
   }
-  window.addEventListener('keydown', recordHandler, true)
-  nextTick(() => {
-    document.querySelector<HTMLElement>('.xterm-helper-textarea')?.blur()
-    const ae = document.activeElement
-    if (ae instanceof HTMLElement) ae.blur()
-    recordFocusSinkRef.value?.focus({ preventScroll: true })
+  settings.system_keyboard = canonical
+  systemLayoutMessage.value = ''
+  return true
+}
+
+function saveSystemKey() {
+  const edit = systemEdit.value
+  if (!edit || !systemCanSave.value) return
+  const key: ActionKey =
+    edit.kind === 'action'
+      ? {
+          label: edit.label,
+          kind: 'action',
+          action: edit.action,
+          display: edit.display,
+          style: edit.style || undefined,
+          repeat: edit.repeat || undefined,
+          ...(edit.action === 'pasteTerminal' ? { auto_enter: edit.auto_enter } : {}),
+          grow: edit.grow,
+        }
+      : edit.kind === 'special'
+        ? {
+            label: edit.label || keyboardSpecialEntry(edit.specialId)?.label || '',
+            kind: 'send',
+            special: serializeKeyboardSpecial(edit.specialId, edit.keepHeld ? 'lock' : 'once'),
+            display: edit.display,
+            style: edit.style || undefined,
+            repeat: systemSpecialEntry.value?.modifier ? undefined : edit.repeat || undefined,
+            grow: edit.grow,
+          }
+        : {
+            label: edit.label,
+            kind: 'send',
+            send: unescapeFromDisplay(edit.sendRaw),
+            display: editHasAgentIcon(edit) ? edit.display : undefined,
+            style: edit.style || undefined,
+            repeat: edit.repeat || undefined,
+            auto_enter: edit.auto_enter,
+            special: parseKeyboardSpecial(edit.special) ? undefined : edit.special,
+            grow: edit.grow,
+          }
+  const saved = commitSystemCandidate((config) => {
+    const row = edit.region === 'upper' ? config.upper : config.pages[0]
+    if (edit.index < row.length) row[edit.index] = key
+    else row.push(key)
+  })
+  if (saved) systemEdit.value = null
+}
+
+function onSystemAutoWidthChange(event: Event) {
+  if (!systemEdit.value) return
+  const adaptive = (event.target as HTMLInputElement).checked
+  if (adaptive) {
+    systemEdit.value.grow = undefined
+    return
+  }
+  const edit = systemEdit.value
+  const capacity = edit.region === 'upper' ? UPPER_USER_UNITS : SYSTEM_ROW_UNITS
+  systemEdit.value.grow = systemKeyUnits(
+    {
+      label: edit.label,
+      kind: edit.kind === 'action' ? 'action' : 'send',
+      action: edit.action || undefined,
+      display: edit.display,
+    },
+    capacity
+  )
+}
+
+function removeSystemKey(region: 'upper' | 'lower', index: number) {
+  commitSystemCandidate((config) => {
+    const row = region === 'upper' ? config.upper : config.pages[0]
+    row.splice(index, 1)
+    const field = region === 'upper' ? 'upper_pinned' : 'lower_pinned'
+    config[field] = Math.min(config[field] ?? 0, row.length)
   })
 }
 
-function stopRecord() {
-  recordingTarget.value = null
-  if (recordHandler) {
-    window.removeEventListener('keydown', recordHandler, true)
-    recordHandler = null
-  }
-  recordFocusSinkRef.value?.blur()
+function onSystemLowerEnabledChange(event: Event) {
+  const enabled = (event.target as HTMLInputElement).checked
+  commitSystemCandidate((config) => {
+    config.lower_enabled = enabled
+  })
 }
+
+function onPinnedChange(region: 'upper' | 'lower', event: Event) {
+  const count = Number((event.target as HTMLSelectElement).value)
+  commitSystemCandidate((config) => {
+    config[region === 'upper' ? 'upper_pinned' : 'lower_pinned'] = count
+  })
+}
+
+function resolveAutoEnterForEdit(key: ActionKey): boolean {
+  if (typeof key.auto_enter === 'boolean') return key.auto_enter
+  const s = key.send
+  if (!s) return true
+  if (s.charCodeAt(0) === 0x1b) return false
+  if (s.length === 1) {
+    const c = s.charCodeAt(0)
+    if (c < 32 || c === 127) return false
+  }
+  return true
+}
+
+const systemRecordingRec = useKeyEditRecording(() => systemEdit.value)
+const systemRecording = computed(() => systemRecordingRec.isRecording('system'))
+const recordFocusSinkRef = systemRecordingRec.recordFocusSinkRef
+const { toggleRecord: toggleSystemRecord } = systemRecordingRec
+watch(systemEdit, (edit) => {
+  if (!edit) systemRecordingRec.stopRecord()
+})
 
 onBeforeUnmount(() => {
   akAbortGesture()
   abortSystemGesture()
-  stopRecord()
   stopKbRecord()
 })
 </script>

@@ -64,14 +64,16 @@ describe('App.vue - system keyboard dismissal', () => {
     fallbackInput.remove()
   })
 
-  it('blurs the active element when the MobileKeyboard stub emits dismiss', async () => {
+  it('blurs the active element when the MobileKeyboard ctx emits dismiss', async () => {
     const wrapper = await mountWithTabs()
     const input = document.createElement('input')
     document.body.appendChild(input)
     input.focus()
     const blur = vi.spyOn(input, 'blur')
 
-    await wrapper.findComponent(MobileKeyboardStub).vm.$emit('dismiss')
+    const keyboard = wrapper.findComponent(MobileKeyboardStub)
+    const ctx = keyboard.props('ctx') as { events: { emit(event: string, data: unknown): void } }
+    ctx.events.emit('dismiss', undefined)
 
     expect(blur).toHaveBeenCalledOnce()
     input.remove()
@@ -146,7 +148,7 @@ describe('App.vue - system keyboard state regressions', () => {
 
     const toolbar = wrapper.findComponent(SystemKeyboardToolbarStub)
     expect(toolbar.props('visible')).toBe(true)
-    expect(toolbar.props('imeOpen')).toBe(false)
+    expect(toolbar.props('ctx').nativeImeOpen.value).toBe(false)
   })
 
   it('docks the root only while the system toolbar is visible', async () => {
@@ -201,8 +203,9 @@ describe('App.vue - system keyboard state regressions', () => {
     expect(document.documentElement.style.getPropertyValue('--kb-overlap')).toBe('0px')
     expect(root.classes()).not.toContain('system-ime-open')
 
-    await toolbar.vm.$emit('toggle-ime')
-    expect(toolbar.props('imeOpen')).toBe(true)
+    toolbar.props('ctx').setNativeImeOpen(true)
+    await nextTick()
+    expect(toolbar.props('ctx').nativeImeOpen.value).toBe(true)
     expect(document.documentElement.style.getPropertyValue('--kb-overlap')).toBe('0px')
     expect(root.classes()).not.toContain('system-ime-open')
 
@@ -267,7 +270,8 @@ describe('App.vue - system keyboard state regressions', () => {
     })
 
     const toolbar = wrapper.findComponent(SystemKeyboardToolbarStub)
-    await toolbar.vm.$emit('toggle-ime')
+    toolbar.props('ctx').setNativeImeOpen(true)
+    await nextTick()
     mocks.systemKeyboardOpen!.value = true
     await nextTick()
 
@@ -294,14 +298,16 @@ describe('App.vue - system keyboard state regressions', () => {
     await nextTick()
 
     const toolbar = wrapper.findComponent(SystemKeyboardToolbarStub)
-    await toolbar.vm.$emit('toggle-ime')
+    toolbar.props('ctx').setNativeImeOpen(false)
+    await nextTick()
     expect(toolbar.props('visible')).toBe(true)
-    expect(toolbar.props('imeOpen')).toBe(false)
+    expect(toolbar.props('ctx').nativeImeOpen.value).toBe(false)
     expect(activeTerminal.blur).toHaveBeenCalledOnce()
 
-    await toolbar.vm.$emit('toggle-ime')
+    toolbar.props('ctx').setNativeImeOpen(true)
+    await nextTick()
     expect(activeTerminal.focus).toHaveBeenCalledOnce()
-    expect(toolbar.props('imeOpen')).toBe(true)
+    expect(toolbar.props('ctx').nativeImeOpen.value).toBe(true)
     textarea.remove()
   })
 
@@ -324,15 +330,16 @@ describe('App.vue - system keyboard state regressions', () => {
 
       expect(document.activeElement).toBe(helper)
       const toolbar = wrapper.findComponent(SystemKeyboardToolbarStub)
-      expect(toolbar.props('imeOpen')).toBe(false)
+      expect(toolbar.props('ctx').nativeImeOpen.value).toBe(false)
       expect(mocks.setSystemImeAuthorized).toHaveBeenLastCalledWith(false)
 
       const activeTerminal = { setOutputListener: vi.fn(), focus: vi.fn() }
       await wrapper.findComponent(SplitContainerStub).vm.$emit('register', 'pane-1', activeTerminal)
-      await toolbar.vm.$emit('toggle-ime')
+      toolbar.props('ctx').setNativeImeOpen(true)
+      await nextTick()
       expect(mocks.setSystemImeAuthorized).toHaveBeenLastCalledWith(true)
       expect(activeTerminal.focus).toHaveBeenCalledOnce()
-      expect(toolbar.props('imeOpen')).toBe(true)
+      expect(toolbar.props('ctx').nativeImeOpen.value).toBe(true)
       helper.remove()
     }
   )
@@ -351,7 +358,9 @@ describe('App.vue - system keyboard state regressions', () => {
     await nextTick()
     expect(touchEnd.defaultPrevented).toBe(false)
     expect(activeTerminal.focus).toHaveBeenCalledOnce()
-    expect(wrapper.findComponent(SystemKeyboardToolbarStub).props('imeOpen')).toBe(true)
+    expect(wrapper.findComponent(SystemKeyboardToolbarStub).props('ctx').nativeImeOpen.value).toBe(
+      true
+    )
     helper.remove()
   })
 
@@ -365,13 +374,17 @@ describe('App.vue - system keyboard state regressions', () => {
     await nextTick()
     expect(activeTerminal.focus).not.toHaveBeenCalled()
     expect(document.activeElement).not.toBe(helper)
-    expect(wrapper.findComponent(SystemKeyboardToolbarStub).props('imeOpen')).toBe(false)
+    expect(wrapper.findComponent(SystemKeyboardToolbarStub).props('ctx').nativeImeOpen.value).toBe(
+      false
+    )
 
     terminalSurface.dispatchEvent(new TouchEvent('touchstart', { bubbles: true }))
     terminalSurface.dispatchEvent(new TouchEvent('touchcancel', { bubbles: true }))
     await nextTick()
     expect(activeTerminal.focus).not.toHaveBeenCalled()
-    expect(wrapper.findComponent(SystemKeyboardToolbarStub).props('imeOpen')).toBe(false)
+    expect(wrapper.findComponent(SystemKeyboardToolbarStub).props('ctx').nativeImeOpen.value).toBe(
+      false
+    )
     helper.remove()
   })
 
@@ -397,7 +410,9 @@ describe('App.vue - system keyboard state regressions', () => {
     expect(xtermFocus).not.toHaveBeenCalled()
     expect(mouseDown.defaultPrevented).toBe(true)
     expect(document.activeElement).not.toBe(helper)
-    expect(wrapper.findComponent(SystemKeyboardToolbarStub).props('imeOpen')).toBe(false)
+    expect(wrapper.findComponent(SystemKeyboardToolbarStub).props('ctx').nativeImeOpen.value).toBe(
+      false
+    )
     helper.remove()
   })
 
@@ -491,7 +506,10 @@ describe('App.vue - system keyboard state regressions', () => {
       json: async () => ({ text: 'echo from panel' }),
     })
 
-    await toolbar.vm.$emit('app-action', 'pasteTerminal', { autoEnter: false })
+    toolbar.props('ctx').events.emit('app-action', {
+      id: 'pasteTerminal',
+      options: { autoEnter: false },
+    })
     await vi.waitFor(() => {
       expect(activeTerminal.pasteFromClipboard).toHaveBeenCalledWith(
         'echo from panel',
@@ -569,8 +587,7 @@ describe('App.vue - system keyboard state regressions', () => {
       expect(ui.kbVisible).toBe(false)
       expect(toolbar.props('visible')).toBe(false)
       expect(toolbar.props('actionOpen')).toBe(false)
-      expect(toolbar.props('paneId')).toBe('')
-      expect(toolbar.props('getSendFn')()).toBeNull()
+      expect(toolbar.props('ctx').activePaneId.value).toBeNull()
       expect(terminal.setVirtualModifiers).toHaveBeenCalledWith({
         ctrl: 'off',
         shift: 'off',

@@ -14,7 +14,7 @@ pub use ssh::*;
 pub use text::*;
 pub use theme::*;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -84,11 +84,35 @@ pub enum WorkspaceBadgeMode {
     Both,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
+/// Mobile input source: the two host keyboards, or a keyboard plugin id
+/// (see keyboard-plugin-design.md §3.2C). Serialized as a plain string:
+/// "builtin" / "system" / "<plugin-id>".
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MobileInputMode {
     Builtin,
     System,
+    Plugin(String),
+}
+
+impl Serialize for MobileInputMode {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            MobileInputMode::Builtin => serializer.serialize_str("builtin"),
+            MobileInputMode::System => serializer.serialize_str("system"),
+            MobileInputMode::Plugin(id) => serializer.serialize_str(id),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for MobileInputMode {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            "builtin" => Ok(MobileInputMode::Builtin),
+            "system" => Ok(MobileInputMode::System),
+            _ => Ok(MobileInputMode::Plugin(s)),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

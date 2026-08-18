@@ -75,7 +75,10 @@
               type="button"
               class="preview-menu-item"
               role="menuitem"
-              @click="previewMenuOpen = false; openOrFocusPreview('files')"
+              @click="
+                previewMenuOpen = false
+                openOrFocusPreview('files')
+              "
             >
               <FolderTree :size="14" />
               <span>{{ t('previewPanel.switchFiles') }}</span>
@@ -84,7 +87,10 @@
               type="button"
               class="preview-menu-item"
               role="menuitem"
-              @click="previewMenuOpen = false; openOrFocusPreview('web')"
+              @click="
+                previewMenuOpen = false
+                openOrFocusPreview('web')
+              "
             >
               <Globe :size="14" />
               <span>{{ t('previewPanel.switchWeb') }}</span>
@@ -264,33 +270,21 @@
       @cancel="onSshAuthCancel"
     />
 
-    <MobileKeyboard
-      v-if="effectiveMobileInputMode === 'builtin'"
-      :visible="kbVisible && hasActiveTerminalLeaf"
-      :pane-id="activeTerminalLeaf?.paneId ?? ''"
-      :get-send-fn="getSendFn"
-      @update:visible="onBuiltinKeyboardVisibilityChange"
-      @bookmarks="bookmarksRef?.open()"
-      @app-action="dispatchAppAction"
-      @dismiss="onKeyboardDismiss"
-      @typing-change="(v: boolean) => (kbTyping = v)"
+    <component
+      :is="keyboardProviderComponent"
+      v-if="keyboardProviderComponent"
+      ref="keyboardHostRef"
+      :ctx="keyboardCtx"
     />
+
+    <MobileKeyboard v-else-if="effectiveMobileInputMode === 'builtin'" :ctx="keyboardCtx" />
 
     <SystemKeyboardToolbar
       v-if="effectiveMobileInputMode === 'system'"
+      :ctx="keyboardCtx"
       :visible="systemToolbarVisible"
-      :pane-id="activeTerminalLeaf?.paneId ?? ''"
-      :get-send-fn="getSendFn"
       :action-open="systemActionKeyboardOpen"
-      :ime-open="terminalImeFocused"
       @update:action-open="onSystemActionKeyboardChange"
-      @modifier-change="onSystemModifierChange"
-      @bookmarks="bookmarksRef?.open()"
-      @app-action="dispatchAppAction"
-      @dismiss="dismissTerminalKeyboard"
-      @toggle-ime="toggleSystemIme"
-      @focus-xterm="focusSystemInput"
-      @paste-text="pasteActiveTerminal"
     />
 
     <MobileInputGuide
@@ -361,6 +355,7 @@ import {
   onBeforeUnmount,
   nextTick,
   h,
+  type ComponentPublicInstance,
 } from 'vue'
 import TabBar from './components/terminal/TabBar.vue'
 import type { TabInfo } from './components/terminal/TabBar.vue'
@@ -370,6 +365,9 @@ import DropPreview from './components/split/DropPreview.vue'
 import CommandPalette from './components/command/CommandPalette.vue'
 import type { Command } from './components/command/CommandPalette.vue'
 import MobileKeyboard from './components/keyboard/MobileKeyboard.vue'
+import { createKeyboardContext } from './keyboard/createKeyboardContext'
+import { useKeyboardBand } from './keyboard/useKeyboardBand'
+import type { KeyboardHostEventMap } from '../../plugin-api/index'
 import KbToggleButton from './components/keyboard/KbToggleButton.vue'
 import MobileInputGuide from './components/keyboard/MobileInputGuide.vue'
 import SystemKeyboardToolbar from './components/keyboard/SystemKeyboardToolbar.vue'
@@ -423,6 +421,11 @@ import { useTabPersistence } from './composables/useTabPersistence'
 import { useDesktopLifecycle } from './composables/useDesktopLifecycle'
 import { useViewportResize } from './composables/useViewportResize'
 import { imeKeyboardOverlapPx, type MobileInputMode } from './composables/useSettings'
+import {
+  initHostKeyboardProviders,
+  SYSTEM_KEYBOARD_ID,
+  useKeyboardProviders,
+} from './composables/useKeyboardProviders'
 import { useKeyboardOverlap } from './composables/useKeyboardOverlap'
 import { usePluginLauncher } from './composables/usePluginLauncher'
 import { useSshConnectFlow } from './composables/useSshConnectFlow'
@@ -431,10 +434,7 @@ import { setMcSender } from './composables/useMissionControlState'
 import { clearFileWorkspaceState } from './composables/useFileWorkspaceState'
 import { useSplitPane } from './composables/useSplitPane'
 import { useSuperviseTabs } from './composables/useSuperviseTabs'
-import {
-  emptyMobileTerminalModifiers,
-  type MobileTerminalModifiers,
-} from './utils/terminalInput'
+import { emptyMobileTerminalModifiers, type MobileTerminalModifiers } from './utils/terminalInput'
 import { useSyncWebSocket } from './composables/useSyncWebSocket'
 import type { SyncClientMsg } from './types/protocol'
 import { isWindowsClient } from './utils/clientPlatform'
@@ -545,9 +545,15 @@ const kbTyping = ref(false)
 const terminalImeFocused = ref(false)
 const mobileInputGuideVisible = ref(false)
 const systemActionKeyboardOpen = ref(false)
-const effectiveMobileInputMode = computed<MobileInputMode>(
-  () => appSettings.mobile_input_mode ?? 'builtin'
-)
+// Provider registry resolves which keyboard is active (keyboard-plugin-design.md §4.1).
+// Host providers map back onto the legacy enum so downstream behavior is unchanged.
+initHostKeyboardProviders()
+const { providers: keyboardProviders, resolveActive: resolveActiveKeyboardProvider } =
+  useKeyboardProviders()
+const effectiveMobileInputMode = computed<MobileInputMode>(() => {
+  const providerId = resolveActiveKeyboardProvider(appSettings.mobile_input_mode)
+  return providerId === SYSTEM_KEYBOARD_ID ? 'system' : 'builtin'
+})
 const activeTerminalLeaf = computed(() => {
   const tab = activeTab.value
   if (!tab || tab.type !== 'terminal') return null
@@ -555,6 +561,117 @@ const activeTerminalLeaf = computed(() => {
   return leaf && paneKind(leaf) === 'terminal' ? leaf : null
 })
 const hasActiveTerminalLeaf = computed(() => activeTerminalLeaf.value !== null)
+
+// ── KeyboardContext (keyboard-plugin-design.md §4.3, Phase 1b-iv) ──────────
+// Handed to plugin-contributed keyboard providers. The in-core MobileKeyboard
+// (single-sourced, ctx-based) renders when no plugin component plays.
+const activeKeyboardProvider = computed(() => {
+  const providerId = resolveActiveKeyboardProvider(appSettings.mobile_input_mode)
+  return keyboardProviders.value.get(providerId)
+})
+// Renders any provider that contributes a component (builtin plugin or a
+// third-party keyboard plugin). System is host-frozen: registerComponent
+// refuses attachments, so the resolved system provider never carries one and
+// this stays undefined for the SystemKeyboardToolbar branch.
+const keyboardProviderComponent = computed(() => activeKeyboardProvider.value?.component)
+
+const keyboardVisible = computed({
+  get: () => kbVisible.value && hasActiveTerminalLeaf.value,
+  set: (v: boolean) => onBuiltinKeyboardVisibilityChange(v),
+})
+
+function sendActiveData(data: string): Promise<void> {
+  // getSendFn is broadcast-mode aware (invariant §二 #6).
+  return Promise.resolve(getSendFn()?.(data) ?? undefined)
+}
+
+function getBroadcastSendFn(): SendDataFn | null {
+  const tab = tabs.value.find((t) => t.paneId === activePaneId.value)
+  if (!tab || tab.type !== 'terminal') return null
+  const leaves = getAllLeaves(tab.layout).filter((leaf) => paneKind(leaf) === 'terminal')
+  if (!leaves.length) return null
+  return createFrozenSendFn(
+    leaves.map((leaf) => (d: string) => termRefs[leaf.paneId]?.sendData(d, true)),
+    leaves.length > 1 ? () => tab.broadcastActivity++ : undefined
+  )
+}
+
+function sendBroadcastData(data: string): Promise<void> {
+  return Promise.resolve(getBroadcastSendFn()?.(data) ?? undefined)
+}
+
+function sendToPaneData(paneId: string, data: string): Promise<void> {
+  return Promise.resolve(termRefs[paneId]?.sendData(data) ?? undefined)
+}
+
+function onKeyboardHostEvent(
+  event: keyof KeyboardHostEventMap,
+  data: KeyboardHostEventMap[keyof KeyboardHostEventMap]
+) {
+  switch (event) {
+    case 'app-action': {
+      const d = data as KeyboardHostEventMap['app-action']
+      dispatchAppAction(d.id, d.options)
+      break
+    }
+    case 'bookmarks':
+      bookmarksRef.value?.open()
+      break
+    case 'dismiss':
+      onKeyboardDismiss()
+      break
+    case 'typing-change': {
+      const d = data as KeyboardHostEventMap['typing-change']
+      kbTyping.value = d.focused
+      break
+    }
+    case 'upload-status': {
+      // Forwarded as the legacy window event so existing subscribers
+      // (useUploadManagement) keep working.
+      window.dispatchEvent(
+        new CustomEvent('dinotty-upload-status', { detail: data as Record<string, unknown> })
+      )
+      break
+    }
+    case 'modifier-change': {
+      const d = data as KeyboardHostEventMap['modifier-change']
+      onSystemModifierChange(d.modifiers as MobileTerminalModifiers)
+      break
+    }
+    case 'focus-xterm':
+      focusSystemInput()
+      break
+    case 'paste-text': {
+      const d = data as KeyboardHostEventMap['paste-text']
+      pasteActiveTerminal(d.text)
+      break
+    }
+    default:
+      break
+  }
+}
+
+const keyboardCtx = createKeyboardContext({
+  visible: keyboardVisible,
+  activePaneId: computed(() => activeTerminalLeaf.value?.paneId ?? null),
+  sendActive: sendActiveData,
+  sendBroadcast: sendBroadcastData,
+  sendToPane: sendToPaneData,
+  nativeImeOpen: terminalImeFocused,
+  // System keyboard requests native IME state through the context; routing open
+  // through requestTerminalKeyboard keeps the action-panel + visibility state
+  // machine in sync (same semantics as the old toggle-ime host handler).
+  setNativeImeOpen: (open: boolean) => (open ? requestTerminalKeyboard() : closeSystemIme()),
+  onHostEvent: onKeyboardHostEvent,
+})
+
+// ── Keyboard reservation band (Phase 2: provider.desiredHeight -> --mkb-height) ──
+const keyboardHostRef = ref<ComponentPublicInstance | null>(null)
+useKeyboardBand({
+  visible: keyboardVisible,
+  desiredHeight: computed(() => activeKeyboardProvider.value?.desiredHeight),
+  hostRef: keyboardHostRef,
+})
 
 // ── Template refs (purely UI concerns) ─────────────────────────
 const paletteRef = ref<InstanceType<typeof CommandPalette>>()
@@ -1192,8 +1309,7 @@ function openOrFocusPreview(kind: 'files' | 'web') {
     splitPane.focusPane(existing.paneId)
     return
   }
-  const payload: { path?: string; url?: string } =
-    kind === 'files' ? { path: tab.cwd || '' } : {}
+  const payload: { path?: string; url?: string } = kind === 'files' ? { path: tab.cwd || '' } : {}
   void splitPane.insertNonTerminalPane(kind, payload)
 }
 
@@ -1317,11 +1433,6 @@ function closeSystemIme(terminal = getActiveTerminalRef()) {
   }
 }
 
-function toggleSystemIme() {
-  if (terminalImeFocused.value) closeSystemIme()
-  else requestTerminalKeyboard()
-}
-
 function onSystemKeyboardClosed() {
   if (
     effectiveMobileInputMode.value !== 'system' ||
@@ -1441,10 +1552,7 @@ function onTerminalRunCode(e: Event) {
 }
 
 function onLinkActivate() {
-  if (
-    effectiveMobileInputMode.value === 'system' &&
-    terminalTouchMouseReplayUntil > 0
-  ) {
+  if (effectiveMobileInputMode.value === 'system' && terminalTouchMouseReplayUntil > 0) {
     const withinReplayWindow = performance.now() < terminalTouchMouseReplayUntil
     terminalTouchMouseReplayUntil = 0
     if (withinReplayWindow) closeSystemIme()
@@ -1745,14 +1853,32 @@ async function onConfirmClose(tabId: string, paneId: string | null) {
   ui.cancelClose()
 }
 
+// The plugin-facing active pane: the focused leaf inside the active terminal
+// tab, or the top-level active pane id when that tab is not a terminal.
+const pluginActivePaneId = computed(() => {
+  const tab = tabs.value.find((t) => t.paneId === activePaneId.value)
+  return tab?.type === 'terminal' ? tab.activePaneId : activePaneId.value
+})
+const pluginActivePaneListeners = new Set<(paneId: string | null) => void>()
+watch(pluginActivePaneId, (paneId) => {
+  for (const listener of pluginActivePaneListeners) listener(paneId)
+})
+
 // Window globals for plugin context
 window.__dinotty_terminal_api = {
   send(paneId: string, data: string) {
     termRefs[paneId]?.sendData(data)
   },
   activePaneId() {
-    const tab = tabs.value.find((t) => t.paneId === activePaneId.value)
-    return tab?.type === 'terminal' ? tab.activePaneId : activePaneId.value
+    return pluginActivePaneId.value
+  },
+  onDidChangeActivePane(callback: (paneId: string | null) => void) {
+    pluginActivePaneListeners.add(callback)
+    return {
+      dispose() {
+        pluginActivePaneListeners.delete(callback)
+      },
+    }
   },
   activeCwd() {
     const tab = tabs.value.find((t) => t.paneId === activePaneId.value)
