@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc, OnceLock,
+    Arc, Mutex, OnceLock,
 };
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
@@ -66,6 +66,70 @@ fn default_port() -> u16 {
     option_env!("DINOTTY_DEFAULT_PORT")
         .and_then(|s| s.parse().ok())
         .unwrap_or(BUILT_IN_DEFAULT_PORT)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DesktopPortSelection {
+    Dynamic,
+    Fixed { port: u16, source: &'static str },
+}
+
+impl DesktopPortSelection {
+    fn port(self) -> u16 {
+        match self {
+            Self::Dynamic => 0,
+            Self::Fixed { port, .. } => port,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EmbeddedServerBootstrap {
+    mode: &'static str,
+    host: &'static str,
+    port: u16,
+    base_url: String,
+    token: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EmbeddedServerStartupError {
+    code: String,
+    message: String,
+    can_retry_dynamic: bool,
+}
+
+impl EmbeddedServerStartupError {
+    fn new(code: impl Into<String>, message: impl Into<String>, can_retry_dynamic: bool) -> Self {
+        Self { code: code.into(), message: message.into(), can_retry_dynamic }
+    }
+}
+
+#[derive(Clone, Debug)]
+enum EmbeddedServerStatus {
+    Starting,
+    Ready(EmbeddedServerBootstrap),
+    Failed(EmbeddedServerStartupError),
+}
+
+struct EmbeddedServerState(Mutex<EmbeddedServerStatus>);
+
+impl Default for EmbeddedServerState {
+    fn default() -> Self {
+        Self(Mutex::new(EmbeddedServerStatus::Starting))
+    }
+}
+
+impl EmbeddedServerState {
+    fn status(&self) -> EmbeddedServerStatus {
+        self.0.lock().unwrap_or_else(|error| error.into_inner()).clone()
+    }
+
+    fn set(&self, status: EmbeddedServerStatus) {
+        *self.0.lock().unwrap_or_else(|error| error.into_inner()) = status;
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -438,9 +502,28 @@ fn pty_detach(pane_id: String, state: State<'_, Arc<SessionManager>>) -> Result<
 }
 
 #[tauri::command]
-fn embedded_http_origin() -> String {
-    let port = EMBEDDED_HTTP_PORT.get().copied().unwrap_or_else(default_port);
-    format!("http://127.0.0.1:{port}")
+fn get_embedded_server_bootstrap(
+    state: State<'_, EmbeddedServerState>,
+) -> Result<EmbeddedServerBootstrap, EmbeddedServerStartupError> {
+    match state.status() {
+        EmbeddedServerStatus::Ready(bootstrap) => Ok(bootstrap),
+        EmbeddedServerStatus::Failed(error) => Err(error),
+        EmbeddedServerStatus::Starting => Err(EmbeddedServerStartupError::new(
+            "embedded_server_starting",
+            "The local Dinotty service is still starting. Please retry in a moment.",
+            false,
+        )),
+    }
+}
+
+// Kept as compatibility shims for older frontend bundles. New builds use the
+// single bootstrap command so the address and token always come from the same
+// successfully bound embedded-server instance.
+#[tauri::command]
+fn embedded_http_origin(
+    state: State<'_, EmbeddedServerState>,
+) -> Result<String, EmbeddedServerStartupError> {
+    get_embedded_server_bootstrap(state).map(|bootstrap| bootstrap.base_url)
 }
 
 fn is_trusted_app_navigation(url: &tauri::Url) -> bool {
@@ -456,12 +539,123 @@ fn is_trusted_app_navigation(url: &tauri::Url) -> bool {
 }
 
 #[tauri::command]
-fn embedded_auth_token() -> Result<String, String> {
-    dinotty_server::settings::load_token()
-        .or_else(|| std::env::var("DINOTTY_TOKEN").ok())
-        .map(|token| token.trim().to_string())
-        .filter(|token| !token.is_empty())
-        .ok_or_else(|| "desktop authentication token is unavailable".to_string())
+fn embedded_auth_token(
+    state: State<'_, EmbeddedServerState>,
+) -> Result<String, EmbeddedServerStartupError> {
+    get_embedded_server_bootstrap(state).map(|bootstrap| bootstrap.token)
+}
+
+fn bind_startup_error(
+    selection: DesktopPortSelection,
+    error: &std::io::Error,
+) -> EmbeddedServerStartupError {
+    let (code, hint) = match error.raw_os_error() {
+        Some(10013) => (
+            "embedded_port_access_denied",
+            "Windows denied access to the port. It may be inside an excluded port range.",
+        ),
+        Some(10048) => ("embedded_port_in_use", "The port is already in use."),
+        _ => ("embedded_server_bind_failed", "The local listener could not be created."),
+    };
+    let target = match selection {
+        DesktopPortSelection::Dynamic => "a system-assigned loopback port".to_string(),
+        DesktopPortSelection::Fixed { port, .. } => format!("fixed loopback port {port}"),
+    };
+    EmbeddedServerStartupError::new(
+        code,
+        format!("Failed to bind {target}: {hint} ({error})"),
+        true,
+    )
+}
+
+fn launch_desktop_embedded_server(
+    selection: DesktopPortSelection,
+    manager: Arc<SessionManager>,
+    shell_probe: Arc<dinotty_server::platform::shell_probe::ShellProbeService>,
+    state: &EmbeddedServerState,
+) -> Result<EmbeddedServerBootstrap, EmbeddedServerStartupError> {
+    let listener =
+        embedded_server::bind_listener(selection.port(), IpAddr::V4(Ipv4Addr::LOCALHOST))
+            .map_err(|error| bind_startup_error(selection, &error))?;
+    let actual_address = listener.local_addr().map_err(|error| {
+        let message =
+            format!("The local Dinotty service was bound, but its address is unavailable: {error}");
+        EmbeddedServerStartupError::new("embedded_server_address_failed", message, true)
+    })?;
+    let actual_port = actual_address.port();
+    let token = embedded_server::resolve_auth_token().map_err(|error| {
+        EmbeddedServerStartupError::new(
+            "embedded_token_unavailable",
+            format!("The internal desktop authentication token is unavailable: {error}"),
+            true,
+        )
+    })?;
+
+    if let Some(existing) = EMBEDDED_HTTP_PORT.get() {
+        if *existing != actual_port {
+            return Err(EmbeddedServerStartupError::new(
+                "embedded_server_already_started",
+                "The local Dinotty service is already using a different port.",
+                false,
+            ));
+        }
+    } else {
+        let _ = EMBEDDED_HTTP_PORT.set(actual_port);
+    }
+
+    let bootstrap = EmbeddedServerBootstrap {
+        mode: "embedded",
+        host: "127.0.0.1",
+        port: actual_port,
+        base_url: format!("http://127.0.0.1:{actual_port}"),
+        token: token.clone(),
+    };
+    manager.set_notify_port(actual_port);
+    state.set(EmbeddedServerStatus::Ready(bootstrap.clone()));
+    tauri::async_runtime::spawn(embedded_server::run_server(listener, manager, shell_probe, token));
+    match selection {
+        DesktopPortSelection::Dynamic => {
+            tracing::info!(
+                "Desktop mode: embedded server on dynamically assigned port {actual_port}"
+            )
+        }
+        DesktopPortSelection::Fixed { source, .. } => tracing::info!(
+            "Desktop mode: embedded server on fixed port {actual_port} (source: {source})"
+        ),
+    }
+    Ok(bootstrap)
+}
+
+#[tauri::command]
+fn retry_embedded_server_dynamic(
+    manager: State<'_, Arc<SessionManager>>,
+    shell_probe: State<'_, Arc<dinotty_server::platform::shell_probe::ShellProbeService>>,
+    state: State<'_, EmbeddedServerState>,
+) -> Result<EmbeddedServerBootstrap, EmbeddedServerStartupError> {
+    match state.status() {
+        EmbeddedServerStatus::Ready(bootstrap) => return Ok(bootstrap),
+        EmbeddedServerStatus::Starting => {
+            return Err(EmbeddedServerStartupError::new(
+                "embedded_server_starting",
+                "The local Dinotty service is already starting.",
+                false,
+            ));
+        }
+        EmbeddedServerStatus::Failed(_) => state.set(EmbeddedServerStatus::Starting),
+    }
+
+    match launch_desktop_embedded_server(
+        DesktopPortSelection::Dynamic,
+        Arc::clone(&manager),
+        Arc::clone(&shell_probe),
+        &state,
+    ) {
+        Ok(bootstrap) => Ok(bootstrap),
+        Err(error) => {
+            state.set(EmbeddedServerStatus::Failed(error.clone()));
+            Err(error)
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -587,7 +781,10 @@ async fn tauri_upload(
     cwd: Option<String>,
     token: Option<String>,
 ) -> Result<FetchResponse, String> {
-    let port = EMBEDDED_HTTP_PORT.get().copied().unwrap_or_else(default_port);
+    let port = EMBEDDED_HTTP_PORT
+        .get()
+        .copied()
+        .ok_or_else(|| "embedded server is unavailable".to_string())?;
     let mut url = format!(
         "http://127.0.0.1:{port}/api/workspace/upload?pane_id={}&dir={}",
         urlencoding::encode(&pane_id),
@@ -764,33 +961,37 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let launch_intent = LaunchIntent::parse(&args);
     let requested_port = parse_port(&args);
-    let bind_ip = parse_bind_ip(&args);
-    let port = if requested_port == 0 {
+    let server_port = if requested_port == 0 {
         let port = match default_port() {
             0 => BUILT_IN_DEFAULT_PORT,
             port => port,
         };
-        tracing::warn!("Port 0 is not supported; falling back to default port {port}");
+        tracing::warn!("Server port 0 is not supported; falling back to default port {port}");
         port
     } else {
         requested_port
     };
-    let _ = EMBEDDED_HTTP_PORT.set(port);
+    let desktop_port = parse_desktop_port_selection(&args);
 
     let manager = Arc::new(SessionManager::new());
     let shell_probe = Arc::new(dinotty_server::platform::shell_probe::ShellProbeService::new());
     if launch_intent == LaunchIntent::Server {
+        let bind_ip = parse_bind_ip(&args);
         dinotty_server::session::ledger::boot_sweep();
         let rt = tokio::runtime::Runtime::new().unwrap();
         let mgr = Arc::clone(&manager);
         rt.block_on(async move {
-            let listener = embedded_server::bind_listener(port, bind_ip)
-                .unwrap_or_else(|e| panic!("failed to bind embedded server on port {port}: {e}"));
+            let listener =
+                embedded_server::bind_listener(server_port, bind_ip).unwrap_or_else(|e| {
+                    panic!("failed to bind embedded server on port {server_port}: {e}")
+                });
+            let token = embedded_server::resolve_auth_token()
+                .unwrap_or_else(|error| panic!("failed to load server token: {error}"));
             // The reaper must run unconditionally — a bind failure or notifier-registration
             // ordering issue must never suppress it. Notification GC simply no-ops until
             // run_server registers a notifier.
             mgr.start_cleanup_task();
-            embedded_server::run_server(listener, mgr, shell_probe).await
+            embedded_server::run_server(listener, mgr, shell_probe, token).await
         });
         return;
     }
@@ -848,6 +1049,7 @@ fn main() {
         .manage(tray::state::TrayMenuState::default())
         .manage(window_actions::MainWindowState::default())
         .manage(StartupExitState::default())
+        .manage(EmbeddedServerState::default())
         .manage(shutdown::ShutdownCoordinator::new(manager.clone()))
         .setup(move |app| {
             if launch_intent == LaunchIntent::Invalid {
@@ -881,27 +1083,22 @@ fn main() {
             dinotty_server::session::ledger::boot_sweep();
             let mgr = Arc::clone(&manager);
             mgr.start_cleanup_task();
-            match embedded_server::bind_listener(port, bind_ip) {
-                Ok(listener) => {
-                    let actual = listener.local_addr().expect("bound listener").port();
-                    // Redundant-by-design: run_server() also sets notify_port from its own
-                    // local_addr once its future is first polled. We set it here too — synchronously,
-                    // before spawn — so a Tauri `pty_spawn` IPC that fires before the spawned task's
-                    // first poll still reads the real port (not 0). Do NOT remove either set.
-                    mgr.set_notify_port(actual);
-                    tauri::async_runtime::spawn(embedded_server::run_server(
-                        listener,
+            let embedded_state = app.state::<EmbeddedServerState>();
+            match desktop_port.clone() {
+                Ok(selection) => {
+                    if let Err(error) = launch_desktop_embedded_server(
+                        selection,
                         mgr,
                         shell_probe.clone(),
-                    ));
-                    tracing::info!("Desktop mode: embedded server on port {}", actual);
+                        &embedded_state,
+                    ) {
+                        tracing::error!(code = %error.code, "{}", error.message);
+                        embedded_state.set(EmbeddedServerStatus::Failed(error));
+                    }
                 }
-                Err(e) => {
-                    tracing::error!(
-                        "Failed to bind embedded server on port {}: {}; notifications disabled",
-                        port,
-                        e
-                    );
+                Err(error) => {
+                    tracing::error!(code = %error.code, "{}", error.message);
+                    embedded_state.set(EmbeddedServerStatus::Failed(error));
                 }
             }
 
@@ -938,6 +1135,8 @@ fn main() {
             pty_snapshot_request,
             pty_kill,
             pty_detach,
+            get_embedded_server_bootstrap,
+            retry_embedded_server_dynamic,
             embedded_http_origin,
             embedded_auth_token,
             tauri_fetch,
@@ -988,6 +1187,81 @@ fn main() {
             #[cfg(not(target_os = "macos"))]
             let _ = app_handle;
         });
+}
+
+fn invalid_desktop_port(source: &str, value: &str) -> EmbeddedServerStartupError {
+    EmbeddedServerStartupError::new(
+        "invalid_embedded_port",
+        format!("Invalid desktop embedded port from {source}: {value:?}. Expected 0-65535."),
+        true,
+    )
+}
+
+fn parse_optional_port_arg(
+    args: &[String],
+    long_name: &'static str,
+    short_name: Option<&'static str>,
+) -> Result<Option<u16>, EmbeddedServerStartupError> {
+    let equals_prefix = format!("{long_name}=");
+    let mut index = 0;
+    while index < args.len() {
+        let argument = args[index].as_str();
+        if argument == long_name || short_name == Some(argument) {
+            let value = args
+                .get(index + 1)
+                .ok_or_else(|| invalid_desktop_port(long_name, "missing value"))?;
+            return value
+                .parse::<u16>()
+                .map(Some)
+                .map_err(|_| invalid_desktop_port(long_name, value));
+        }
+        if let Some(value) = argument.strip_prefix(&equals_prefix) {
+            return value
+                .parse::<u16>()
+                .map(Some)
+                .map_err(|_| invalid_desktop_port(long_name, value));
+        }
+        index += 1;
+    }
+    Ok(None)
+}
+
+fn configured_desktop_port(port: u16, source: &'static str) -> DesktopPortSelection {
+    if port == 0 {
+        DesktopPortSelection::Dynamic
+    } else {
+        DesktopPortSelection::Fixed { port, source }
+    }
+}
+
+fn parse_desktop_port_selection(
+    args: &[String],
+) -> Result<DesktopPortSelection, EmbeddedServerStartupError> {
+    if let Some(port) = parse_optional_port_arg(args, "--embedded-port", None)? {
+        return Ok(configured_desktop_port(port, "--embedded-port"));
+    }
+
+    if let Ok(value) = std::env::var("DINOTTY_DESKTOP_PORT") {
+        let port = value
+            .parse::<u16>()
+            .map_err(|_| invalid_desktop_port("DINOTTY_DESKTOP_PORT", &value))?;
+        return Ok(configured_desktop_port(port, "DINOTTY_DESKTOP_PORT"));
+    }
+
+    // Backward compatibility for the v0.18 multi-instance build and existing
+    // desktop shortcuts that supplied the shared server-style port option.
+    if let Some(port) = parse_optional_port_arg(args, "--port", Some("-p"))? {
+        return Ok(configured_desktop_port(port, "--port/-p"));
+    }
+
+    if let Some(value) = option_env!("DINOTTY_DEFAULT_PORT") {
+        let port = value
+            .parse::<u16>()
+            .map_err(|_| invalid_desktop_port("DINOTTY_DEFAULT_PORT", value))?;
+        return Ok(configured_desktop_port(port, "DINOTTY_DEFAULT_PORT"));
+    }
+
+    Ok(DesktopPortSelection::Dynamic)
 }
 
 fn parse_port(args: &[String]) -> u16 {
@@ -1081,6 +1355,87 @@ mod launch_tests {
             LaunchIntent::parse(&args(&["dinotty", "--background", "--server"])),
             LaunchIntent::Invalid
         );
+    }
+
+    #[test]
+    fn desktop_port_prefers_explicit_embedded_option_and_accepts_dynamic_zero() {
+        assert_eq!(
+            parse_desktop_port_selection(&args(&[
+                "dinotty",
+                "--port",
+                "19000",
+                "--embedded-port=18899",
+            ]))
+            .unwrap(),
+            DesktopPortSelection::Fixed { port: 18899, source: "--embedded-port" }
+        );
+        assert_eq!(
+            parse_desktop_port_selection(&args(&["dinotty", "--embedded-port", "0"])).unwrap(),
+            DesktopPortSelection::Dynamic
+        );
+    }
+
+    #[test]
+    fn desktop_port_keeps_legacy_port_option_compatible() {
+        assert_eq!(
+            parse_desktop_port_selection(&args(&["dinotty", "-p", "18898"])).unwrap(),
+            DesktopPortSelection::Fixed { port: 18898, source: "--port/-p" }
+        );
+    }
+
+    #[test]
+    fn invalid_desktop_port_is_a_startup_error() {
+        let error = parse_desktop_port_selection(&args(&["dinotty", "--embedded-port", "70000"]))
+            .unwrap_err();
+        assert_eq!(error.code, "invalid_embedded_port");
+        assert!(error.can_retry_dynamic);
+    }
+
+    #[test]
+    fn dynamic_bind_keeps_the_system_assigned_listener() {
+        let listener = embedded_server::bind_listener(0, IpAddr::V4(Ipv4Addr::LOCALHOST)).unwrap();
+        let address = listener.local_addr().unwrap();
+        assert_ne!(address.port(), 0);
+        assert!(std::net::TcpStream::connect(address).is_ok());
+    }
+
+    #[test]
+    fn occupied_fixed_port_can_be_replaced_by_dynamic_bind() {
+        let occupied = embedded_server::bind_listener(0, IpAddr::V4(Ipv4Addr::LOCALHOST)).unwrap();
+        let occupied_port = occupied.local_addr().unwrap().port();
+        assert!(
+            embedded_server::bind_listener(occupied_port, IpAddr::V4(Ipv4Addr::LOCALHOST)).is_err()
+        );
+
+        let fallback = embedded_server::bind_listener(0, IpAddr::V4(Ipv4Addr::LOCALHOST)).unwrap();
+        assert_ne!(fallback.local_addr().unwrap().port(), occupied_port);
+    }
+
+    #[test]
+    fn windows_bind_failures_have_actionable_diagnostics() {
+        let selection = DesktopPortSelection::Fixed { port: 8999, source: "test" };
+        let access_denied =
+            bind_startup_error(selection, &std::io::Error::from_raw_os_error(10013));
+        assert_eq!(access_denied.code, "embedded_port_access_denied");
+        assert!(access_denied.message.contains("excluded port range"));
+
+        let in_use = bind_startup_error(selection, &std::io::Error::from_raw_os_error(10048));
+        assert_eq!(in_use.code, "embedded_port_in_use");
+        assert!(in_use.message.contains("already in use"));
+    }
+
+    #[test]
+    fn bootstrap_urls_do_not_contain_the_internal_token() {
+        let bootstrap = EmbeddedServerBootstrap {
+            mode: "embedded",
+            host: "127.0.0.1",
+            port: 49152,
+            base_url: "http://127.0.0.1:49152".into(),
+            token: "secret-token".into(),
+        };
+        let json = serde_json::to_value(bootstrap).unwrap();
+        assert_eq!(json["baseUrl"], "http://127.0.0.1:49152");
+        assert!(!json["baseUrl"].as_str().unwrap().contains("secret-token"));
     }
 }
 

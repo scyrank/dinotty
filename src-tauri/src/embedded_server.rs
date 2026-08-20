@@ -300,6 +300,29 @@ fn generate_random_token() -> String {
     })
 }
 
+/// Load the existing desktop token (including the DPAPI-backed Windows value),
+/// or create and persist one when this is the first launch.  The token is
+/// intentionally returned to the caller so the bound listener and the Tauri
+/// bootstrap state can be published atomically before the frontend starts.
+pub fn resolve_auth_token() -> Result<String, String> {
+    let initial_token = settings::load_token()
+        .or_else(|| std::env::var("DINOTTY_TOKEN").ok())
+        .map(|token| token.trim().to_string())
+        .filter(|token| !token.is_empty())
+        .unwrap_or_default();
+
+    if !initial_token.is_empty() {
+        tracing::info!("Auth token loaded (length={})", initial_token.len());
+        return Ok(initial_token);
+    }
+
+    let token = generate_random_token();
+    settings::save_token(&token)
+        .map_err(|error| format!("failed to persist auto-generated token: {error}"))?;
+    tracing::info!("Desktop mode: auto-generated auth token (length={})", token.len());
+    Ok(token)
+}
+
 fn read_git_info() -> GitInfo {
     let version = env!("CARGO_PKG_VERSION").to_string();
 
@@ -747,6 +770,7 @@ pub fn run_server(
     listener: std::net::TcpListener,
     manager: Arc<SessionManager>,
     shell_probe: Arc<ShellProbeService>,
+    initial_token: String,
 ) -> impl std::future::Future<Output = ()> {
     // Guard is created synchronously and moved into the returned future, so notify_port
     // resets to 0 on ANY termination of the future — normal exit, panic, task abort, or a
@@ -818,23 +842,6 @@ pub fn run_server(
         plugins.scan();
         let _plugin_process_guard = PluginProcessGuard(Arc::clone(&plugins));
 
-        let initial_token = settings::load_token()
-            .or_else(|| std::env::var("DINOTTY_TOKEN").ok())
-            .map(|token| token.trim().to_string())
-            .filter(|token| !token.is_empty())
-            .unwrap_or_default();
-        let initial_token = if initial_token.is_empty() {
-            let token = generate_random_token();
-            if let Err(e) = settings::save_token(&token) {
-                tracing::error!("Failed to persist auto-generated token: {}", e);
-                return;
-            }
-            tracing::info!("Desktop mode: auto-generated auth token");
-            token
-        } else {
-            tracing::info!("Auth token loaded (length={})", initial_token.len());
-            initial_token
-        };
         let auth_token = Arc::new(tokio::sync::RwLock::new(initial_token));
 
         let session_ttl_days = settings::load_settings().auth.session_ttl_days;

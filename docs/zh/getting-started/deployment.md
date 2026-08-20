@@ -196,6 +196,11 @@ CMD ["supervisord", "-c", "/etc/supervisor/supervisord.conf"]
 | 日志级别 | `RUST_LOG` 环境变量 | info | trace / debug / info / warn / error |
 | Shell | Unix: `SHELL`；Windows: `DINOTTY_SHELL` | 自动检测 | Windows 优先 `DINOTTY_SHELL`，再尝试 `pwsh.exe`、`powershell.exe`、`%ComSpec%` / `cmd.exe` |
 
+上表的端口参数默认值适用于独立 `dinotty-server`。桌面版内嵌服务默认绑定
+`127.0.0.1:0`，由操作系统动态分配可用端口，并通过 Tauri IPC 传给内嵌前端。
+如需固定桌面端口，可使用 `--embedded-port <端口>` 或环境变量
+`DINOTTY_DESKTOP_PORT`；旧的桌面 `--port/-p` 与多实例构建端口仍保持兼容。
+
 ### Shell 探测与 WSL
 
 “设置 → 通用 → Shell”中的列表由 Dinotty 后端主机实时探测，而不是由浏览器所在设备决定。每次打开选择器都会重新探测；列表中的“已检测到”只表示可执行文件或 WSL 发行版已找到，不保证用户启动脚本一定能成功运行。修改只影响之后创建的本地终端和分屏，已经打开的终端不会切换 Shell。

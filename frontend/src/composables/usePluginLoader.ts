@@ -8,6 +8,13 @@ import type { SyncEvent } from '../types/protocol'
 import { useI18n, type Locale } from './useI18n'
 import { describeHttpError } from '../utils/httpError'
 
+function pluginWebSocketUrl(path: string): string {
+  const resolved = apiUrl(path)
+  if (/^https?:\/\//.test(resolved)) return resolved.replace(/^http/, 'ws')
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${location.host}${resolved}`
+}
+
 // Plugin modules are verified by the server, then loaded from a short-lived
 // blob URL. @vite-ignore keeps the URL dynamic without requiring unsafe-eval.
 const dynamicImport = (url: string): Promise<any> => import(/* @vite-ignore */ url)
@@ -322,12 +329,11 @@ function createPluginContext(pluginId: string): PluginContext {
       return res.json()
     },
     spawn(args, options) {
-      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
       const query = new URLSearchParams({ args: JSON.stringify(args) })
       if (options) query.set('options', JSON.stringify(options))
       const ws = new WebSocket(
         wsUrlWithToken(
-          `${proto}//${location.host}/api/plugins/${pluginId}/spawn?${query.toString()}`
+          pluginWebSocketUrl(`/api/plugins/${pluginId}/spawn?${query.toString()}`)
         )
       )
       let stdoutCtrl: ReadableStreamDefaultController<string>
@@ -466,11 +472,10 @@ function createPluginContext(pluginId: string): PluginContext {
       return res.json()
     },
     watch(path, cb) {
-      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
       const query = new URLSearchParams({ path })
       const ws = new WebSocket(
         wsUrlWithToken(
-          `${proto}//${location.host}/ws/plugins/${pluginId}/workspace/watch?${query.toString()}`
+          pluginWebSocketUrl(`/ws/plugins/${pluginId}/workspace/watch?${query.toString()}`)
         )
       )
       let sockets = pluginWatchSockets.get(pluginId)

@@ -561,6 +561,13 @@ export const messages: Record<Locale, Record<string, string>> = {
     'settings.plugins.back': 'Back',
     'settings.plugins.installedBadge': 'Installed',
     'settings.plugins.refresh': 'Refresh',
+    'embeddedStartup.title': 'Local service failed to start',
+    'embeddedStartup.summary':
+      'Dinotty could not start its private desktop service. This is not an account sign-in problem.',
+    'embeddedStartup.noTokenHint':
+      'Do not enter a GitHub, ChatGPT, or API token. You can retry with a system-assigned port.',
+    'embeddedStartup.retryDynamic': 'Retry with a dynamic port',
+    'embeddedStartup.retrying': 'Retrying…',
     'login.subtitle': 'Enter your access token to continue',
     'login.placeholder': 'Access Token',
     'login.submit': 'Sign In',
@@ -1516,6 +1523,12 @@ export const messages: Record<Locale, Record<string, string>> = {
     'settings.log.loading': '加载中...',
     'settings.log.refresh': '刷新',
     'settings.log.close': '关闭',
+    'embeddedStartup.title': '本地服务启动失败',
+    'embeddedStartup.summary': 'Dinotty 无法启动桌面内嵌服务，这不是账号登录问题。',
+    'embeddedStartup.noTokenHint':
+      '请勿填写 GitHub、ChatGPT 或 API 令牌。可以改用系统动态分配端口重试。',
+    'embeddedStartup.retryDynamic': '使用动态端口重试',
+    'embeddedStartup.retrying': '正在重试…',
     'login.subtitle': '请输入访问令牌以继续',
     'login.placeholder': '访问令牌',
     'login.submit': '登录',

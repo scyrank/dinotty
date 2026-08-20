@@ -1,5 +1,11 @@
 <template>
-  <SetupPage v-if="!authenticated && needsSetup" @success="onLoginSuccess" />
+  <EmbeddedServerErrorPage
+    v-if="embeddedStartupError"
+    :error="embeddedStartupError"
+    :retrying="embeddedStartupRetrying"
+    @retry="retryEmbeddedServer"
+  />
+  <SetupPage v-else-if="!authenticated && needsSetup" @success="onLoginSuccess" />
   <LoginPage v-else-if="!authenticated && authProbe === 'done'" @success="onLoginSuccess" />
   <div v-else-if="!authenticated" class="auth-probe-screen">
     <RefreshCw :size="20" class="auth-probe-spinner" />
@@ -394,10 +400,14 @@ import { setTauriWindowTitle, updateDocumentTitle } from './utils/windowTitle'
 // useSettings replaced by useSettingsStore
 import {
   getApiBase,
+  getEmbeddedServerBootstrap,
   checkTokenConfigured,
   authenticateEmbeddedDesktop,
   apiUrl,
   markCookieAuthenticated,
+  normalizeEmbeddedServerStartupError,
+  retryEmbeddedServerDynamic,
+  type EmbeddedServerStartupError,
 } from './composables/apiBase'
 import { isTauri, tauriInvoke } from './composables/useTransport'
 import {
@@ -493,6 +503,7 @@ import {
 // formatCloseTabMessage moved to ConfirmCloseDialog component
 import LoginPage from './components/LoginPage.vue'
 import SetupPage from './components/SetupPage.vue'
+import EmbeddedServerErrorPage from './components/EmbeddedServerErrorPage.vue'
 import { storeToRefs } from 'pinia'
 import { useSessionStore } from './stores/sessionStore'
 import { useUiStore } from './stores/uiStore'
@@ -518,6 +529,8 @@ const { persist, persistNow, dispose: disposePersist } = useTabPersistence({ tab
 const ui = useUiStore()
 const { syncConnected, kbVisible, settingsOpen, authenticated, authProbe, needsSetup } =
   storeToRefs(ui)
+const embeddedStartupError = ref<EmbeddedServerStartupError | null>(null)
+const embeddedStartupRetrying = ref(false)
 
 const settingsStore = useSettingsStore()
 const appSettings = settingsStore.settings
@@ -2209,6 +2222,18 @@ function onWindowCloseCancel() {
   windowCloseConfirmVisible.value = false
 }
 
+async function retryEmbeddedServer() {
+  if (embeddedStartupRetrying.value) return
+  embeddedStartupRetrying.value = true
+  try {
+    await retryEmbeddedServerDynamic()
+    window.location.reload()
+  } catch (error) {
+    embeddedStartupError.value = normalizeEmbeddedServerStartupError(error)
+    embeddedStartupRetrying.value = false
+  }
+}
+
 onMounted(async () => {
   setupTauriWindowClose()
   await desktopLifecycle.setup()
@@ -2221,7 +2246,12 @@ onMounted(async () => {
   window.addEventListener('terminal-run-code', onTerminalRunCode)
   window.addEventListener('dinotty:open-settings', onOpenSettingsRequest)
   window.addEventListener('pane-drag-hover-switch', onPaneDragHoverSwitch)
+  let embeddedBootstrapReady = !isTauri()
   try {
+    if (isTauri()) {
+      await getEmbeddedServerBootstrap()
+      embeddedBootstrapReady = true
+    }
     if (authenticated.value) {
       await getApiBase()
       await settingsStore.load()
@@ -2316,6 +2346,18 @@ onMounted(async () => {
           // Network error — show LoginPage
         }
       }
+    }
+  } catch (error) {
+    const isEmbeddedFailure =
+      !!error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      typeof error.code === 'string' &&
+      error.code.startsWith('embedded_')
+    if (isTauri() && (!embeddedBootstrapReady || isEmbeddedFailure)) {
+      embeddedStartupError.value = normalizeEmbeddedServerStartupError(error)
+    } else {
+      console.error('[startup] application initialization failed:', error)
     }
   } finally {
     ui.markAuthProbeDone()
