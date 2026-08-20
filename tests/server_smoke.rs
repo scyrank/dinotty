@@ -54,7 +54,7 @@ mod windows_smoke {
 
         assert!(
             violations.is_empty(),
-            "Windows background process launches must call `.no_window()` near `Command::new(...)` \
+            "Windows background process launches must call a no-window helper near `Command::new(...)` \
              so GUI/portable builds do not flash transient console windows:\n{}",
             violations.join("\n")
         );
@@ -94,6 +94,48 @@ mod windows_smoke {
         Ok(())
     }
 
+    #[test]
+    fn first_start_generates_a_dpapi_protected_token() -> TestResult {
+        let server = env!("CARGO_BIN_EXE_dinotty-server");
+        let tmp = tempfile::Builder::new().prefix("dinotty-token-").tempdir()?;
+        let appdata = tmp.path().join("AppData").join("Roaming");
+        let localappdata = tmp.path().join("AppData").join("Local");
+        let userprofile = tmp.path().join("User");
+        let config_dir = tmp.path().join("config");
+        create_dir(&appdata)?;
+        create_dir(&localappdata)?;
+        create_dir(&userprofile)?;
+
+        let mut command = Command::new(server);
+        command
+            .arg("--print-token")
+            .current_dir(&userprofile)
+            .env("APPDATA", &appdata)
+            .env("LOCALAPPDATA", &localappdata)
+            .env("USERPROFILE", &userprofile)
+            .env("DINOTTY_CONFIG_DIR", &config_dir);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
+
+        let output = command.output()?;
+        assert!(
+            output.status.success(),
+            "--print-token failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let token = String::from_utf8(output.stdout)?.trim().to_string();
+        assert_eq!(token.len(), 64);
+        assert!(token.bytes().all(|byte| byte.is_ascii_hexdigit()));
+
+        let persisted = fs::read(config_dir.join("token"))?;
+        assert!(persisted.starts_with(b"dpapi:"));
+        assert!(!persisted.windows(token.len()).any(|window| window == token.as_bytes()));
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn spawn_server(
         server: &str,
@@ -113,6 +155,7 @@ mod windows_smoke {
             .env("APPDATA", appdata)
             .env("LOCALAPPDATA", localappdata)
             .env("USERPROFILE", userprofile)
+            .env("DINOTTY_CONFIG_DIR", tmp.path().join("config"))
             .env("DINOTTY_TOKEN", "smoke-token")
             .stdout(Stdio::from(stdout))
             .stderr(Stdio::from(stderr));
@@ -156,7 +199,8 @@ mod windows_smoke {
             if trimmed.starts_with("//") || !is_process_command_new(trimmed) {
                 continue;
             }
-            if command_window(&lines, idx).contains(".no_window()") {
+            let window = command_window(&lines, idx);
+            if window.contains(".no_window()") || window.contains(".no_window_with_stdio()") {
                 continue;
             }
 

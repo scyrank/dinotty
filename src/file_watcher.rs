@@ -189,8 +189,7 @@ pub async fn watch_handler(
     let allowed_origins = s.auth.allowed_origins.clone();
     let trusted_proxies = s.auth.trusted_proxies.clone();
     drop(s);
-    let real_ip = crate::auth::real_client_ip(&headers, addr.ip(), &trusted_proxies);
-    if !crate::auth::check_ws_origin(&headers, &allowed_origins, real_ip, &trusted_proxies) {
+    if !crate::auth::check_ws_origin(&headers, &allowed_origins, addr.ip(), &trusted_proxies) {
         return StatusCode::FORBIDDEN.into_response();
     }
     ws.on_upgrade(move |socket| {
@@ -218,13 +217,18 @@ async fn handle_watch_socket(
         return;
     };
 
-    let root = {
-        let state = session.cwd_state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        match state.cwd.canonicalize() {
-            Ok(c) => c,
-            Err(_) => state.cwd.clone(),
-        }
+    let Some(cwd) = session.cwd_for_workspace() else {
+        let _ = socket
+            .send(Message::Text(
+                serde_json::to_string(&WatchMessage::Error {
+                    message: "cwd_unavailable_for_backend".to_string(),
+                })
+                .unwrap(),
+            ))
+            .await;
+        return;
     };
+    let root = cwd.canonicalize().unwrap_or(cwd);
 
     let watch_path = if Path::new(&path).is_absolute() {
         PathBuf::from(&path)

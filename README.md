@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/logo.png" alt="Dinotty Logo" width="200" />
+  <img src="docs/public/images/logo.png" alt="Dinotty Logo" width="200" />
 </p>
 
 <h1 align="center">Dinotty</h1>
@@ -8,6 +8,7 @@
   <a href="https://github.com/xichan96/dinotty/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License"></a>
   <img src="https://img.shields.io/badge/language-Rust-orange" alt="Rust">
   <img src="https://img.shields.io/badge/frontend-Vue%203-brightgreen" alt="Vue 3">
+  <a href="https://xichan96.github.io/dinotty/"><img src="https://img.shields.io/badge/docs-dinotty-8a8a8a" alt="Docs"></a>
   <a href="https://github.com/xichan96/dinotty/stargazers"><img src="https://img.shields.io/github/stars/xichan96/dinotty?style=social" alt="GitHub Stars"></a>
   <a href="https://github.com/xichan96/dinotty/releases"><img src="https://img.shields.io/github/downloads/xichan96/dinotty/total" alt="GitHub Downloads"></a>
   <a href="https://github.com/xichan96/dinotty/issues"><img src="https://img.shields.io/github/issues/xichan96/dinotty" alt="GitHub Issues"></a>
@@ -19,22 +20,32 @@
 
 ---
 
-为 **Coding Agent** 打造的**多端同步**终端服务器。在任意设备上运行 Claude Code、opencode、Codex 或 OpenClaw，桌面端专业高效，移动端随时掌控——无缝切换，会话永不丢失。
+为 Coding Agent 场景打造的终端。
+
+在任意设备上运行 Claude Code、opencode、Codex 或 OpenClaw -- 简洁、可拓展、多端同步，会话永不丢失。
+
+**手机 · iPad · 桌面，一个会话**
+
+电脑上写到一半，掏出手机继续，回到桌面一切原样。断网不丢，刷新即回。
+
+**一切皆 pane，像搭积木一样**
+
+终端、插件、文件、SSH、网页预览 —— 每个面板都是一块积木，拖拽拼装出你的专属工作台。
 
 ## 截图
 
 <p align="center">
-  <img src="docs/images/1.png" alt="手机上运行 Claude Code" width="250" />
-  <img src="docs/images/2.png" alt="完整键盘布局与 htop" width="250" />
-  <img src="docs/images/3.png" alt="主题设置" width="250" />
+  <img src="docs/public/images/1.png" alt="手机上运行 Claude Code" width="250" />
+  <img src="docs/public/images/2.png" alt="完整键盘布局与 htop" width="250" />
+  <img src="docs/public/images/3.png" alt="主题设置" width="250" />
 </p>
 <p align="center">
-  <img src="docs/images/4.png" alt="快捷键盘自定义" width="250" />
-  <img src="docs/images/5.png" alt="系统监控" width="250" />
-  <img src="docs/images/6.png" alt="通知系统" width="250" />
+  <img src="docs/public/images/4.png" alt="快捷键盘自定义" width="250" />
+  <img src="docs/public/images/5.png" alt="系统监控" width="250" />
+  <img src="docs/public/images/6.png" alt="通知系统" width="250" />
 </p>
 <p align="center">
-  <img src="docs/images/7.png" alt="平板横屏桌面级布局" width="500" />
+  <img src="docs/public/images/7.png" alt="平板横屏桌面级布局" width="500" />
 </p>
 
 ## 桌面端演示
@@ -44,47 +55,62 @@
 **分屏广播** — 可拖拽的多面板分屏，一个 pane 输入，多个 pane 同步执行：
 
 <p align="center">
-  <img src="docs/images/gif/1-split-broadcast.gif" alt="分屏广播演示" width="600" />
+  <img src="docs/public/images/gif/1-split-broadcast.gif" alt="分屏广播演示" width="600" />
 </p>
 
 **命令收藏** — 右键终端文本直接收藏，分组管理，一键执行：
 
 <p align="center">
-  <img src="docs/images/gif/2-command-bookmark.gif" alt="命令收藏演示" width="600" />
+  <img src="docs/public/images/gif/2-command-bookmark.gif" alt="命令收藏演示" width="600" />
 </p>
 
 **SSH 连接与文件浏览器** — 内建 SSH 客户端，远程会话与本地体验一致，SFTP 文件管理全覆盖：
 
 <p align="center">
-  <img src="docs/images/gif/3-ssh-file-browser.gif" alt="SSH 连接与文件浏览器演示" width="600" />
+  <img src="docs/public/images/gif/3-ssh-file-browser.gif" alt="SSH 连接与文件浏览器演示" width="600" />
 </p>
 
 **工作区管理与 Mission Control** — 多工作区隔离，Mission Control 概览，快速切换：
 
 <p align="center">
-  <img src="docs/images/gif/4-workspace-mission-control.gif" alt="工作区管理演示" width="600" />
+  <img src="docs/public/images/gif/4-workspace-mission-control.gif" alt="工作区管理演示" width="600" />
 </p>
 
 **插件系统** — JS 插件热重载，内置 CC Switch、JSON Formatter 等：
 
 <p align="center">
-  <img src="docs/images/gif/5-plugin.gif" alt="插件系统演示" width="600" />
+  <img src="docs/public/images/gif/5-plugin.gif" alt="插件系统演示" width="600" />
 </p>
 
 **统一布局系统** - 终端、插件、文件浏览器、网页预览皆为 pane，可拖拽分屏、跨 Tab 移动、提取为新 Tab：
 
 <p align="center">
-  <img src="docs/images/gif/6-layout-sys.gif" alt="统一布局系统演示" width="600" />
+  <img src="docs/public/images/gif/6-layout-sys.gif" alt="统一布局系统演示" width="600" />
 </p>
 
-## 为什么选择 Dinotty？
+## 理念
 
-终端 Coding Agent（Claude Code、opencode、Codex、OpenClaw 等）功能强大，但它们被束缚在单一终端窗口里。Dinotty 让你：
+终端 Coding Agent —— Claude Code、opencode、Codex、OpenClaw —— 功能强大，却总被束缚在单一窗口里。Dinotty 把它解放出来。一个终端，所有设备，所有可能。
 
-- **在任意设备上管理 agent**——桌面端深度编码，离开工位时手机扫码即可继续查看和管理 agent 工作，工作连贯不中断
-- **多端同步，无缝切换**——电脑上写到一半，掏出手机继续；回到电脑，一切原样
-- **直接验证 agent 产出**——代码 diff、渲染的网页、生成的文件，内置浏览器一目了然
-- **永远不会丢失会话**——断网、息屏、切换设备——回来后一切都在原处
+### 多端同步
+
+电脑上写到一半，掏出手机继续。回到电脑，一切原样。
+
+### 拓展无界
+
+JS 插件热重载。CC Switch、JSON Formatter、Claude Code 对话管理开箱即用。自定义命令、终端交互、事件订阅、CLI 集成 —— API 皆已就位。
+
+### 一切皆 pane
+
+终端、文件、网页预览、Git 变更、SSH 远程。拖拽分屏，跨 Tab 移动，浑然一体。
+
+### 永不掉线
+
+服务端 VTE，PTY 断网存活。刷新页面，回到原处。
+
+### 自由开源
+
+自托管。无订阅。无中继。数据，始终在你手中。
 
 ### 轻量级——不是远程桌面
 
@@ -129,7 +155,7 @@
 - **自包含工作环境** - 内建文件浏览、网页预览、Git 变更、SSH/SFTP、插件系统
 - **免费开源** - 自托管，无订阅无中继
 
-完整方案对比见 [方案对比](docs/getting-started/comparison.md)。
+完整方案对比见 [方案对比](docs/zh/getting-started/comparison.md)。
 
 ## 安装
 
@@ -179,11 +205,27 @@ $env:DINOTTY_SHELL = "pwsh.exe"
 
 Windows 默认 shell 检测顺序为 `DINOTTY_SHELL` → `pwsh.exe` → `powershell.exe` → `%ComSpec%` / `cmd.exe`。
 
-默认监听端口 **8999**，启动后访问 `http://<your-ip>:8999`。可通过 `-p` 参数指定端口：
+默认仅监听 `127.0.0.1` 的 **8999** 端口，启动后访问
+`http://127.0.0.1:8999`。可通过 `-p` 参数指定端口：
 
 ```bash
 dinotty-server -p 3000
 ```
+
+需要从局域网访问时，必须显式使用 `--bind 0.0.0.0`（或设置
+`DINOTTY_BIND_ADDR=0.0.0.0`），并配置强 Token 和主机防火墙：
+
+```powershell
+.\dinotty-server.exe --bind 0.0.0.0 -p 8999
+```
+
+首次启动会在接受连接前生成随机 Token。可由同一系统用户运行
+`.\dinotty-server.exe --print-token` 查看；也可在启动前设置
+`DINOTTY_TOKEN`。
+
+出于安全原因，内置 SSH 私钥认证支持 Ed25519/ECDSA，不编译存在已知时序
+侧信道且尚无上游修复的 Rust RSA 实现。旧的 `id_rsa` 配置请迁移为
+`id_ed25519`，或使用密码认证。
 
 ## 快速开始
 
@@ -249,20 +291,20 @@ cargo run
 
 ## 更多文档
 
-- [方案对比](docs/getting-started/comparison.md) — 与 ttyd/gotty/Wetty 及其他 AI Coding 远程方案的差异
-- [部署指南](docs/getting-started/deployment.md) — systemd、Docker、Windows 原生运行、跨平台构建、配置说明
-- [发布指南](docs/getting-started/releasing.md) — 统一版本管理、版本 PR、`dev` 到 `main` 晋升、Tag 与 GitHub Release
-- [文件编辑器](docs/features/file-editor.md) — 分屏、多光标编辑、Cursor Group 跨文件同步
-- [通知系统](docs/features/notifications.md) — HTTP API、Claude Code 集成、Open API
-- [插件系统](docs/plugins/plugins.md) — 安装、清单、API、内置插件
-- [插件开发](docs/plugins/plugin-development.md) — 完整的插件开发文档
-- [Agent API](docs/api/agent-api.md) — HTTP/WebSocket 结构化交互，供 AI Agent 与自动化脚本调用
-- [主机剪贴板 API](docs/api/clipboard-api.md) — 移动端主机粘贴使用的敏感认证接口
-- [MCP Server](docs/api/mcp-server.md) — 内置 MCP JSON-RPC 服务器，AI 助手直接操作终端会话
-- [Token 权限系统](docs/internals/token-system.md) — 基于 Capability 的多 Token 细粒度访问控制
-- [Event Bus](docs/internals/event-bus.md) — 全局事件总线，模块间事件分发
-- [审计日志与 Webhook](docs/internals/audit-webhook.md) — API 使用追踪与外部通知
-- [贡献指南](docs/getting-started/contributing.md) — 分支策略、Commit 规范、代码风格
+- [方案对比](docs/zh/getting-started/comparison.md) — 与 ttyd/gotty/Wetty 及其他 AI Coding 远程方案的差异
+- [部署指南](docs/zh/getting-started/deployment.md) — systemd、Docker、Windows 原生运行、跨平台构建、配置说明
+- [发布指南](docs/zh/getting-started/releasing.md) — 统一版本管理、版本 PR、`dev` 到 `main` 晋升、Tag 与 GitHub Release
+- [文件编辑器](docs/zh/features/file-editor.md) — 分屏、多光标编辑、Cursor Group 跨文件同步
+- [通知系统](docs/zh/features/notifications.md) — HTTP API、Claude Code 集成、Open API
+- [插件系统](docs/zh/plugins/plugins.md) — 安装、清单、API、内置插件
+- [插件开发](docs/zh/plugins/plugin-development.md) — 完整的插件开发文档
+- [Agent API](docs/zh/api/agent-api.md) — HTTP/WebSocket 结构化交互，供 AI Agent 与自动化脚本调用
+- [主机剪贴板 API](docs/zh/api/clipboard-api.md) — 移动端主机粘贴使用的敏感认证接口
+- [MCP Server](docs/zh/api/mcp-server.md) — 内置 MCP JSON-RPC 服务器，AI 助手直接操作终端会话
+- [Token 权限系统](docs/zh/internals/token-system.md) — 基于 Capability 的多 Token 细粒度访问控制
+- [Event Bus](docs/zh/internals/event-bus.md) — 全局事件总线，模块间事件分发
+- [审计日志与 Webhook](docs/zh/internals/audit-webhook.md) — API 使用追踪与外部通知
+- [贡献指南](docs/zh/getting-started/contributing.md) — 分支策略、Commit 规范、代码风格
 
 ## 贡献者
 
@@ -275,12 +317,12 @@ cargo run
 ## 加入 QQ 群
 
 <p align="center">
-  <img src="docs/images/qq.png" alt="QQ 群" width="200" />
+  <img src="docs/public/images/qq.png" alt="QQ 群" width="200" />
 </p>
 
 ## Star History
 
-![Star History](docs/images/star-history.svg)
+![Star History](docs/public/images/star-history.svg)
 
 ## 许可证
 

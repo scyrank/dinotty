@@ -1,31 +1,135 @@
 #![cfg_attr(all(not(debug_assertions), windows), windows_subsystem = "windows")]
 
 use base64::Engine;
-use dinotty_server::pty;
+#[cfg(windows)]
+use dinotty_server::platform::process::clipboard_paste_target_for_process_tree;
+use dinotty_server::platform::process::ClipboardPasteTarget;
 use dinotty_server::session::{
     CloseReason, SessionClientEvent, SessionManager, SessionStatus, TauriOnExit,
 };
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc, OnceLock,
+    Arc, Mutex, OnceLock,
 };
-use tauri::menu::{MenuBuilder, MenuItemBuilder};
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
 
+mod autostart;
 mod embedded_server;
+mod shutdown;
+mod tray;
+mod window_actions;
 
 static EMBEDDED_HTTP_PORT: OnceLock<u16> = OnceLock::new();
-static DESKTOP_SHUTDOWN_STARTED: AtomicBool = AtomicBool::new(false);
 const BUILT_IN_DEFAULT_PORT: u16 = 8999;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LaunchIntent {
+    Interactive,
+    Background,
+    Server,
+    Invalid,
+}
+
+impl LaunchIntent {
+    fn parse(args: &[String]) -> Self {
+        let background_count =
+            args.iter().filter(|argument| argument.as_str() == "--background").count();
+        let server_count = args.iter().filter(|argument| argument.as_str() == "--server").count();
+        match (background_count, server_count) {
+            (0, 0) => Self::Interactive,
+            (1, 0) => Self::Background,
+            (0, 1) => Self::Server,
+            _ => Self::Invalid,
+        }
+    }
+}
+
+#[derive(Default)]
+struct StartupExitState(AtomicBool);
+
+impl StartupExitState {
+    fn exit(&self, app: &AppHandle, code: i32) {
+        self.0.store(true, Ordering::SeqCst);
+        app.exit(code);
+    }
+
+    fn is_exiting(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+}
 
 fn default_port() -> u16 {
     option_env!("DINOTTY_DEFAULT_PORT")
         .and_then(|s| s.parse().ok())
         .unwrap_or(BUILT_IN_DEFAULT_PORT)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DesktopPortSelection {
+    Dynamic,
+    Fixed { port: u16, source: &'static str },
+}
+
+impl DesktopPortSelection {
+    fn port(self) -> u16 {
+        match self {
+            Self::Dynamic => 0,
+            Self::Fixed { port, .. } => port,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EmbeddedServerBootstrap {
+    mode: &'static str,
+    host: &'static str,
+    port: u16,
+    base_url: String,
+    token: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EmbeddedServerStartupError {
+    code: String,
+    message: String,
+    can_retry_dynamic: bool,
+}
+
+impl EmbeddedServerStartupError {
+    fn new(code: impl Into<String>, message: impl Into<String>, can_retry_dynamic: bool) -> Self {
+        Self { code: code.into(), message: message.into(), can_retry_dynamic }
+    }
+}
+
+#[derive(Clone, Debug)]
+enum EmbeddedServerStatus {
+    Starting,
+    Ready(EmbeddedServerBootstrap),
+    Failed(EmbeddedServerStartupError),
+}
+
+struct EmbeddedServerState(Mutex<EmbeddedServerStatus>);
+
+impl Default for EmbeddedServerState {
+    fn default() -> Self {
+        Self(Mutex::new(EmbeddedServerStatus::Starting))
+    }
+}
+
+impl EmbeddedServerState {
+    fn status(&self) -> EmbeddedServerStatus {
+        self.0.lock().unwrap_or_else(|error| error.into_inner()).clone()
+    }
+
+    fn set(&self, status: EmbeddedServerStatus) {
+        *self.0.lock().unwrap_or_else(|error| error.into_inner()) = status;
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -200,70 +304,108 @@ fn emit_reconnected(
     );
 }
 
+#[derive(Debug, serde::Serialize)]
+struct PtySpawnError {
+    code: String,
+}
+
+impl PtySpawnError {
+    fn new(code: impl Into<String>) -> Self {
+        Self { code: code.into() }
+    }
+}
+
+fn session_for_tauri_attach(
+    manager: &SessionManager,
+    pane_id: &str,
+) -> Result<Arc<dinotty_server::session::Session>, PtySpawnError> {
+    // Tabs and PTYs are created by the HTTP API; IPC must never resurrect a closed pane.
+    manager.session_for_attach(pane_id).ok_or_else(|| PtySpawnError::new("session_unavailable"))
+}
+
 #[tauri::command]
 fn pty_spawn(
     pane_id: String,
     app: AppHandle,
     state: State<'_, Arc<SessionManager>>,
-) -> Result<String, String> {
+) -> Result<String, PtySpawnError> {
     let manager = state.inner().clone();
     let app_cb = app.clone();
     let exit_cb: TauriOnExit = Arc::new(move |pid: String, exit_code: Option<i32>| {
         let _ = app_cb.emit("pty-exit", PtyExit { pane_id: pid, exit_code });
     });
 
-    if let Some(session) = manager.session_for_attach(&pane_id) {
-        // Publish the reap veto before lifecycle membership revalidation.
-        session.set_status(SessionStatus::Connected);
-        if !manager.is_current_session(&pane_id, &session) {
-            session.mark_failed_attach();
-            return Err("session closed during reconnect".to_string());
-        }
-        manager.register_singleton_tab(&pane_id, &session, &session.shell_type);
-        {
-            let mut g = session.tauri_on_exit.lock().unwrap_or_else(|e| e.into_inner());
-            if g.is_none() {
-                *g = Some(Arc::clone(&exit_cb));
-            }
-        }
-        // Remove only the prior Tauri forwarder; WebSocket clients remain attached.
-        if let Some(client_id) =
-            session.tauri_client_id.lock().unwrap_or_else(|e| e.into_inner()).take()
-        {
-            session.remove_client(client_id);
-        }
-        // Spawn forwarder BEFORE emit_reconnected so the new client
-        // (snapshot_pending=true via add_client) is registered before the
-        // frontend receives pty-reconnected and (after converging) calls
-        // pty_snapshot_request. The snapshot_pending flag drops live Output
-        // for this client until ReplayEnd is enqueued.
-        spawn_tauri_output_forwarder(app.clone(), pane_id.clone(), Arc::clone(&session));
-        emit_reconnected(&app, &pane_id, &session);
-        // Set up channel-based write task (replaces old input channel, if any)
-        spawn_tauri_write_task(Arc::clone(&session), pane_id.clone());
-        return Ok(session.shell_type.clone());
+    let session = session_for_tauri_attach(&manager, &pane_id)?;
+    // Publish the reap veto before lifecycle membership revalidation.
+    session.set_status(SessionStatus::Connected);
+    if !manager.is_current_session(&pane_id, &session) {
+        session.mark_failed_attach();
+        return Err(PtySpawnError::new("session_unavailable"));
     }
-
-    let settings = dinotty_server::settings::load_settings();
-    let shell_spec = dinotty_server::platform::shell::shell_with_preference(
-        &settings.shell,
-        &settings.shell_path,
-    );
-    let (session, shell_type) = pty::create_session(
-        &manager,
-        &pane_id,
-        None,
-        Some(Arc::clone(&exit_cb)),
-        None,
-        None,
-        Some(shell_spec),
-    )?;
-    manager.register_singleton_tab(&pane_id, &session, &shell_type);
-
+    manager.register_singleton_tab(&pane_id, &session, &session.shell_type);
+    {
+        let mut g = session.tauri_on_exit.lock().unwrap_or_else(|e| e.into_inner());
+        if g.is_none() {
+            *g = Some(Arc::clone(&exit_cb));
+        }
+    }
+    // Remove only the prior Tauri forwarder; WebSocket clients remain attached.
+    if let Some(client_id) =
+        session.tauri_client_id.lock().unwrap_or_else(|e| e.into_inner()).take()
+    {
+        session.remove_client(client_id);
+    }
+    // Spawn forwarder BEFORE emit_reconnected so the new client
+    // (snapshot_pending=true via add_client) is registered before the
+    // frontend receives pty-reconnected and (after converging) calls
+    // pty_snapshot_request. The snapshot_pending flag drops live Output
+    // for this client until ReplayEnd is enqueued.
     spawn_tauri_output_forwarder(app.clone(), pane_id.clone(), Arc::clone(&session));
+    emit_reconnected(&app, &pane_id, &session);
+    // Set up channel-based write task (replaces old input channel, if any)
     spawn_tauri_write_task(Arc::clone(&session), pane_id.clone());
 
-    Ok(shell_type)
+    Ok(session.shell_type.clone())
+}
+
+#[tauri::command]
+async fn pty_clipboard_paste_target(
+    pane_id: String,
+    state: State<'_, Arc<SessionManager>>,
+) -> Result<ClipboardPasteTarget, String> {
+    #[cfg(not(windows))]
+    {
+        let _ = (pane_id, state);
+        Ok(ClipboardPasteTarget::Unknown)
+    }
+
+    #[cfg(windows)]
+    {
+        let session = match state.sessions.get(&pane_id) {
+            Some(entry) => Arc::clone(entry.value()),
+            None => return Ok(ClipboardPasteTarget::Unknown),
+        };
+        if session.is_exited() || session.is_ssh() {
+            return Ok(ClipboardPasteTarget::Unknown);
+        }
+        let Some(root_pid) = session.local_process_id().await else {
+            return Ok(ClipboardPasteTarget::Unknown);
+        };
+
+        Ok(
+            match tokio::task::spawn_blocking(move || {
+                clipboard_paste_target_for_process_tree(root_pid)
+            })
+            .await
+            {
+                Ok(target) => target,
+                Err(error) => {
+                    tracing::warn!(pane_id, %error, "Failed to classify clipboard paste target");
+                    ClipboardPasteTarget::Unknown
+                }
+            },
+        )
+    }
 }
 
 #[tauri::command]
@@ -360,9 +502,160 @@ fn pty_detach(pane_id: String, state: State<'_, Arc<SessionManager>>) -> Result<
 }
 
 #[tauri::command]
-fn embedded_http_origin() -> String {
-    let port = EMBEDDED_HTTP_PORT.get().copied().unwrap_or_else(default_port);
-    format!("http://127.0.0.1:{port}")
+fn get_embedded_server_bootstrap(
+    state: State<'_, EmbeddedServerState>,
+) -> Result<EmbeddedServerBootstrap, EmbeddedServerStartupError> {
+    match state.status() {
+        EmbeddedServerStatus::Ready(bootstrap) => Ok(bootstrap),
+        EmbeddedServerStatus::Failed(error) => Err(error),
+        EmbeddedServerStatus::Starting => Err(EmbeddedServerStartupError::new(
+            "embedded_server_starting",
+            "The local Dinotty service is still starting. Please retry in a moment.",
+            false,
+        )),
+    }
+}
+
+// Kept as compatibility shims for older frontend bundles. New builds use the
+// single bootstrap command so the address and token always come from the same
+// successfully bound embedded-server instance.
+#[tauri::command]
+fn embedded_http_origin(
+    state: State<'_, EmbeddedServerState>,
+) -> Result<String, EmbeddedServerStartupError> {
+    get_embedded_server_bootstrap(state).map(|bootstrap| bootstrap.base_url)
+}
+
+fn is_trusted_app_navigation(url: &tauri::Url) -> bool {
+    match url.scheme() {
+        "tauri" => url.host_str() == Some("localhost"),
+        "http" | "https" if url.host_str() == Some("tauri.localhost") => true,
+        "http" if cfg!(debug_assertions) => {
+            url.host_str() == Some("localhost") && url.port() == Some(5173)
+        }
+        "about" => url.as_str() == "about:blank",
+        _ => false,
+    }
+}
+
+#[tauri::command]
+fn embedded_auth_token(
+    state: State<'_, EmbeddedServerState>,
+) -> Result<String, EmbeddedServerStartupError> {
+    get_embedded_server_bootstrap(state).map(|bootstrap| bootstrap.token)
+}
+
+fn bind_startup_error(
+    selection: DesktopPortSelection,
+    error: &std::io::Error,
+) -> EmbeddedServerStartupError {
+    let (code, hint) = match error.raw_os_error() {
+        Some(10013) => (
+            "embedded_port_access_denied",
+            "Windows denied access to the port. It may be inside an excluded port range.",
+        ),
+        Some(10048) => ("embedded_port_in_use", "The port is already in use."),
+        _ => ("embedded_server_bind_failed", "The local listener could not be created."),
+    };
+    let target = match selection {
+        DesktopPortSelection::Dynamic => "a system-assigned loopback port".to_string(),
+        DesktopPortSelection::Fixed { port, .. } => format!("fixed loopback port {port}"),
+    };
+    EmbeddedServerStartupError::new(
+        code,
+        format!("Failed to bind {target}: {hint} ({error})"),
+        true,
+    )
+}
+
+fn launch_desktop_embedded_server(
+    selection: DesktopPortSelection,
+    manager: Arc<SessionManager>,
+    shell_probe: Arc<dinotty_server::platform::shell_probe::ShellProbeService>,
+    state: &EmbeddedServerState,
+) -> Result<EmbeddedServerBootstrap, EmbeddedServerStartupError> {
+    let listener =
+        embedded_server::bind_listener(selection.port(), IpAddr::V4(Ipv4Addr::LOCALHOST))
+            .map_err(|error| bind_startup_error(selection, &error))?;
+    let actual_address = listener.local_addr().map_err(|error| {
+        let message =
+            format!("The local Dinotty service was bound, but its address is unavailable: {error}");
+        EmbeddedServerStartupError::new("embedded_server_address_failed", message, true)
+    })?;
+    let actual_port = actual_address.port();
+    let token = embedded_server::resolve_auth_token().map_err(|error| {
+        EmbeddedServerStartupError::new(
+            "embedded_token_unavailable",
+            format!("The internal desktop authentication token is unavailable: {error}"),
+            true,
+        )
+    })?;
+
+    if let Some(existing) = EMBEDDED_HTTP_PORT.get() {
+        if *existing != actual_port {
+            return Err(EmbeddedServerStartupError::new(
+                "embedded_server_already_started",
+                "The local Dinotty service is already using a different port.",
+                false,
+            ));
+        }
+    } else {
+        let _ = EMBEDDED_HTTP_PORT.set(actual_port);
+    }
+
+    let bootstrap = EmbeddedServerBootstrap {
+        mode: "embedded",
+        host: "127.0.0.1",
+        port: actual_port,
+        base_url: format!("http://127.0.0.1:{actual_port}"),
+        token: token.clone(),
+    };
+    manager.set_notify_port(actual_port);
+    state.set(EmbeddedServerStatus::Ready(bootstrap.clone()));
+    tauri::async_runtime::spawn(embedded_server::run_server(listener, manager, shell_probe, token));
+    match selection {
+        DesktopPortSelection::Dynamic => {
+            tracing::info!(
+                "Desktop mode: embedded server on dynamically assigned port {actual_port}"
+            )
+        }
+        DesktopPortSelection::Fixed { source, .. } => tracing::info!(
+            "Desktop mode: embedded server on fixed port {actual_port} (source: {source})"
+        ),
+    }
+    Ok(bootstrap)
+}
+
+#[tauri::command]
+fn retry_embedded_server_dynamic(
+    manager: State<'_, Arc<SessionManager>>,
+    shell_probe: State<'_, Arc<dinotty_server::platform::shell_probe::ShellProbeService>>,
+    state: State<'_, EmbeddedServerState>,
+) -> Result<EmbeddedServerBootstrap, EmbeddedServerStartupError> {
+    match state.status() {
+        EmbeddedServerStatus::Ready(bootstrap) => return Ok(bootstrap),
+        EmbeddedServerStatus::Starting => {
+            return Err(EmbeddedServerStartupError::new(
+                "embedded_server_starting",
+                "The local Dinotty service is already starting.",
+                false,
+            ));
+        }
+        EmbeddedServerStatus::Failed(_) => state.set(EmbeddedServerStatus::Starting),
+    }
+
+    match launch_desktop_embedded_server(
+        DesktopPortSelection::Dynamic,
+        Arc::clone(&manager),
+        Arc::clone(&shell_probe),
+        &state,
+    ) {
+        Ok(bootstrap) => Ok(bootstrap),
+        Err(error) => {
+            state.set(EmbeddedServerStatus::Failed(error.clone()));
+            Err(error)
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -474,7 +767,10 @@ async fn pick_workspace_dir(base: Option<String>) -> Option<String> {
     if let Some(dir) = resolved {
         dialog = dialog.set_directory(dir);
     }
-    dialog.pick_folder().await.map(|folder| folder.path().to_string_lossy().into_owned())
+    dialog
+        .pick_folder()
+        .await
+        .map(|folder| dunce::simplified(folder.path()).to_string_lossy().into_owned())
 }
 
 #[tauri::command]
@@ -485,7 +781,10 @@ async fn tauri_upload(
     cwd: Option<String>,
     token: Option<String>,
 ) -> Result<FetchResponse, String> {
-    let port = EMBEDDED_HTTP_PORT.get().copied().unwrap_or_else(default_port);
+    let port = EMBEDDED_HTTP_PORT
+        .get()
+        .copied()
+        .ok_or_else(|| "embedded server is unavailable".to_string())?;
     let mut url = format!(
         "http://127.0.0.1:{port}/api/workspace/upload?pane_id={}&dir={}",
         urlencoding::encode(&pane_id),
@@ -612,61 +911,6 @@ fn set_window_title(title: String, window: tauri::Window) -> Result<(), String> 
     window.set_title(&title).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-fn toggle_window(window: tauri::Window) {
-    if window.is_visible().unwrap_or(false) {
-        let _ = window.hide();
-    } else {
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
-}
-
-fn reveal_webview_window(window: &tauri::WebviewWindow) {
-    let _ = window.show();
-    let _ = window.unminimize();
-    let _ = window.set_focus();
-}
-
-fn reveal_main_window(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        reveal_webview_window(&window);
-    }
-}
-
-fn toggle_webview_window(window: &tauri::WebviewWindow) {
-    if window.is_visible().unwrap_or(false) {
-        let _ = window.hide();
-    } else {
-        reveal_webview_window(window);
-    }
-}
-
-fn terminate_sessions_once(manager: &SessionManager) {
-    if DESKTOP_SHUTDOWN_STARTED.swap(true, Ordering::SeqCst) {
-        return;
-    }
-
-    let pane_ids: Vec<String> = manager.sessions.iter().map(|entry| entry.key().clone()).collect();
-    tracing::info!("Desktop shutdown: terminating {} session(s)", pane_ids.len());
-    for pane_id in pane_ids {
-        manager.close_session(&pane_id, CloseReason::Shutdown, true, None);
-    }
-}
-
-fn quit_desktop_app(app: &AppHandle, manager: &SessionManager) {
-    terminate_sessions_once(manager);
-    if let Err(e) = app.global_shortcut().unregister_all() {
-        tracing::warn!("Failed to unregister global shortcuts during shutdown: {e}");
-    }
-    app.exit(0);
-}
-
-#[tauri::command]
-fn close_window(app: AppHandle, state: State<'_, Arc<SessionManager>>) {
-    quit_desktop_app(&app, state.inner().as_ref());
-}
-
 /// macOS-specific: GUI-launched apps inherit LaunchServices' minimal PATH, so
 /// argv tabs (e.g. `claude --resume`) fail to spawn. Import the user's
 /// login-shell PATH once at startup, before any PTY spawn or thread exists.
@@ -715,127 +959,168 @@ fn main() {
     let _log_guard = dinotty_server::settings::init_logging();
 
     let args: Vec<String> = std::env::args().collect();
+    let launch_intent = LaunchIntent::parse(&args);
     let requested_port = parse_port(&args);
-    let port = if requested_port == 0 {
+    let server_port = if requested_port == 0 {
         let port = match default_port() {
             0 => BUILT_IN_DEFAULT_PORT,
             port => port,
         };
-        tracing::warn!("Port 0 is not supported; falling back to default port {port}");
+        tracing::warn!("Server port 0 is not supported; falling back to default port {port}");
         port
     } else {
         requested_port
     };
-    let _ = EMBEDDED_HTTP_PORT.set(port);
+    let desktop_port = parse_desktop_port_selection(&args);
 
     let manager = Arc::new(SessionManager::new());
-    dinotty_server::session::ledger::boot_sweep();
-
-    if args.contains(&"--server".to_string()) {
+    let shell_probe = Arc::new(dinotty_server::platform::shell_probe::ShellProbeService::new());
+    if launch_intent == LaunchIntent::Server {
+        let bind_ip = parse_bind_ip(&args);
+        dinotty_server::session::ledger::boot_sweep();
         let rt = tokio::runtime::Runtime::new().unwrap();
         let mgr = Arc::clone(&manager);
         rt.block_on(async move {
-            let listener = embedded_server::bind_listener(port)
-                .unwrap_or_else(|e| panic!("failed to bind embedded server on port {port}: {e}"));
+            let listener =
+                embedded_server::bind_listener(server_port, bind_ip).unwrap_or_else(|e| {
+                    panic!("failed to bind embedded server on port {server_port}: {e}")
+                });
+            let token = embedded_server::resolve_auth_token()
+                .unwrap_or_else(|error| panic!("failed to load server token: {error}"));
             // The reaper must run unconditionally — a bind failure or notifier-registration
             // ordering issue must never suppress it. Notification GC simply no-ops until
             // run_server registers a notifier.
             mgr.start_cleanup_task();
-            embedded_server::run_server(listener, mgr).await
+            embedded_server::run_server(listener, mgr, shell_probe, token).await
         });
         return;
     }
 
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let _runtime_enter = runtime.enter();
-    manager.start_cleanup_task();
 
-    let run_manager = Arc::clone(&manager);
+    let mut context = tauri::generate_context!();
+    if launch_intent != LaunchIntent::Interactive {
+        for window in &mut context.config_mut().app.windows {
+            if window.label == "main" {
+                window.create = false;
+            }
+        }
+    }
 
     tauri::Builder::default()
+        // Custom IPC commands include terminal and filesystem capabilities.
+        // Keep the main webview on the bundled/dev origin even if content
+        // attempts a top-level navigation.
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry>::new("navigation-guard")
+                .on_navigation(|_webview, url| {
+                    let allowed = is_trusted_app_navigation(url);
+                    if !allowed {
+                        tracing::warn!("Blocked desktop webview navigation to {}", url);
+                    }
+                    allowed
+                })
+                .build(),
+        )
         // Keep one desktop instance so a second launch focuses the hidden/tray window instead
         // of racing the first process for the same port and global shortcut.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            tracing::info!("Second Dinotty launch detected; focusing existing window");
-            reveal_main_window(app);
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            match LaunchIntent::parse(&args) {
+                LaunchIntent::Interactive => {
+                    tracing::info!("Second interactive Dinotty launch detected");
+                    window_actions::request_main_window(app, "second_instance");
+                }
+                LaunchIntent::Background => {
+                    tracing::info!("Secondary background launch ignored");
+                }
+                LaunchIntent::Server | LaunchIntent::Invalid => {
+                    tracing::warn!(?args, "Secondary launch has invalid desktop mode arguments");
+                }
+            }
         }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(manager.clone())
+        .manage(shell_probe.clone())
+        .manage(autostart::AutostartController::default())
+        .manage(tray::state::TrayCapabilityState::default())
+        .manage(tray::state::TrayMenuState::default())
+        .manage(window_actions::MainWindowState::default())
+        .manage(StartupExitState::default())
+        .manage(EmbeddedServerState::default())
+        .manage(shutdown::ShutdownCoordinator::new(manager.clone()))
         .setup(move |app| {
+            if launch_intent == LaunchIntent::Invalid {
+                tracing::error!(?args, "Invalid launch mode: mode flags must appear exactly once");
+                app.state::<StartupExitState>().exit(app.handle(), 2);
+                return Ok(());
+            }
+            if launch_intent == LaunchIntent::Background
+                && !autostart::background_package_supported()
+            {
+                tracing::warn!("Background launch is unsupported for this package or location");
+                app.state::<StartupExitState>().exit(app.handle(), 0);
+                return Ok(());
+            }
+
+            #[cfg(target_os = "macos")]
+            if launch_intent == LaunchIntent::Background {
+                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            }
+
+            window_actions::initialize_existing_main_window(app.handle());
+            let tray_capability = tray::install_tray(app);
+            if launch_intent == LaunchIntent::Background && !tray_capability.is_available() {
+                tracing::warn!(
+                    "Background launch is exiting because the system tray is unavailable"
+                );
+                app.state::<StartupExitState>().exit(app.handle(), 0);
+                return Ok(());
+            }
+
+            dinotty_server::session::ledger::boot_sweep();
             let mgr = Arc::clone(&manager);
-            match embedded_server::bind_listener(port) {
-                Ok(listener) => {
-                    let actual = listener.local_addr().expect("bound listener").port();
-                    // Redundant-by-design: run_server() also sets notify_port from its own
-                    // local_addr once its future is first polled. We set it here too — synchronously,
-                    // before spawn — so a Tauri `pty_spawn` IPC that fires before the spawned task's
-                    // first poll still reads the real port (not 0). Do NOT remove either set.
-                    mgr.set_notify_port(actual);
-                    tauri::async_runtime::spawn(embedded_server::run_server(listener, mgr));
-                    tracing::info!("Desktop mode: embedded server on port {}", actual);
+            mgr.start_cleanup_task();
+            let embedded_state = app.state::<EmbeddedServerState>();
+            match desktop_port.clone() {
+                Ok(selection) => {
+                    if let Err(error) = launch_desktop_embedded_server(
+                        selection,
+                        mgr,
+                        shell_probe.clone(),
+                        &embedded_state,
+                    ) {
+                        tracing::error!(code = %error.code, "{}", error.message);
+                        embedded_state.set(EmbeddedServerStatus::Failed(error));
+                    }
                 }
-                Err(e) => {
-                    tracing::error!(
-                        "Failed to bind embedded server on port {}: {}; notifications disabled",
-                        port,
-                        e
-                    );
+                Err(error) => {
+                    tracing::error!(code = %error.code, "{}", error.message);
+                    embedded_state.set(EmbeddedServerStatus::Failed(error));
                 }
             }
 
             // Register global shortcut for Quake-mode toggle (Ctrl+Shift+`)
-            let win = app.get_webview_window("main").expect("no main window");
-            let win_clone = win.clone();
-            app.global_shortcut().on_shortcut(
+            if let Err(error) = app.global_shortcut().on_shortcut(
                 Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Backquote),
-                move |_app, _shortcut, event| {
+                move |app, _shortcut, event| {
                     if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        toggle_webview_window(&win_clone);
+                        if let Err(error) = window_actions::toggle_main_window_checked(app) {
+                            tracing::warn!(%error, "global shortcut window toggle failed");
+                        }
                     }
                 },
-            )?;
-
-            // Build tray icon with context menu
-            let show_item = MenuItemBuilder::with_id("show", "Show/Hide").build(app)?;
-            let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
-            let menu = MenuBuilder::new(app).items(&[&show_item, &quit_item]).build()?;
-            let quit_manager = Arc::clone(&manager);
-            let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
-                .menu(&menu)
-                .on_menu_event(move |app, event| match event.id().as_ref() {
-                    "show" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            toggle_webview_window(&window);
-                        }
-                    }
-                    "quit" => {
-                        quit_desktop_app(app, quit_manager.as_ref());
-                    }
-                    _ => {}
-                })
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            toggle_webview_window(&window);
-                        }
-                    }
-                })
-                .build(app)?;
+            ) {
+                tracing::warn!(%error, "global shortcut registration failed");
+            }
 
             Ok(())
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if DESKTOP_SHUTDOWN_STARTED.load(Ordering::SeqCst) {
+                if window.app_handle().state::<shutdown::ShutdownCoordinator>().is_finalizing() {
                     return;
                 }
                 api.prevent_close();
@@ -844,12 +1129,16 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             pty_spawn,
+            pty_clipboard_paste_target,
             pty_write,
             pty_resize,
             pty_snapshot_request,
             pty_kill,
             pty_detach,
+            get_embedded_server_bootstrap,
+            retry_embedded_server_dynamic,
             embedded_http_origin,
+            embedded_auth_token,
             tauri_fetch,
             tauri_upload,
             tauri_read_file,
@@ -858,28 +1147,121 @@ fn main() {
             tauri_read_drag_pboard,
             pick_upload_dir,
             pick_workspace_dir,
-            close_window,
-            toggle_window,
+            shutdown::request_desktop_quit,
+            shutdown::desktop_quit_ack,
+            window_actions::desktop_capabilities,
+            window_actions::hide_main_window,
+            window_actions::open_system_tray_settings,
+            autostart::autostart_status,
+            autostart::set_autostart,
             set_window_title,
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error building tauri application")
         .run(move |app_handle, event| {
             #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Reopen { .. } = event {
-                if let Some(win) = app_handle.get_webview_window("main") {
-                    let _ = win.show();
-                    let _ = win.set_focus();
-                }
+            if let tauri::RunEvent::Reopen { .. } = &event {
+                window_actions::reveal_main_window(app_handle);
             }
 
-            if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
-                terminate_sessions_once(run_manager.as_ref());
+            match event {
+                tauri::RunEvent::ExitRequested { code, api, .. } => {
+                    if code == Some(tauri::RESTART_EXIT_CODE) {
+                        return;
+                    }
+                    if app_handle.state::<StartupExitState>().is_exiting() {
+                        return;
+                    }
+                    let coordinator = app_handle.state::<shutdown::ShutdownCoordinator>();
+                    if !coordinator.is_finalizing() {
+                        api.prevent_exit();
+                        coordinator.request_quit(app_handle, "system");
+                    }
+                }
+                tauri::RunEvent::Exit => {
+                    app_handle.state::<shutdown::ShutdownCoordinator>().force_cleanup();
+                }
+                _ => {}
             }
 
             #[cfg(not(target_os = "macos"))]
             let _ = app_handle;
         });
+}
+
+fn invalid_desktop_port(source: &str, value: &str) -> EmbeddedServerStartupError {
+    EmbeddedServerStartupError::new(
+        "invalid_embedded_port",
+        format!("Invalid desktop embedded port from {source}: {value:?}. Expected 0-65535."),
+        true,
+    )
+}
+
+fn parse_optional_port_arg(
+    args: &[String],
+    long_name: &'static str,
+    short_name: Option<&'static str>,
+) -> Result<Option<u16>, EmbeddedServerStartupError> {
+    let equals_prefix = format!("{long_name}=");
+    let mut index = 0;
+    while index < args.len() {
+        let argument = args[index].as_str();
+        if argument == long_name || short_name == Some(argument) {
+            let value = args
+                .get(index + 1)
+                .ok_or_else(|| invalid_desktop_port(long_name, "missing value"))?;
+            return value
+                .parse::<u16>()
+                .map(Some)
+                .map_err(|_| invalid_desktop_port(long_name, value));
+        }
+        if let Some(value) = argument.strip_prefix(&equals_prefix) {
+            return value
+                .parse::<u16>()
+                .map(Some)
+                .map_err(|_| invalid_desktop_port(long_name, value));
+        }
+        index += 1;
+    }
+    Ok(None)
+}
+
+fn configured_desktop_port(port: u16, source: &'static str) -> DesktopPortSelection {
+    if port == 0 {
+        DesktopPortSelection::Dynamic
+    } else {
+        DesktopPortSelection::Fixed { port, source }
+    }
+}
+
+fn parse_desktop_port_selection(
+    args: &[String],
+) -> Result<DesktopPortSelection, EmbeddedServerStartupError> {
+    if let Some(port) = parse_optional_port_arg(args, "--embedded-port", None)? {
+        return Ok(configured_desktop_port(port, "--embedded-port"));
+    }
+
+    if let Ok(value) = std::env::var("DINOTTY_DESKTOP_PORT") {
+        let port = value
+            .parse::<u16>()
+            .map_err(|_| invalid_desktop_port("DINOTTY_DESKTOP_PORT", &value))?;
+        return Ok(configured_desktop_port(port, "DINOTTY_DESKTOP_PORT"));
+    }
+
+    // Backward compatibility for the v0.18 multi-instance build and existing
+    // desktop shortcuts that supplied the shared server-style port option.
+    if let Some(port) = parse_optional_port_arg(args, "--port", Some("-p"))? {
+        return Ok(configured_desktop_port(port, "--port/-p"));
+    }
+
+    if let Some(value) = option_env!("DINOTTY_DEFAULT_PORT") {
+        let port = value
+            .parse::<u16>()
+            .map_err(|_| invalid_desktop_port("DINOTTY_DEFAULT_PORT", value))?;
+        return Ok(configured_desktop_port(port, "DINOTTY_DEFAULT_PORT"));
+    }
+
+    Ok(DesktopPortSelection::Dynamic)
 }
 
 fn parse_port(args: &[String]) -> u16 {
@@ -899,4 +1281,178 @@ fn parse_port(args: &[String]) -> u16 {
         i += 1;
     }
     default_port()
+}
+
+fn parse_bind_ip(args: &[String]) -> IpAddr {
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--bind" => {
+                if let Some(value) = args.get(i + 1) {
+                    return value.parse().expect("--bind must be a literal IP address");
+                }
+            }
+            value if value.starts_with("--bind=") => {
+                return value[7..].parse().expect("--bind must be a literal IP address");
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    std::env::var("DINOTTY_BIND_ADDR")
+        .ok()
+        .map(|value| value.parse().expect("DINOTTY_BIND_ADDR must be a literal IP address"))
+        .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST))
+}
+
+#[cfg(test)]
+mod security_tests {
+    use super::is_trusted_app_navigation;
+
+    #[test]
+    fn desktop_navigation_guard_rejects_remote_origins() {
+        assert!(is_trusted_app_navigation(&"http://tauri.localhost/".parse().unwrap()));
+        assert!(is_trusted_app_navigation(&"tauri://localhost/".parse().unwrap()));
+        assert!(!is_trusted_app_navigation(&"https://evil.example/".parse().unwrap()));
+        assert!(!is_trusted_app_navigation(
+            &"http://tauri.localhost.evil.example/".parse().unwrap()
+        ));
+    }
+}
+
+#[cfg(test)]
+mod launch_tests {
+    use super::*;
+
+    fn args(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| value.to_string()).collect()
+    }
+
+    #[test]
+    fn launch_intent_is_orthogonal_to_port_arguments() {
+        assert_eq!(LaunchIntent::parse(&args(&["dinotty"])), LaunchIntent::Interactive);
+        assert_eq!(
+            LaunchIntent::parse(&args(&["dinotty", "--background", "--port", "9000"])),
+            LaunchIntent::Background
+        );
+        assert_eq!(
+            LaunchIntent::parse(&args(&["dinotty", "-p", "9000", "--server"])),
+            LaunchIntent::Server
+        );
+    }
+
+    #[test]
+    fn repeated_or_conflicting_mode_flags_are_invalid() {
+        assert_eq!(
+            LaunchIntent::parse(&args(&["dinotty", "--background", "--background"])),
+            LaunchIntent::Invalid
+        );
+        assert_eq!(
+            LaunchIntent::parse(&args(&["dinotty", "--server", "--server"])),
+            LaunchIntent::Invalid
+        );
+        assert_eq!(
+            LaunchIntent::parse(&args(&["dinotty", "--background", "--server"])),
+            LaunchIntent::Invalid
+        );
+    }
+
+    #[test]
+    fn desktop_port_prefers_explicit_embedded_option_and_accepts_dynamic_zero() {
+        assert_eq!(
+            parse_desktop_port_selection(&args(&[
+                "dinotty",
+                "--port",
+                "19000",
+                "--embedded-port=18899",
+            ]))
+            .unwrap(),
+            DesktopPortSelection::Fixed { port: 18899, source: "--embedded-port" }
+        );
+        assert_eq!(
+            parse_desktop_port_selection(&args(&["dinotty", "--embedded-port", "0"])).unwrap(),
+            DesktopPortSelection::Dynamic
+        );
+    }
+
+    #[test]
+    fn desktop_port_keeps_legacy_port_option_compatible() {
+        assert_eq!(
+            parse_desktop_port_selection(&args(&["dinotty", "-p", "18898"])).unwrap(),
+            DesktopPortSelection::Fixed { port: 18898, source: "--port/-p" }
+        );
+    }
+
+    #[test]
+    fn invalid_desktop_port_is_a_startup_error() {
+        let error = parse_desktop_port_selection(&args(&["dinotty", "--embedded-port", "70000"]))
+            .unwrap_err();
+        assert_eq!(error.code, "invalid_embedded_port");
+        assert!(error.can_retry_dynamic);
+    }
+
+    #[test]
+    fn dynamic_bind_keeps_the_system_assigned_listener() {
+        let listener = embedded_server::bind_listener(0, IpAddr::V4(Ipv4Addr::LOCALHOST)).unwrap();
+        let address = listener.local_addr().unwrap();
+        assert_ne!(address.port(), 0);
+        assert!(std::net::TcpStream::connect(address).is_ok());
+    }
+
+    #[test]
+    fn occupied_fixed_port_can_be_replaced_by_dynamic_bind() {
+        let occupied = embedded_server::bind_listener(0, IpAddr::V4(Ipv4Addr::LOCALHOST)).unwrap();
+        let occupied_port = occupied.local_addr().unwrap().port();
+        assert!(
+            embedded_server::bind_listener(occupied_port, IpAddr::V4(Ipv4Addr::LOCALHOST)).is_err()
+        );
+
+        let fallback = embedded_server::bind_listener(0, IpAddr::V4(Ipv4Addr::LOCALHOST)).unwrap();
+        assert_ne!(fallback.local_addr().unwrap().port(), occupied_port);
+    }
+
+    #[test]
+    fn windows_bind_failures_have_actionable_diagnostics() {
+        let selection = DesktopPortSelection::Fixed { port: 8999, source: "test" };
+        let access_denied =
+            bind_startup_error(selection, &std::io::Error::from_raw_os_error(10013));
+        assert_eq!(access_denied.code, "embedded_port_access_denied");
+        assert!(access_denied.message.contains("excluded port range"));
+
+        let in_use = bind_startup_error(selection, &std::io::Error::from_raw_os_error(10048));
+        assert_eq!(in_use.code, "embedded_port_in_use");
+        assert!(in_use.message.contains("already in use"));
+    }
+
+    #[test]
+    fn bootstrap_urls_do_not_contain_the_internal_token() {
+        let bootstrap = EmbeddedServerBootstrap {
+            mode: "embedded",
+            host: "127.0.0.1",
+            port: 49152,
+            base_url: "http://127.0.0.1:49152".into(),
+            token: "secret-token".into(),
+        };
+        let json = serde_json::to_value(bootstrap).unwrap();
+        assert_eq!(json["baseUrl"], "http://127.0.0.1:49152");
+        assert!(!json["baseUrl"].as_str().unwrap().contains("secret-token"));
+    }
+}
+
+#[cfg(test)]
+mod pty_spawn_tests {
+    use super::*;
+
+    #[test]
+    fn unknown_pane_is_rejected_instead_of_recreated() {
+        let manager = SessionManager::new();
+
+        let error = session_for_tauri_attach(&manager, "closed-pane")
+            .err()
+            .expect("an unknown pane must not be recreated");
+
+        assert_eq!(error.code, "session_unavailable");
+        assert!(manager.sessions.is_empty());
+        assert!(manager.tab_layouts.is_empty());
+    }
 }

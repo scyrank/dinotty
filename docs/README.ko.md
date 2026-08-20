@@ -19,7 +19,17 @@
 
 ---
 
-**코딩 에이전트**를 위해 특별히 설계된 **멀티 디바이스** 터미널 서버. Claude Code, opencode, Codex, OpenClaw를 어떤 디바이스에서든 실행하세요 - 노트북에서는 데스크톱급 경험, 폰에서는 항상 주머니 속에. 끊김 없이 전환하고, 세션을 절대 잃지 마세요.
+코딩 에이전트를 위한 터미널.
+
+어떤 디바이스에서든 Claude Code, opencode, Codex, OpenClaw를 실행하세요 -- 심플하고 확장 가능하며 멀티 디바이스, 세션을 잃지 않습니다.
+
+**폰 · iPad · 데스크톱, 하나의 세션**
+
+컴퓨터에서 하던 걸 멈추고 폰에서 이어서 하고, 데스크톱으로 돌아오면 그대로입니다. 연결이 끊겨도 세션은 유지되며 새로고침하면 복원됩니다.
+
+**모든 것이 pane — 블록 쌓듯 터미널을 구성하세요**
+
+터미널, 플러그인, 파일, SSH, 웹 미리보기 — 모든 패널이 하나의 블록입니다. 드래그해서 나만의 작업 공간을 조립하세요.
 
 ## 스크린샷
 
@@ -246,7 +256,6 @@ cargo run
 - [알림 시스템](features/notifications.en.md) - HTTP API, Claude Code 통합, Open API
 - [플러그인 시스템](plugins/plugins.en.md) - 설치, 매니페스트, API, 내장 플러그인
 - [플러그인 개발](plugins/plugin-development.md) - 전체 플러그인 개발 가이드
-- [Agent API](api/agent-api.md) - AI 에이전트 및 자동화 스크립트용 HTTP/WebSocket 구조화된 상호작용
 - [호스트 클립보드 API](api/clipboard-api.md) - 모바일 호스트 붙여넣기에서 사용하는 민감한 인증 엔드포인트
 - [MCP 서버](api/mcp-server.md) - AI 어시스턴트가 터미널 세션을 조작하기 위한 내장 MCP JSON-RPC 서버
 - [토큰 권한 시스템](internals/token-system.md) - capability 기반 멀티 토큰 세분화된 액세스 제어

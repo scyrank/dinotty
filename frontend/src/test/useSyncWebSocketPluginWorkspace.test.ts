@@ -59,6 +59,7 @@ vi.mock('../composables/useWorkspaceApi', () => ({
 
 import { useSyncWebSocket } from '../composables/useSyncWebSocket'
 import { useWorkspaces } from '../composables/useWorkspaces'
+import { settings } from '../composables/useSettings'
 import { useSessionStore } from '../stores/sessionStore'
 
 function leaf(paneId: string): PaneLayout {
@@ -77,10 +78,6 @@ function terminal(
     paneMru: [`${paneId}-leaf`],
     broadcastMode: false,
     broadcastActivity: 0,
-    previewVisible: false,
-    previewAddress: '',
-    previewUrl: '',
-    previewKind: 'web',
     workspaceId: options.workspaceId as string | undefined,
     cwd: options.cwd,
   }
@@ -133,6 +130,37 @@ describe('useSyncWebSocket plugin workspace attribution', () => {
     expect((session.tabs[0] as TerminalTab).workspaceId).toBe('workspace-a')
   })
 
+  it('normalizes the default sentinel from workspace restore and activation broadcasts', async () => {
+    const { workspaceState, emit } = await setup()
+
+    emit({ type: 'workspace_list', workspaces: [], active_workspace_id: '__default__' })
+    expect(workspaceState.activeWorkspaceId.value).toBeNull()
+
+    workspaceState.activeWorkspaceId.value = 'workspace-a'
+    emit({ type: 'workspace_activated', id: '__default__' })
+    expect(workspaceState.activeWorkspaceId.value).toBeNull()
+  })
+
+  it('does not hop when a synchronized default close selects a default-root successor', async () => {
+    const previousDefaultRoot = settings.default_workspace_root
+    settings.default_workspace_root = '/workspace/default'
+    try {
+      const closed = terminal('default-closed', { cwd: '/workspace/default/closed' })
+      const successor = terminal('default-successor', { cwd: '/workspace/default/successor' })
+      const { session, workspaceState, emit } = await setup([closed, successor], closed.paneId)
+      workspaceState.activeWorkspaceId.value = null
+
+      emit({ type: 'tab_closed', pane_id: closed.paneId })
+
+      await vi.waitFor(() => expect(session.activePaneId).toBe(successor.paneId))
+      expect(workspaceState.activeWorkspaceId.value).toBeNull()
+      expect(mocks.apiActivateWorkspace).not.toHaveBeenCalled()
+      expect(mocks.apiDeactivateWorkspace).not.toHaveBeenCalled()
+    } finally {
+      settings.default_workspace_root = previousDefaultRoot
+    }
+  })
+
   it('scenario 11: backfills an existing tab and persists the repair', async () => {
     const existing = terminal('plugin:session-browser:workspace-a', { workspaceId: null })
     const { persist, emit } = await setup([existing])
@@ -160,6 +188,42 @@ describe('useSyncWebSocket plugin workspace attribution', () => {
     })
 
     expect((session.tabs[0] as TerminalTab).workspaceId).toBe('workspace-b')
+  })
+
+  it('uses the explicit SSH workspace from tab_created instead of the shared profile', async () => {
+    const { session, emit } = await setup()
+    emit({
+      type: 'tab_created',
+      tab_id: 'ssh-tab',
+      pane_id: 'ssh-pane',
+      connection_id: 'shared-profile',
+      workspace_id: 'workspace-b',
+    })
+
+    expect(session.tabs[0]).toMatchObject({
+      connectionId: 'shared-profile',
+      workspaceId: 'workspace-b',
+    })
+  })
+
+  it('restores an existing SSH tab workspace from tab_list', async () => {
+    const existing = terminal('ssh-tab')
+    existing.connectionId = 'shared-profile'
+    const { emit } = await setup([existing])
+    emit({
+      type: 'tab_list',
+      tabs: [
+        {
+          tab_id: existing.paneId,
+          pane_id: existing.activePaneId,
+          connection_id: 'shared-profile',
+          workspace_id: 'workspace-b',
+        },
+      ],
+      active_pane_id: existing.activePaneId,
+    })
+
+    expect(existing.workspaceId).toBe('workspace-b')
   })
 
   it('scenario 6: close-time read fallback attributes a missing field to a live workspace', async () => {

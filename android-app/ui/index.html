@@ -81,7 +81,7 @@
   <div class="card">
     <h1>Dinotty</h1>
     <div class="sub">连接到你的 Dinotty 服务器</div>
-    <label for="server">服务器地址（可粘贴带 token 的完整网址）</label>
+    <label for="server">服务器地址</label>
     <input id="server" type="url" inputmode="url" autocapitalize="off" autocorrect="off"
            spellcheck="false" placeholder="http://100.86.95.56:8999" />
     <button class="btn" id="connect">连接</button>
@@ -123,8 +123,10 @@
       try {
         const u = new URL(url)
         if (!u.port && u.protocol === 'http:') u.port = '8999'
-        // Keep path and query intact — the server's QR/share URL carries the
-        // auth token as ?token=..., which must survive normalization.
+        // Authentication happens on the server login page. Never retain URL
+        // query parameters here because older share URLs may contain tokens.
+        u.search = ''
+        u.hash = ''
         return u.href
       } catch {
         return null
@@ -138,20 +140,15 @@
         servers.unshift(url)
         saveServers(servers.slice(0, 10))
       }
-      // Cache-buster: the WebView may hold a stale cached index.html from
-      // before a server update; a unique query forces a fresh document so the
-      // UI always matches the server version.
-      const u = new URL(url)
-      u.searchParams.set('_r', Date.now().toString(36))
       // location.href (not replace) keeps this page in history so the
       // Android back button returns here to switch servers.
-      location.href = u.href
+      location.href = url
     }
 
     function shortLabel(url) {
       try {
         const u = new URL(url)
-        return u.host + (u.search ? '（含令牌）' : '')
+        return u.host
       } catch {
         return url
       }

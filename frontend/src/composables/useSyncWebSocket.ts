@@ -18,7 +18,7 @@ import {
 } from './apiBase'
 import { isTauri } from './useTransport'
 import { handlePluginChanged } from './usePluginLoader'
-import { useWorkspaces } from './useWorkspaces'
+import { toActiveWorkspaceId, useWorkspaces } from './useWorkspaces'
 import { apiCreatePluginTab } from './useTabApi'
 import { clearFileWorkspaceState } from './useFileWorkspaceState'
 import { useMissionControlState } from './useMissionControlState'
@@ -111,9 +111,9 @@ export function useSyncWebSocket(opts: {
 
   function workspaceIdOfTab(tab: Tab): string | null {
     if (tab.type === 'plugin') {
-      return tab.workspaceId ?? workspaceIdFromPaneId(tab.paneId) ?? null
+      return toActiveWorkspaceId(tab.workspaceId ?? workspaceIdFromPaneId(tab.paneId))
     }
-    return (
+    return toActiveWorkspaceId(
       matchWorkspace(
         tab.cwd ?? '',
         tab.connectionId,
@@ -227,6 +227,13 @@ export function useSyncWebSocket(opts: {
         }
 
         for (const tab of msg.tabs) {
+          const existingTab = tabs.value.find((candidate) => {
+            if (candidate.type !== 'terminal') return false
+            return candidate.paneId === tab.tab_id || !!findLeaf(candidate.layout, tab.pane_id)
+          }) as TerminalTab | undefined
+          if (existingTab && tab.workspace_id) {
+            existingTab.workspaceId = tab.workspace_id
+          }
           if (
             !localLeafIds.has(tab.pane_id) &&
             !localTabIds.has(tab.pane_id) &&
@@ -271,14 +278,11 @@ export function useSyncWebSocket(opts: {
               ),
               broadcastMode: false,
               broadcastActivity: 0,
-              previewVisible: migrated?.previewVisible ?? false,
-              previewAddress: migrated?.previewAddress ?? '',
-              previewUrl: migrated?.previewUrl ?? '',
-              previewKind: migrated?.previewKind ?? 'web',
               customTitle: migrated?.customTitle,
               cwd: tab.cwd,
               connectionId: tab.connection_id,
-              workspaceId: migrated?.workspaceId ?? workspaceIdFromPaneId(tab.tab_id),
+              workspaceId:
+                tab.workspace_id ?? migrated?.workspaceId ?? workspaceIdFromPaneId(tab.tab_id),
             })
           }
         }
@@ -377,11 +381,21 @@ export function useSyncWebSocket(opts: {
           if (msg.connection_id && existing.type === 'terminal' && !existing.connectionId) {
             existing.connectionId = msg.connection_id
           }
+          let workspaceRepaired = false
+          if (
+            msg.workspace_id
+            && existing.type === 'terminal'
+            && existing.workspaceId !== msg.workspace_id
+          ) {
+            existing.workspaceId = msg.workspace_id
+            workspaceRepaired = true
+          }
           const decodedWorkspaceId = workspaceIdFromPaneId(msg.tab_id)
           if (existing.type === 'terminal' && !existing.workspaceId && decodedWorkspaceId) {
             existing.workspaceId = decodedWorkspaceId
-            persist()
+            workspaceRepaired = true
           }
+          if (workspaceRepaired) persist()
         }
         if (!existing) {
           const layout = msg.layout
@@ -401,13 +415,9 @@ export function useSyncWebSocket(opts: {
             paneMru: [msg.pane_id],
             broadcastMode: false,
             broadcastActivity: 0,
-            previewVisible: false,
-            previewAddress: '',
-            previewUrl: '',
-            previewKind: 'web',
             cwd: msg.cwd,
             connectionId: msg.connection_id,
-            workspaceId: workspaceIdFromPaneId(msg.tab_id),
+            workspaceId: msg.workspace_id ?? workspaceIdFromPaneId(msg.tab_id),
           })
           markRecentlyCreated(msg.tab_id)
           activePaneId.value = msg.tab_id
@@ -605,7 +615,7 @@ export function useSyncWebSocket(opts: {
         onSshAuthPrompt?.(msg.pane_id, msg.prompts)
       } else if (msg.type === 'workspace_list') {
         workspaces.value = msg.workspaces
-        activeWorkspaceId.value = msg.active_workspace_id
+        activeWorkspaceId.value = toActiveWorkspaceId(msg.active_workspace_id)
         workspaceListReceived = true
         if (pendingAutoNewTab) {
           pendingAutoNewTab = false
@@ -633,7 +643,7 @@ export function useSyncWebSocket(opts: {
           }
         }
       } else if (msg.type === 'workspace_activated') {
-        activeWorkspaceId.value = msg.id
+        activeWorkspaceId.value = toActiveWorkspaceId(msg.id)
       } else if (msg.type === 'workspace_reordered') {
         for (let i = 0; i < msg.ids.length; i++) {
           const ws = workspaces.value.find((w) => w.id === msg.ids[i])

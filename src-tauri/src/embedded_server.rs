@@ -10,8 +10,7 @@ use axum::{
     Router,
 };
 use rust_embed::Embed;
-use std::net::IpAddr;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
 use dinotty_server::api::clipboard;
@@ -27,12 +26,14 @@ use dinotty_server::mission_control;
 use dinotty_server::monitor::MonitorState;
 use dinotty_server::notification::{self, NotificationBroadcast};
 use dinotty_server::platform::process::CommandNoWindowExt;
+use dinotty_server::platform::shell_probe::ShellProbeService;
 use dinotty_server::plugin::{self, PluginManager, PluginManagerState};
 use dinotty_server::proxy;
-use dinotty_server::session::SessionManager;
+use dinotty_server::session::{restore_session, SessionManager, SessionSnapshotStore};
 use dinotty_server::settings;
 use dinotty_server::tabs;
 use dinotty_server::templates;
+use dinotty_server::update_check;
 use dinotty_server::workspace;
 use dinotty_server::workspace_mgmt;
 use dinotty_server::ws;
@@ -51,6 +52,7 @@ pub struct GitInfo {
 pub struct AppState {
     pub manager: Arc<SessionManager>,
     pub settings: settings::SettingsState,
+    pub shell_probe: Arc<ShellProbeService>,
     pub file_watcher: Arc<FileWatcherState>,
     pub monitor: MonitorState,
     pub notifier: Arc<NotificationBroadcast>,
@@ -64,6 +66,7 @@ pub struct AppState {
     pub mc: mission_control::MissionControlState,
     pub subscriptions: plugin::SubscriptionRegistry,
     pub code_store: Arc<CodeStore>,
+    pub update_checker: update_check::UpdateCheckState,
 }
 
 impl axum::extract::FromRef<AppState> for Arc<SessionManager> {
@@ -75,6 +78,12 @@ impl axum::extract::FromRef<AppState> for Arc<SessionManager> {
 impl axum::extract::FromRef<AppState> for settings::SettingsState {
     fn from_ref(state: &AppState) -> Self {
         state.settings.clone()
+    }
+}
+
+impl axum::extract::FromRef<AppState> for Arc<ShellProbeService> {
+    fn from_ref(state: &AppState) -> Self {
+        state.shell_probe.clone()
     }
 }
 
@@ -163,6 +172,12 @@ impl axum::extract::FromRef<AppState> for Arc<SessionStore> {
 impl axum::extract::FromRef<AppState> for Arc<tokio::sync::RwLock<String>> {
     fn from_ref(state: &AppState) -> Self {
         state.auth_token.clone()
+    }
+}
+
+impl axum::extract::FromRef<AppState> for update_check::UpdateCheckState {
+    fn from_ref(state: &AppState) -> Self {
+        state.update_checker.clone()
     }
 }
 
@@ -283,6 +298,29 @@ fn generate_random_token() -> String {
         let _ = write!(s, "{b:02x}");
         s
     })
+}
+
+/// Load the existing desktop token (including the DPAPI-backed Windows value),
+/// or create and persist one when this is the first launch.  The token is
+/// intentionally returned to the caller so the bound listener and the Tauri
+/// bootstrap state can be published atomically before the frontend starts.
+pub fn resolve_auth_token() -> Result<String, String> {
+    let initial_token = settings::load_token()
+        .or_else(|| std::env::var("DINOTTY_TOKEN").ok())
+        .map(|token| token.trim().to_string())
+        .filter(|token| !token.is_empty())
+        .unwrap_or_default();
+
+    if !initial_token.is_empty() {
+        tracing::info!("Auth token loaded (length={})", initial_token.len());
+        return Ok(initial_token);
+    }
+
+    let token = generate_random_token();
+    settings::save_token(&token)
+        .map_err(|error| format!("failed to persist auto-generated token: {error}"))?;
+    tracing::info!("Desktop mode: auto-generated auth token (length={})", token.len());
+    Ok(token)
 }
 
 fn read_git_info() -> GitInfo {
@@ -703,8 +741,8 @@ async fn update_token(
     StatusCode::OK.into_response()
 }
 
-pub fn bind_listener(port: u16) -> std::io::Result<std::net::TcpListener> {
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+pub fn bind_listener(port: u16, bind_ip: IpAddr) -> std::io::Result<std::net::TcpListener> {
+    let addr = SocketAddr::new(bind_ip, port);
     let listener = std::net::TcpListener::bind(addr)?;
     listener.set_nonblocking(true)?;
     Ok(listener)
@@ -731,6 +769,8 @@ impl Drop for PluginProcessGuard {
 pub fn run_server(
     listener: std::net::TcpListener,
     manager: Arc<SessionManager>,
+    shell_probe: Arc<ShellProbeService>,
+    initial_token: String,
 ) -> impl std::future::Future<Output = ()> {
     // Guard is created synchronously and moved into the returned future, so notify_port
     // resets to 0 on ANY termination of the future — normal exit, panic, task abort, or a
@@ -760,6 +800,22 @@ pub fn run_server(
         ));
         let settings_state = settings::create_settings_state();
         notifier.set_settings(settings_state.clone());
+        // Restore tabs/panes from the last session (if enabled in settings).
+        // Done before `start_cleanup_task` so the reaper never sees restoring
+        // sessions as unowned (mirrors src/main.rs server wiring).
+        {
+            let restore_enabled = settings_state.read().await.restore_session_on_startup;
+            if restore_enabled {
+                let snapshot = SessionSnapshotStore::new().load();
+                if !snapshot.tabs.is_empty() {
+                    tracing::info!("Restoring session: {} tabs in snapshot", snapshot.tabs.len());
+                    restore_session(&manager, &snapshot).await;
+                }
+            }
+        }
+        // Start the snapshot debounce task after restore so restore-time layout
+        // commits don't trigger a redundant write.
+        manager.start_snapshot_task();
         // Registering the notifier is independent of starting the reaper: a bind failure or
         // startup-ordering issue here must never suppress the detached-session reaper itself
         // (mirrors src/main.rs server wiring).
@@ -786,20 +842,6 @@ pub fn run_server(
         plugins.scan();
         let _plugin_process_guard = PluginProcessGuard(Arc::clone(&plugins));
 
-        let initial_token = settings::load_token()
-            .or_else(|| std::env::var("DINOTTY_TOKEN").ok())
-            .unwrap_or_default();
-        let initial_token = if initial_token.is_empty() {
-            let token = generate_random_token();
-            if let Err(e) = settings::save_token(&token) {
-                tracing::error!("Failed to persist auto-generated token: {}", e);
-            }
-            tracing::info!("Desktop mode: auto-generated auth token");
-            token
-        } else {
-            tracing::info!("Auth token loaded (length={})", initial_token.len());
-            initial_token
-        };
         let auth_token = Arc::new(tokio::sync::RwLock::new(initial_token));
 
         let session_ttl_days = settings::load_settings().auth.session_ttl_days;
@@ -808,6 +850,14 @@ pub fn run_server(
 
         let workspaces_state = workspace_mgmt::create_workspaces_state();
         let mc_state = mission_control::create_mission_control_state();
+        // Sync MC's selected_workspace_id to active_workspace_id so the
+        // overview highlights the workspace the user is landing in (otherwise
+        // MC opens with nothing selected, even though the workspace view
+        // correctly shows the restored workspace's tabs).
+        {
+            let active_ws = settings_state.read().await.active_workspace_id.clone();
+            mc_state.write().await.selected_workspace_id = active_ws;
+        }
 
         let (verification_code_ttl, verification_code_rate_limit) = {
             let s = settings::load_settings();
@@ -820,6 +870,7 @@ pub fn run_server(
         let state = AppState {
             manager: manager.clone(),
             settings: settings_state,
+            shell_probe,
             file_watcher: Arc::new(FileWatcherState::new(manager.event_bus.clone())),
             monitor: monitor_state,
             notifier,
@@ -833,6 +884,7 @@ pub fn run_server(
             mc: mc_state,
             subscriptions: plugin::SubscriptionRegistry::new(),
             code_store,
+            update_checker: update_check::UpdateChecker::new(),
         };
 
         state.plugins.watch_changes(manager);
@@ -859,6 +911,7 @@ pub fn run_server(
             .route("/api/tabs/:tab_id/layout", put(tabs::update_layout))
             .route("/api/input", post(ws::post_input))
             .route("/api/settings", get(settings::get_settings).put(settings::put_settings))
+            .route("/api/shells", get(dinotty_server::api::shells::get_shells))
             .route("/api/clipboard", get(clipboard::get_clipboard))
             .route(
                 "/api/settings/background",
@@ -880,7 +933,11 @@ pub fn run_server(
             .route("/api/workspace/list", get(workspace::workspace_list))
             .route("/api/workspace/meta", get(workspace::workspace_meta))
             .route("/api/workspace/raw", get(workspace::workspace_raw))
-            .route("/api/workspace/upload", post(workspace::workspace_upload))
+            .merge(
+                Router::new()
+                    .route("/api/workspace/upload", post(workspace::workspace_upload))
+                    .layer(axum::extract::DefaultBodyLimit::max(512 * 1024 * 1024)),
+            )
             .merge(
                 Router::new()
                     .route(
@@ -918,6 +975,7 @@ pub fn run_server(
             .route("/api/events/emit", post(events::emit_event))
             .route("/api/history", get(history::get_history).delete(history::delete_history))
             .route("/api/info", get(server_info))
+            .route("/api/update-check", get(update_check::get_update_status))
             .route("/api/auth", post(check_auth))
             .route("/api/auth/request-code", post(request_code))
             .route("/api/auth/check", get(check_auth_session))
@@ -1008,8 +1066,12 @@ pub fn run_server(
                     .await
                 },
             ))
-            .layer(middleware::from_fn(
-                |req: axum::extract::Request, next: middleware::Next| async move {
+            .layer(middleware::from_fn_with_state(
+                state.clone(),
+                |AxumState(s): AxumState<AppState>,
+                 ConnectInfo(addr): ConnectInfo<SocketAddr>,
+                 req: axum::extract::Request,
+                 next: middleware::Next| async move {
                     let is_clipboard = req.uri().path() == "/api/clipboard";
                     let origin = req
                         .headers()
@@ -1017,23 +1079,45 @@ pub fn run_server(
                         .and_then(|v| v.to_str().ok())
                         .map(|s| s.to_string());
                     let is_preflight = req.method() == axum::http::Method::OPTIONS;
+                    let (allowed_origins, trusted_proxies) = {
+                        let settings = s.settings.read().await;
+                        (
+                            settings.auth.allowed_origins.clone(),
+                            settings.auth.trusted_proxies.clone(),
+                        )
+                    };
+                    let origin_allowed = auth::check_ws_origin(
+                        req.headers(),
+                        &allowed_origins,
+                        addr.ip(),
+                        &trusted_proxies,
+                    );
+                    if origin.is_some() && !origin_allowed {
+                        return Response::builder()
+                            .status(StatusCode::FORBIDDEN)
+                            .header(header::CONTENT_TYPE, "application/json")
+                            .header(header::CACHE_CONTROL, "no-store")
+                            .body(Body::from(r#"{"error":"origin not allowed"}"#))
+                            .unwrap();
+                    }
                     let mut response = if is_preflight {
-                        Response::new(Body::empty())
+                        Response::builder()
+                            .status(StatusCode::NO_CONTENT)
+                            .body(Body::empty())
+                            .unwrap()
                     } else {
                         next.run(req).await
                     };
                     if is_clipboard {
-                        if is_preflight {
-                            *response.status_mut() = StatusCode::NO_CONTENT;
-                        }
                         response.headers_mut().insert(
                             header::CACHE_CONTROL,
                             axum::http::HeaderValue::from_static("no-store"),
                         );
                     }
-                    if let Some(origin) = origin
-                        .filter(|_| !(is_clipboard && response.status() == StatusCode::FORBIDDEN))
-                    {
+                    if let Some(origin) = origin.filter(|_| {
+                        origin_allowed
+                            && !(is_clipboard && response.status() == StatusCode::FORBIDDEN)
+                    }) {
                         let headers = response.headers_mut();
                         headers.insert(
                             header::ACCESS_CONTROL_ALLOW_ORIGIN,
@@ -1051,13 +1135,16 @@ pub fn run_server(
                             header::ACCESS_CONTROL_ALLOW_HEADERS,
                             axum::http::HeaderValue::from_static("Content-Type, Authorization"),
                         );
+                        headers
+                            .append(header::VARY, axum::http::HeaderValue::from_static("Origin"));
                     }
                     response
                 },
             ))
             .with_state(state);
 
-        tracing::info!("Embedded server listening on http://0.0.0.0:{}", local_port);
+        let local_addr = listener.local_addr().expect("bound listener");
+        tracing::info!("Embedded server listening on http://{}", local_addr);
         axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
             .await
             .unwrap();

@@ -1,18 +1,34 @@
 <template>
   <div
     class="pane-header"
-    :class="[direction ? `direction-${direction}` : '', { active: isActive, dragging: isDragging }]"
+    :class="[
+      direction ? `direction-${direction}` : '',
+      { active: isActive, dragging: isDragging, 'has-close': allowClose },
+    ]"
     @mousedown.prevent="onMouseDown"
     @touchstart.prevent="onTouchStart"
   >
+    <button
+      v-if="allowClose"
+      type="button"
+      class="pane-close-btn"
+      :title="t('split.closePane')"
+      @mousedown.stop
+      @touchstart.stop
+      @click.stop="emit('close')"
+    >
+      <X :size="14" aria-hidden="true" />
+    </button>
     <span class="pane-header-title">{{ title }}</span>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onBeforeUnmount } from 'vue'
+import { X } from 'lucide-vue-next'
 import type { DropPosition } from '../../types/pane'
 import { usePaneDrag, type DropZone, type DropTargetKind } from '../../composables/paneDragContext'
+import { useI18n } from '../../composables/useI18n'
 
 const props = defineProps<{
   paneId: string
@@ -20,13 +36,17 @@ const props = defineProps<{
   title: string
   isActive: boolean
   direction?: 'horizontal' | 'vertical'
+  allowClose?: boolean
 }>()
 
 const emit = defineEmits<{
+  close: []
   reorder: [sourcePaneId: string, targetPaneId: string, position: DropPosition]
   'drop-on-tab': [sourceTabId: string, sourcePaneId: string, dstTabId: string, position: DropPosition]
   'drop-extract': [sourceTabId: string, sourcePaneId: string, targetIndex: number]
 }>()
+
+const { t } = useI18n()
 
 const drag = usePaneDrag()
 
@@ -73,6 +93,7 @@ function startDrag(e: MouseEvent | TouchEvent, isTouch: boolean) {
 
   const moveEvent = isTouch ? 'touchmove' : 'mousemove'
   const endEvent = isTouch ? 'touchend' : 'mouseup'
+  const cancelEvent = isTouch ? 'touchcancel' : 'pointercancel'
 
   window.addEventListener(
     moveEvent,
@@ -80,9 +101,12 @@ function startDrag(e: MouseEvent | TouchEvent, isTouch: boolean) {
     { passive: !isTouch } as AddEventListenerOptions
   )
   window.addEventListener(endEvent, onPointerEnd)
+  window.addEventListener(cancelEvent, onPointerEnd)
   if (!isTouch) {
     document.addEventListener('keydown', onKeydown, true)
     document.addEventListener('mouseleave', onMouseLeave)
+    window.addEventListener('blur', onBlur)
+    document.addEventListener('visibilitychange', onVisibilityChange)
   }
 }
 
@@ -96,6 +120,18 @@ function onKeydown(e: KeyboardEvent) {
 function onMouseLeave(_e: MouseEvent) {
   // When pointer leaves the document during drag, cancel without emit
   if (dragStarted) {
+    cancelDrag()
+  }
+}
+
+function onBlur() {
+  if (dragStarted) {
+    cancelDrag()
+  }
+}
+
+function onVisibilityChange() {
+  if (dragStarted && document.visibilityState === 'hidden') {
     cancelDrag()
   }
 }
@@ -150,6 +186,11 @@ function scheduleHoverSwitch(tabId: string) {
 }
 
 function onPointerMove(e: MouseEvent | TouchEvent) {
+  // Self-heal: if the button was released but mouseup was lost, cancel on the next move.
+  if (!isTouchDrag && 'buttons' in e && (e as MouseEvent).buttons === 0) {
+    cancelDrag()
+    return
+  }
   const pos = getPointerPos(e)
   if (!dragStarted) {
     if (
@@ -303,8 +344,12 @@ function cleanup() {
   window.removeEventListener('mouseup', onPointerEnd)
   window.removeEventListener('touchmove', onPointerMove as EventListener)
   window.removeEventListener('touchend', onPointerEnd)
+  window.removeEventListener('pointercancel', onPointerEnd)
+  window.removeEventListener('touchcancel', onPointerEnd)
   document.removeEventListener('keydown', onKeydown, true)
   document.removeEventListener('mouseleave', onMouseLeave)
+  window.removeEventListener('blur', onBlur)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
 }
 
 onBeforeUnmount(() => {
@@ -330,6 +375,47 @@ onBeforeUnmount(() => {
 .pane-header.direction-vertical {
   padding: 8px 8px;
   height: auto;
+}
+
+.pane-header.has-close {
+  padding-left: 28px;
+}
+
+.pane-close-btn {
+  position: absolute;
+  top: 50%;
+  left: 4px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary, #888);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(-50%);
+  transition:
+    opacity 0.15s,
+    background 0.15s,
+    color 0.15s;
+}
+
+.pane-close-btn:focus-visible {
+  opacity: 1;
+}
+
+.pane-close-btn:hover {
+  background: var(--hover-bg, var(--bg-hover));
+  color: var(--text-primary, var(--fg-bright));
+}
+
+.pane-close-btn svg {
+  display: block;
 }
 
 .pane-header:active {

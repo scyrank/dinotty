@@ -4,12 +4,13 @@ import { createPinia, setActivePinia } from 'pinia'
 const api = vi.hoisted(() => ({
   authFetch: vi.fn(),
   getApiBase: vi.fn().mockResolvedValue(''),
+  apiUrl: vi.fn((path: string) => path),
 }))
 
 vi.mock('../composables/apiBase', () => ({
   authFetch: api.authFetch,
   getApiBase: api.getApiBase,
-  apiUrl: (path: string) => path,
+  apiUrl: api.apiUrl,
   wsUrlWithToken: (url: string) => url,
 }))
 
@@ -36,6 +37,8 @@ describe('usePluginLoader lifecycle', () => {
     loadedPlugins.clear()
     api.authFetch.mockReset()
     api.getApiBase.mockClear()
+    api.apiUrl.mockReset()
+    api.apiUrl.mockImplementation((path: string) => path)
   })
 
   afterEach(() => {
@@ -161,5 +164,32 @@ describe('usePluginLoader lifecycle', () => {
       cwd: 'work',
       env: { MODE: 'test' },
     })
+  })
+
+  it('uses the desktop bootstrap origin for plugin WebSockets', () => {
+    const urls: string[] = []
+    class CapturingWebSocket {
+      static OPEN = 1
+      static CONNECTING = 0
+      readyState = CapturingWebSocket.OPEN
+      onmessage: ((event: MessageEvent) => void) | null = null
+      onclose: (() => void) | null = null
+
+      constructor(url: string | URL) {
+        urls.push(String(url))
+      }
+
+      close() {}
+    }
+    vi.stubGlobal('WebSocket', CapturingWebSocket)
+    api.apiUrl.mockImplementation((path: string) => `http://127.0.0.1:49152${path}`)
+
+    const context = usePluginLoader().getPluginContext('native-plugin')
+    const watcher = context.workspace.watch('.', vi.fn())
+
+    expect(urls).toEqual([
+      'ws://127.0.0.1:49152/ws/plugins/native-plugin/workspace/watch?path=.',
+    ])
+    watcher.dispose()
   })
 })

@@ -1,22 +1,99 @@
 import { isTauri, tauriInvoke } from './useTransport'
 
-const STORAGE_KEY = 'dinotty_auth_token'
+const LEGACY_STORAGE_KEY = 'dinotty_auth_token'
 
 // Browser mode: cookie-based session (no token in localStorage).
-// Tauri mode: Bearer token in localStorage (tauri_fetch has no cookie jar).
+// Tauri mode: keep the Bearer token in memory only. The Rust command reads it
+// from the OS-protected settings location when the desktop app starts.
 let loggedIn = false
-// Session-authenticated with no bearer token: Tauri loopback-bypass, or a
-// desktop/web cookie session. setAuthToken() is never called on these paths,
-// so hasAuthToken() must not depend on a stored token alone.
+let desktopAuthToken = ''
+if (typeof localStorage !== 'undefined') {
+  // One-time cleanup for versions that persisted the raw token in WebView
+  // localStorage.
+  localStorage.removeItem(LEGACY_STORAGE_KEY)
+}
+// Session-authenticated with no bearer token: a desktop/web cookie session.
+// setAuthToken() is never called on this path, so hasAuthToken() must not
+// depend on a stored token alone.
 let sessionAuthed = false
 
 let cached = ''
-let inflight: Promise<string> | null = null
+let cachedBootstrap: EmbeddedServerBootstrap | null = null
+let inflight: Promise<EmbeddedServerBootstrap> | null = null
+
+export interface EmbeddedServerBootstrap {
+  mode: 'embedded'
+  host: string
+  port: number
+  baseUrl: string
+  token: string
+}
+
+export interface EmbeddedServerStartupError {
+  code: string
+  message: string
+  canRetryDynamic: boolean
+}
+
+export function normalizeEmbeddedServerStartupError(error: unknown): EmbeddedServerStartupError {
+  if (error && typeof error === 'object') {
+    const candidate = error as Partial<EmbeddedServerStartupError>
+    if (typeof candidate.message === 'string') {
+      return {
+        code: typeof candidate.code === 'string' ? candidate.code : 'embedded_server_start_failed',
+        message: candidate.message,
+        canRetryDynamic: candidate.canRetryDynamic !== false,
+      }
+    }
+  }
+  return {
+    code: 'embedded_server_start_failed',
+    message: error instanceof Error ? error.message : String(error || 'Unknown startup error'),
+    canRetryDynamic: true,
+  }
+}
+
+function applyEmbeddedBootstrap(value: EmbeddedServerBootstrap): EmbeddedServerBootstrap {
+  if (value.mode !== 'embedded' || !value.baseUrl || !value.port || !value.token) {
+    throw new Error('Invalid embedded server bootstrap response')
+  }
+  cached = value.baseUrl.replace(/\/$/, '')
+  desktopAuthToken = value.token
+  cachedBootstrap = { ...value, baseUrl: cached }
+  return cachedBootstrap
+}
+
+function embeddedConnectionError(error: unknown): EmbeddedServerStartupError {
+  const detail = error instanceof Error ? error.message : String(error || 'connection failed')
+  return {
+    code: 'embedded_server_unreachable',
+    message: `The local Dinotty service did not respond: ${detail}`,
+    canRetryDynamic: false,
+  }
+}
+
+export async function getEmbeddedServerBootstrap(): Promise<EmbeddedServerBootstrap> {
+  if (!isTauri()) throw new Error('Embedded server bootstrap is only available in desktop mode')
+  if (cachedBootstrap) return cachedBootstrap
+  if (!inflight) {
+    inflight = tauriInvoke('get_embedded_server_bootstrap')
+      .then((value) => applyEmbeddedBootstrap(value as EmbeddedServerBootstrap))
+      .finally(() => {
+        inflight = null
+      })
+  }
+  return inflight
+}
+
+export async function retryEmbeddedServerDynamic(): Promise<EmbeddedServerBootstrap> {
+  if (!isTauri()) throw new Error('Dynamic embedded server retry is only available in desktop mode')
+  const value = (await tauriInvoke('retry_embedded_server_dynamic')) as EmbeddedServerBootstrap
+  return applyEmbeddedBootstrap(value)
+}
 
 export function getAuthToken(): string {
   if (!isTauri()) return loggedIn ? 'cookie' : ''
-  const stored = localStorage.getItem(STORAGE_KEY)
-  return stored || ''
+  return desktopAuthToken
 }
 
 export function setAuthToken(token: string): void {
@@ -24,7 +101,7 @@ export function setAuthToken(token: string): void {
     loggedIn = true
     return
   }
-  localStorage.setItem(STORAGE_KEY, token)
+  desktopAuthToken = token
 }
 
 export function markCookieAuthenticated(): void {
@@ -38,13 +115,13 @@ export function clearAuthToken(): void {
     loggedIn = false
     return
   }
-  localStorage.removeItem(STORAGE_KEY)
+  desktopAuthToken = ''
 }
 
 export function hasAuthToken(): boolean {
   if (sessionAuthed) return true
   if (!isTauri()) return loggedIn
-  return !!localStorage.getItem(STORAGE_KEY)
+  return !!desktopAuthToken
 }
 
 export type ValidateTokenResult =
@@ -71,7 +148,8 @@ export async function validateToken(token: string): Promise<ValidateTokenResult>
       return { ok: false, reason: 'locked', retryAfter: parseRetryAfter(res.headers.get('Retry-After')) }
     }
     return { ok: false, reason: 'invalid' }
-  } catch {
+  } catch (error) {
+    if (isTauri()) throw embeddedConnectionError(error)
     return { ok: false, reason: 'invalid' }
   }
 }
@@ -98,12 +176,16 @@ export async function checkTokenConfigured(): Promise<{
       loginMethod: data.login_method === 'verification_code' ? 'verification_code' : 'token',
     }
   } catch {
+    if (isTauri()) throw embeddedConnectionError('token configuration request failed')
     return { configured: true, serverMode: true }
   }
 }
 
 export async function fetchAutoToken(): Promise<string> {
   try {
+    if (isTauri()) {
+      return (await getEmbeddedServerBootstrap()).token
+    }
     await getApiBase()
     const res = await fetch(apiUrl('/api/auto-token'))
     if (!res.ok) return ''
@@ -112,6 +194,27 @@ export async function fetchAutoToken(): Promise<string> {
   } catch {
     return ''
   }
+}
+
+export async function authenticateEmbeddedDesktop(): Promise<boolean> {
+  if (!isTauri()) return false
+  const token = await fetchAutoToken()
+  if (!token) {
+    throw {
+      code: 'embedded_token_unavailable',
+      message: 'The internal desktop authentication token is unavailable.',
+      canRetryDynamic: false,
+    } satisfies EmbeddedServerStartupError
+  }
+  const result = await validateToken(token)
+  if (!result.ok) {
+    throw {
+      code: 'embedded_authentication_failed',
+      message: 'The local Dinotty service rejected its internal desktop token.',
+      canRetryDynamic: false,
+    } satisfies EmbeddedServerStartupError
+  }
+  return true
 }
 
 export async function fetchServerToken(): Promise<string> {
@@ -132,18 +235,7 @@ export async function getApiBase(): Promise<string> {
     return ''
   }
   if (cached) return cached
-  if (!inflight) {
-    inflight = tauriInvoke('embedded_http_origin')
-      .then((o) => {
-        const s = String(o).replace(/\/$/, '')
-        cached = s
-        return s
-      })
-      .finally(() => {
-        inflight = null
-      })
-  }
-  return inflight
+  return (await getEmbeddedServerBootstrap()).baseUrl
 }
 
 export function apiUrl(path: string): string {

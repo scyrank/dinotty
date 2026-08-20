@@ -1,17 +1,20 @@
-import { reactive, readonly, ref } from 'vue'
+import { reactive, readonly, ref, watch } from 'vue'
 import { applyThemeToDOM, getXtermTheme } from '../themes'
 import { getApiBase, apiUrl, authFetch, hasAuthToken } from './apiBase'
 import { resolveEffectiveTheme } from './useDeviceThemeSelection'
-import ClaudeLogo from '../components/icons/ClaudeLogo.vue'
-import CodexLogo from '../components/icons/CodexLogo.vue'
-import OpencodeLogo from '../components/icons/OpencodeLogo.vue'
 import { isWindowsClient } from '../utils/clientPlatform'
+import { canonicalizeSystemKeyboard } from '../utils/systemKeyboardLayout'
 import type { KeyboardGuardMode } from '../utils/keyboardGuardMode'
 import type { KeyBinding } from './useKeybindings'
 import type { SavedTheme } from './useDeviceThemeSelection'
 export type WorkspaceBadgeMode = 'off' | 'tab' | 'icon' | 'both'
+export type MobileInputMode = 'builtin' | 'system'
+export type SystemToolbarMode = 'follow_ime' | 'persistent_mobile'
+export type CloseWindowBehavior = 'ask' | 'hide_to_tray' | 'quit'
+export const SETTINGS_SCHEMA_VERSION = 13
 
 export interface SettingsData {
+  settings_version: number
   theme: {
     preset: string
     custom: {
@@ -39,6 +42,9 @@ export interface SettingsData {
   action_keyboard: ActionKeyboardConfig | null
   action_keyboard_user_default?: ActionKeyboardConfig | null
   toolbar_quick_keys: ActionKey[]
+  system_keyboard: SystemKeyboardConfig | null
+  system_keyboard_user_default?: SystemKeyboardConfig | null
+  system_toolbar_mode: SystemToolbarMode
   upload_dir: string
   default_base_dir?: string | null
   default_workspace_root?: string | null
@@ -52,16 +58,20 @@ export interface SettingsData {
   keyboard_sound: boolean
   quick_send_threshold: number
   show_virtual_keyboard: boolean
+  mobile_input_mode: MobileInputMode | null
   keyboard_guard_mode: KeyboardGuardMode
   workspace_badge_mode: WorkspaceBadgeMode | null
   confirm_before_close_tab: boolean
+  close_window_behavior: CloseWindowBehavior
+  restore_session_on_startup: boolean
   reload_after_supervise_tabs: boolean
   space_confirms_dialogs: boolean
   windowsAltAsCmd: boolean
   locale: string
-  panel_position: 'auto' | 'right' | 'left' | 'top' | 'bottom'
+  auto_check_updates: boolean
   shell: string
   shell_path: string | null
+  wsl_distro: string | null
   port?: number | null
   monitor: MonitorConfig
   notification: NotificationConfig
@@ -220,6 +230,42 @@ export interface ActionKeyboardConfig {
   bottom?: ActionBottomCluster
 }
 
+export interface SystemKeyboardConfig {
+  upper: ActionKey[]
+  pages: ActionKey[][]
+  lower_enabled?: boolean
+  upper_pinned?: number
+  lower_pinned?: number
+}
+
+export const DEFAULT_SYSTEM_KEYBOARD: SystemKeyboardConfig = {
+  upper: [
+    { label: 'History', kind: 'action', action: 'system.history' },
+    { label: 'Bookmarks', kind: 'action', action: 'openBookmarks' },
+    { label: 'Extended', kind: 'action', action: 'system.extended' },
+    { label: 'Actions', kind: 'action', action: 'system.actions' },
+  ],
+  pages: [
+    [
+      { label: 'Esc', kind: 'send', send: '\x1b' },
+      { label: 'Tab', kind: 'send', send: '\t' },
+      { label: 'Ctrl', kind: 'send', send: '', special: 'ctrl', display: 'text' },
+      { label: 'Alt', kind: 'send', send: '', special: 'alt', display: 'text' },
+      { label: '/', kind: 'send', send: '/' },
+      { label: '|', kind: 'send', send: '|' },
+      { label: '~', kind: 'send', send: '~' },
+      { label: '-', kind: 'send', send: '-' },
+      { label: '^C', kind: 'send', send: '\x03' },
+      { label: '^I', kind: 'send', send: '\t' },
+      { label: '^S', kind: 'send', send: '\x13' },
+      { label: '^Z', kind: 'send', send: '\x1a' },
+    ],
+  ],
+  lower_enabled: true,
+  upper_pinned: 0,
+  lower_pinned: 0,
+}
+
 export const DEFAULT_ACTION_BOTTOM: ActionBottomCluster = {
   rows: [
     [
@@ -242,9 +288,9 @@ export const DEFAULT_ACTION_KEYBOARD: ActionKeyboardConfig & {
   rows: [
     [
       { label: '🔖', send: '', special: 'bookmarks' },
-      { label: 'claude', send: 'claude', auto_enter: true, icon: ClaudeLogo },
-      { label: 'codex', send: 'codex', auto_enter: true, icon: CodexLogo },
-      { label: 'opencode', send: 'opencode', auto_enter: true, icon: OpencodeLogo },
+      { label: 'claude', send: 'claude', auto_enter: true, display: 'icon' },
+      { label: 'codex', send: 'codex', auto_enter: true, display: 'icon' },
+      { label: 'opencode', send: 'opencode', auto_enter: true, display: 'icon' },
     ],
     [
       { label: 'esc', send: '\x1b', style: 'danger' },
@@ -280,7 +326,6 @@ function normalizeActionKey(key: ActionKey): void {
   if (key.kind !== 'action' || typeof key.action !== 'string' || key.action.trim() === '') return
   delete key.send
   delete key.special
-  delete key.repeat
   if (key.action === 'pasteTerminal') {
     if (typeof key.auto_enter !== 'boolean') key.auto_enter = true
   } else {
@@ -343,6 +388,34 @@ export function cloneWithoutIcons(cfg: ActionKeyboardConfig): ActionKeyboardConf
   return clone
 }
 
+export function cloneSystemKeyboardWithoutIcons(cfg: SystemKeyboardConfig): SystemKeyboardConfig {
+  return canonicalizeSystemKeyboard({
+    upper: cfg.upper.map(cloneActionKeyWithoutIcon),
+    pages: cfg.pages.map((page) => page.map(cloneActionKeyWithoutIcon)),
+    lower_enabled: cfg.lower_enabled !== false,
+    upper_pinned: cfg.upper_pinned ?? 0,
+    lower_pinned: cfg.lower_pinned ?? 0,
+  })
+}
+
+export function effectiveSystemKeyboard(): SystemKeyboardConfig {
+  return settings.system_keyboard ?? DEFAULT_SYSTEM_KEYBOARD
+}
+
+export function resetSystemKeyboard(): void {
+  settings.system_keyboard = null
+}
+
+export function saveSystemKeyboardUserDefault(): void {
+  settings.system_keyboard_user_default = cloneSystemKeyboardWithoutIcons(effectiveSystemKeyboard())
+}
+
+export function restoreSystemKeyboardUserDefault(): void {
+  const snapshot = settings.system_keyboard_user_default
+  if (!snapshot) return
+  settings.system_keyboard = cloneSystemKeyboardWithoutIcons(snapshot)
+}
+
 export function effectiveActionKeyboard(): ActionKeyboardConfig {
   const cfg = settings.action_keyboard
   if (!cfg) return DEFAULT_ACTION_KEYBOARD
@@ -357,7 +430,6 @@ export function restoreActionKeyboardUserDefault(): void {
   const snapshot = settings.action_keyboard_user_default
   if (!snapshot) return
   settings.action_keyboard = cloneWithoutIcons(snapshot)
-  restoreActionIcons()
 }
 
 export function resetActionKeyboard(): void {
@@ -377,6 +449,7 @@ export function ensureBottom(): ActionBottomCluster {
 }
 
 export const settings = reactive<SettingsData>({
+  settings_version: SETTINGS_SCHEMA_VERSION,
   theme: { preset: 'dark', custom: null },
   custom_themes: [],
   hidden_builtins: [],
@@ -403,6 +476,9 @@ export const settings = reactive<SettingsData>({
   action_keyboard: null,
   action_keyboard_user_default: null,
   toolbar_quick_keys: [],
+  system_keyboard: null,
+  system_keyboard_user_default: null,
+  system_toolbar_mode: 'follow_ime',
   upload_dir: '',
   upload_cap_mb: 200,
   upload_file_cap_mb: 0,
@@ -410,16 +486,20 @@ export const settings = reactive<SettingsData>({
   keyboard_sound: false,
   quick_send_threshold: 63,
   show_virtual_keyboard: false,
+  mobile_input_mode: null,
   keyboard_guard_mode: 'off',
   workspace_badge_mode: null,
   confirm_before_close_tab: true,
+  close_window_behavior: 'ask',
+  restore_session_on_startup: true,
   reload_after_supervise_tabs: false,
   space_confirms_dialogs: false,
   windowsAltAsCmd: isWindowsClient,
   locale: 'zh',
-  panel_position: 'auto',
+  auto_check_updates: false,
   shell: 'auto',
   shell_path: null,
+  wsl_distro: null,
   monitor: {
     enabled: true,
     cpu: true,
@@ -481,14 +561,25 @@ export const settings = reactive<SettingsData>({
 
 let loaded = false
 let loadPromise: Promise<void> | null = null
+let saveTail: Promise<void> | null = null
+let saveTailRevision: number | null = null
 let loadGeneration = 0
 let loadsInFlight = 0
+let settingsRevision = 0
 let loadedNotificationPresentationEcho: {
   channels?: unknown
   sounds?: unknown
 } | null = null
 const settingsLoadedState = ref(false)
 export const settingsLoaded = readonly(settingsLoadedState)
+
+watch(
+  settings,
+  () => {
+    settingsRevision++
+  },
+  { deep: true, flush: 'sync' }
+)
 
 export function __setSettingsLoadedForTest(value: boolean) {
   settingsLoadedState.value = value
@@ -497,8 +588,11 @@ export function __setSettingsLoadedForTest(value: boolean) {
 export function __resetSettingsLoadStateForTest() {
   loaded = false
   loadPromise = null
+  saveTail = null
+  saveTailRevision = null
   loadGeneration = 0
   loadsInFlight = 0
+  settingsRevision = 0
   loadedNotificationPresentationEcho = null
   settingsLoadedState.value = false
 }
@@ -526,46 +620,20 @@ export function useSettings() {
   }
 }
 
-export function restoreActionIcons() {
-  // Toolbar quick keys are plain user-defined labels/sends; do not attach default icons.
-  // Build a lookup from send → icon using DEFAULT_ACTION_KEYBOARD
-  const iconMap = new Map<string, object>()
-  for (const row of DEFAULT_ACTION_KEYBOARD.rows) {
-    for (const k of row) {
-      if (k.icon && k.send !== undefined) iconMap.set(k.send, k.icon)
-    }
-  }
-
-  const restoreKey = (k: ActionKey) => {
-    if (k.kind === 'action' || k.icon || k.send === undefined) return
-    const icon = iconMap.get(k.send)
-    if (icon) k.icon = icon
-  }
-  const restoreConfig = (cfg: ActionKeyboardConfig | null | undefined) => {
-    if (!cfg) return
-    for (const row of cfg.rows) {
-      for (const k of row) restoreKey(k)
-    }
-    if (cfg.bottom) {
-      for (const row of cfg.bottom.rows) {
-        for (const k of row) restoreKey(k)
-      }
-      if (cfg.bottom.enter) restoreKey(cfg.bottom.enter)
-    }
-  }
-
-  restoreConfig(settings.action_keyboard)
-  restoreConfig(settings.action_keyboard_user_default)
-}
-
 export async function loadSettings() {
   if (!hasAuthToken()) return
+  // A refresh that overtakes an already-started save can fetch the old server
+  // value and put it back into the UI. Only wait for saves that existed when
+  // this load was requested; later local edits are handled by the revision guard.
+  const pendingSaves = saveTail
   let requestStarted = false
   try {
     loadGeneration++
     loadsInFlight++
     requestStarted = true
+    if (pendingSaves) await pendingSaves
     await getApiBase()
+    const revisionAtRequest = settingsRevision
     const res = await authFetch(apiUrl('/api/settings'))
     if (res.ok) {
       const data = await res.json()
@@ -579,13 +647,24 @@ export async function loadSettings() {
           ? { sounds: JSON.parse(JSON.stringify(notification.sounds)) }
           : {}),
       }
-      Object.assign(settings, data)
       loadGeneration++
+      // Once settings have loaded successfully, a response that started before
+      // a local edit is stale. Applying it would make the picker show the new
+      // value briefly while saving the previous server value again.
+      if (settingsLoadedState.value && settingsRevision !== revisionAtRequest) return
+      Object.assign(settings, data)
       settings.action_keyboard = normalizeActionKeyboard(settings.action_keyboard)
       settings.action_keyboard_user_default = normalizeActionKeyboard(
         settings.action_keyboard_user_default ?? null
       )
-      restoreActionIcons()
+      if (settings.system_keyboard) {
+        settings.system_keyboard = canonicalizeSystemKeyboard(settings.system_keyboard)
+      }
+      if (settings.system_keyboard_user_default) {
+        settings.system_keyboard_user_default = canonicalizeSystemKeyboard(
+          settings.system_keyboard_user_default
+        )
+      }
       applyCurrentTheme()
       settingsLoadedState.value = true
     }
@@ -596,7 +675,7 @@ export async function loadSettings() {
   }
 }
 
-export async function saveSettings() {
+async function persistSettings() {
   try {
     // Wait for initial load to complete before saving, to avoid overwriting server data with defaults
     if (loadPromise) await loadPromise
@@ -609,13 +688,24 @@ export async function saveSettings() {
       return
     }
     const payload = JSON.parse(JSON.stringify(settings)) as SettingsData
+    const wirePayload = payload as unknown as Record<string, unknown>
+    payload.settings_version = SETTINGS_SCHEMA_VERSION
+    wirePayload.client_settings_version = SETTINGS_SCHEMA_VERSION
     if (payload.action_keyboard) {
       payload.action_keyboard = cloneWithoutIcons(payload.action_keyboard)
     }
     if (payload.action_keyboard_user_default) {
       payload.action_keyboard_user_default = cloneWithoutIcons(payload.action_keyboard_user_default)
     }
-    delete (payload as unknown as Record<string, unknown>).reload_after_supervise_tabs
+    if (payload.system_keyboard) {
+      payload.system_keyboard = cloneSystemKeyboardWithoutIcons(payload.system_keyboard)
+    }
+    if (payload.system_keyboard_user_default) {
+      payload.system_keyboard_user_default = cloneSystemKeyboardWithoutIcons(
+        payload.system_keyboard_user_default
+      )
+    }
+    delete wirePayload.reload_after_supervise_tabs
     const notification = payload.notification as unknown as Record<string, unknown>
     for (const key of [
       'presentation_enabled',
@@ -650,6 +740,33 @@ export async function saveSettings() {
   } catch (e) {
     console.error('[settings] save failed:', e)
   }
+}
+
+export function saveSettings(): Promise<void> {
+  // Full settings PUTs must stay ordered. Otherwise an earlier, slower request
+  // can finish after a newer Shell selection and restore the old preference.
+  if (saveTail && saveTailRevision === settingsRevision) return saveTail
+  const predecessor = saveTail
+  const operation = predecessor
+    ? predecessor.then(persistSettings, persistSettings)
+    : persistSettings()
+  saveTail = operation
+  saveTailRevision = settingsRevision
+  void operation.then(
+    () => {
+      if (saveTail === operation) {
+        saveTail = null
+        saveTailRevision = null
+      }
+    },
+    () => {
+      if (saveTail === operation) {
+        saveTail = null
+        saveTailRevision = null
+      }
+    }
+  )
+  return operation
 }
 
 const themeChangeListeners = new Set<(xtermTheme: ReturnType<typeof getXtermTheme>) => void>()

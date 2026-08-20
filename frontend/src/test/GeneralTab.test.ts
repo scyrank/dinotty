@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 const generalMocks = vi.hoisted(() => ({
   authFetch: vi.fn(),
+  tauriInvoke: vi.fn(),
+  isTauri: false,
   uploadStatus: 200,
   defaultDir: '/tmp/dinotty',
 }))
@@ -20,7 +22,8 @@ vi.mock('../composables/apiBase', () => ({
 }))
 
 vi.mock('../composables/useTransport', () => ({
-  isTauri: () => false,
+  isTauri: () => generalMocks.isTauri,
+  tauriInvoke: generalMocks.tauriInvoke,
 }))
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -39,11 +42,8 @@ vi.mock('../utils/clipboard', () => ({
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import GeneralTab from '../components/settings/GeneralTab.vue'
-import {
-  __resetSettingsLoadStateForTest,
-  loadSettings,
-  settings,
-} from '../composables/useSettings'
+import ShellPicker from '../components/settings/ShellPicker.vue'
+import { __resetSettingsLoadStateForTest, loadSettings, settings } from '../composables/useSettings'
 
 // Spec: openspec/changes/confirm-before-close-tab/spec.md
 //   "### Requirement: Setting UI In General Settings"
@@ -53,10 +53,16 @@ describe('GeneralTab - confirm-before-close-tab toggle', () => {
   beforeEach(async () => {
     // Reset the shared reactive settings to the documented default.
     settings.confirm_before_close_tab = true
+    settings.close_window_behavior = 'ask'
     settings.space_confirms_dialogs = false
     settings.workspace_badge_mode = null
     settings.upload_dir = ''
+    settings.shell = 'auto'
+    settings.shell_path = null
+    settings.wsl_distro = null
     generalMocks.uploadStatus = 200
+    generalMocks.isTauri = false
+    generalMocks.tauriInvoke.mockReset()
     generalMocks.defaultDir = '/tmp/dinotty'
     generalMocks.authFetch.mockReset()
     generalMocks.authFetch.mockImplementation(async (url: string, init?: RequestInit) => {
@@ -88,6 +94,23 @@ describe('GeneralTab - confirm-before-close-tab toggle', () => {
     expect(input.element.checked).toBe(true)
   })
 
+  it('saves exact WSL selections and clears backend-specific stale fields', async () => {
+    const wrapper = mount(GeneralTab)
+    const picker = wrapper.findComponent(ShellPicker)
+
+    picker.vm.$emit('select', { kind: 'wsl', distro: 'Ubuntu Dev' })
+    await nextTick()
+    expect(settings.shell).toBe('wsl')
+    expect(settings.wsl_distro).toBe('Ubuntu Dev')
+
+    settings.shell_path = '/old/custom/shell'
+    picker.vm.$emit('select', { kind: 'powershell', distro: null })
+    await nextTick()
+    expect(settings.shell).toBe('powershell')
+    expect(settings.wsl_distro).toBeNull()
+    expect(settings.shell_path).toBeNull()
+  })
+
   it('renders the behavior section header with a settings.behavior i18n key', () => {
     const wrapper = mount(GeneralTab)
     const input = wrapper.find<HTMLInputElement>(
@@ -109,6 +132,29 @@ describe('GeneralTab - confirm-before-close-tab toggle', () => {
     const hint = wrapper.find('p.settings-hint[data-hint="confirm-before-close-tab"]')
     expect(hint.exists()).toBe(true)
     expect(hint.text().trim().length).toBeGreaterThan(0)
+  })
+
+  it('selects and persists the remembered window-close behavior', async () => {
+    generalMocks.isTauri = true
+    const wrapper = mount(GeneralTab)
+    const select = wrapper.find<HTMLSelectElement>('[data-setting="close-window-behavior"]')
+
+    expect(select.exists()).toBe(true)
+    expect(select.element.value).toBe('ask')
+    await select.setValue('hide_to_tray')
+    await flush()
+
+    expect(settings.close_window_behavior).toBe('hide_to_tray')
+    const putCall = generalMocks.authFetch.mock.calls.find(
+      ([url, init]) => url === '/api/settings' && init?.method === 'PUT'
+    )
+    expect(putCall).toBeDefined()
+    expect(JSON.parse(String(putCall?.[1]?.body)).close_window_behavior).toBe('hide_to_tray')
+  })
+
+  it('does not show desktop window-close behavior in the web client', () => {
+    const wrapper = mount(GeneralTab)
+    expect(wrapper.find('[data-setting="close-window-behavior"]').exists()).toBe(false)
   })
 
   it('toggling the checkbox updates settings.confirm_before_close_tab', async () => {
@@ -275,6 +321,76 @@ describe('GeneralTab - confirm-before-close-tab toggle', () => {
     expect(wrapper.find<HTMLInputElement>('[data-testid="upload-dir-input"]').element.value).toBe(
       '/var/tmp/dinotty'
     )
+  })
+
+  it('explains Windows portable risks and keeps autostart off when cancelled', async () => {
+    generalMocks.isTauri = true
+    generalMocks.tauriInvoke.mockResolvedValue({
+      packageKind: 'windowsDesktop',
+      canEnable: true,
+      canDisable: false,
+      state: 'off',
+      warnings: ['pathMoveBreaksRegistration'],
+    })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const wrapper = mount(GeneralTab)
+    await flush()
+
+    const input = wrapper.find<HTMLInputElement>('[data-setting="autostart"]')
+    expect(input.exists()).toBe(true)
+    await input.setValue(true)
+    await flush()
+
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/Windows/i))
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/portable|便携版/i))
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/fixed|固定/i))
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/startup entry|启动项/i))
+    expect(input.element.checked).toBe(false)
+    expect(generalMocks.tauriInvoke).toHaveBeenCalledTimes(1)
+    expect(generalMocks.tauriInvoke).toHaveBeenCalledWith('autostart_status')
+  })
+
+  it('explains AppImage portable risks before enabling autostart', async () => {
+    generalMocks.isTauri = true
+    generalMocks.tauriInvoke.mockResolvedValue({
+      packageKind: 'linuxAppImage',
+      canEnable: true,
+      canDisable: false,
+      state: 'off',
+      warnings: ['pathMoveBreaksRegistration'],
+    })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const wrapper = mount(GeneralTab)
+    await flush()
+
+    await wrapper.find<HTMLInputElement>('[data-setting="autostart"]').setValue(true)
+    await flush()
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/AppImage/i))
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/portable|便携版/i))
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/fixed|固定/i))
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/startup entry|启动项/i))
+    expect(generalMocks.tauriInvoke).toHaveBeenCalledTimes(1)
+  })
+
+  it('hides backend-only autostart environment warnings', async () => {
+    generalMocks.isTauri = true
+    generalMocks.tauriInvoke.mockResolvedValue({
+      packageKind: 'linuxAppImage',
+      canEnable: true,
+      canDisable: false,
+      state: 'off',
+      warnings: ['desktopEnvironmentDependent', 'systemMaySuppress'],
+    })
+    const wrapper = mount(GeneralTab)
+    await flush()
+
+    const card = wrapper.get('[data-testid="autostart-card"]')
+    expect(card.findAll('p.settings-hint')).toHaveLength(1)
+    expect(card.text()).not.toContain('desktopEnvironmentDependent')
+    expect(card.text()).not.toContain('systemMaySuppress')
+    expect(card.text()).not.toContain('AppIndicator')
   })
 })
 

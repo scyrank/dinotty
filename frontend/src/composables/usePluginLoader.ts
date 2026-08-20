@@ -8,11 +8,16 @@ import type { SyncEvent } from '../types/protocol'
 import { useI18n, type Locale } from './useI18n'
 import { describeHttpError } from '../utils/httpError'
 
-// Bypass Vite's static analysis of import()
-// eslint-disable-next-line no-new-func
-const dynamicImport: (url: string) => Promise<any> = new Function('url', 'return import(url)') as (
-  url: string
-) => Promise<any>
+function pluginWebSocketUrl(path: string): string {
+  const resolved = apiUrl(path)
+  if (/^https?:\/\//.test(resolved)) return resolved.replace(/^http/, 'ws')
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${location.host}${resolved}`
+}
+
+// Plugin modules are verified by the server, then loaded from a short-lived
+// blob URL. @vite-ignore keeps the URL dynamic without requiring unsafe-eval.
+const dynamicImport = (url: string): Promise<any> => import(/* @vite-ignore */ url)
 
 // ─── Binary helpers for ctx.crypto ──────────────────────────────────────────
 
@@ -112,11 +117,20 @@ export interface PluginContext {
   terminal: {
     send(paneId: string, data: string): void
     activePaneId(): string | null
+    /** Returns the active terminal tab's cwd, or the last known terminal cwd,
+     *  or the active workspace path. null if none are available. */
+    activeCwd(): string | null
     listPanes(): Array<{ id: string; title: string; active: boolean }>
     onOutput(callback: (paneId: string, data: string) => void): Disposable
     createTab(command?: string): Promise<string>
     /** Open a terminal tab in cwd and execute argv directly, without an intermediary shell. */
     createTerminalTab(opts: { cwd: string; argv: string[]; title?: string }): Promise<string>
+    /** Split the active terminal pane. Returns the new pane id, or null if no
+     *  terminal tab is active. */
+    splitTerminalPane(opts?: {
+      direction?: 'horizontal' | 'vertical'
+      cwd?: string
+    }): Promise<string | null>
   }
 
   settings: {
@@ -174,12 +188,44 @@ export interface PluginContext {
   }
 
   events: {
-    subscribe<T = unknown>(eventName: string, handler: (data: T, e: SyncEvent) => void): () => void
+    subscribe<T = unknown>(eventName: string, handler: (data: T, e: SyncEvent) => void): Disposable
     emit(
       eventName: string,
       data: unknown,
       opts?: { target_plugin_id?: string },
     ): void
+  }
+
+  workspace: {
+    readDir(path: string): Promise<{
+      path: string
+      entries: Array<{ name: string; is_dir: boolean; size: number }>
+    }>
+    readFile(path: string): Promise<{
+      kind: string
+      content: string | null
+      truncated: boolean
+      language: string | null
+    }>
+    writeFile(path: string, content: string): Promise<void>
+    stat(path: string): Promise<{
+      size: number
+      is_dir: boolean
+      modified: number | null
+    }>
+    watch(
+      path: string,
+      cb: (event: {
+        type: 'file_event' | 'error'
+        path?: string
+        kind?: string
+        message?: string
+      }) => void
+    ): Disposable
+    mkdir(path: string): Promise<void>
+    delete(path: string): Promise<void>
+    rename(path: string, newName: string): Promise<void>
+    move(src: string, dest: string): Promise<void>
   }
 
   /** 获取插件资源的 HTTP URL（不含认证信息，认证由调用方处理）
@@ -237,6 +283,7 @@ const pluginCommands = reactive(new Map<string, { pluginId: string; handler: () 
 const pluginQuickPicks = reactive(
   new Map<string, { pluginId: string; options: QuickPickOptions }>()
 )
+const pluginWatchSockets = new Map<string, Set<WebSocket>>()
 
 // ─── Window API Injection Points ──────────────────────────────────────────────
 
@@ -282,12 +329,11 @@ function createPluginContext(pluginId: string): PluginContext {
       return res.json()
     },
     spawn(args, options) {
-      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
       const query = new URLSearchParams({ args: JSON.stringify(args) })
       if (options) query.set('options', JSON.stringify(options))
       const ws = new WebSocket(
         wsUrlWithToken(
-          `${proto}//${location.host}/api/plugins/${pluginId}/spawn?${query.toString()}`
+          pluginWebSocketUrl(`/api/plugins/${pluginId}/spawn?${query.toString()}`)
         )
       )
       let stdoutCtrl: ReadableStreamDefaultController<string>
@@ -395,6 +441,101 @@ function createPluginContext(pluginId: string): PluginContext {
     },
   }
 
+  const workspace: PluginContext['workspace'] = {
+    async readDir(path) {
+      const res = await authFetch(
+        apiUrl(`/api/plugins/${pluginId}/workspace/readDir?path=${encodeURIComponent(path)}`)
+      )
+      if (!res.ok) throw new Error(await describeHttpError(res, 'workspace.readDir failed'))
+      return res.json()
+    },
+    async readFile(path) {
+      const res = await authFetch(
+        apiUrl(`/api/plugins/${pluginId}/workspace/readFile?path=${encodeURIComponent(path)}`)
+      )
+      if (!res.ok) throw new Error(await describeHttpError(res, 'workspace.readFile failed'))
+      return res.json()
+    },
+    async writeFile(path, content) {
+      const res = await authFetch(apiUrl(`/api/plugins/${pluginId}/workspace/file`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, content }),
+      })
+      if (!res.ok) throw new Error(await describeHttpError(res, 'workspace.writeFile failed'))
+    },
+    async stat(path) {
+      const res = await authFetch(
+        apiUrl(`/api/plugins/${pluginId}/workspace/stat?path=${encodeURIComponent(path)}`)
+      )
+      if (!res.ok) throw new Error(await describeHttpError(res, 'workspace.stat failed'))
+      return res.json()
+    },
+    watch(path, cb) {
+      const query = new URLSearchParams({ path })
+      const ws = new WebSocket(
+        wsUrlWithToken(
+          pluginWebSocketUrl(`/ws/plugins/${pluginId}/workspace/watch?${query.toString()}`)
+        )
+      )
+      let sockets = pluginWatchSockets.get(pluginId)
+      if (!sockets) {
+        sockets = new Set()
+        pluginWatchSockets.set(pluginId, sockets)
+      }
+      sockets.add(ws)
+      ws.onmessage = (ev) => {
+        try {
+          cb(JSON.parse(ev.data))
+        } catch {
+          /* ignore malformed */
+        }
+      }
+      ws.onclose = () => {
+        sockets?.delete(ws)
+      }
+      return {
+        dispose: () => {
+          if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+            ws.close()
+          }
+          sockets?.delete(ws)
+        },
+      }
+    },
+    async mkdir(path) {
+      const res = await authFetch(apiUrl(`/api/plugins/${pluginId}/workspace/mkdir`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      })
+      if (!res.ok) throw new Error(await describeHttpError(res, 'workspace.mkdir failed'))
+    },
+    async delete(path) {
+      const res = await authFetch(
+        apiUrl(`/api/plugins/${pluginId}/workspace/delete?path=${encodeURIComponent(path)}`),
+        { method: 'DELETE' }
+      )
+      if (!res.ok) throw new Error(await describeHttpError(res, 'workspace.delete failed'))
+    },
+    async rename(path, newName) {
+      const res = await authFetch(apiUrl(`/api/plugins/${pluginId}/workspace/rename`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, new_name: newName }),
+      })
+      if (!res.ok) throw new Error(await describeHttpError(res, 'workspace.rename failed'))
+    },
+    async move(src, dest) {
+      const res = await authFetch(apiUrl(`/api/plugins/${pluginId}/workspace/move`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ src, dest }),
+      })
+      if (!res.ok) throw new Error(await describeHttpError(res, 'workspace.move failed'))
+    },
+  }
+
   const commands: PluginContext['commands'] = {
     register(id, handler) {
       pluginCommands.set(id, { pluginId, handler })
@@ -466,10 +607,12 @@ function createPluginContext(pluginId: string): PluginContext {
     terminal: window.__dinotty_terminal_api ?? {
       send() {},
       activePaneId: () => null,
+      activeCwd: () => null,
       listPanes: () => [],
       onOutput: () => ({ dispose() {} }),
       createTab: async () => '',
       createTerminalTab: async () => '',
+      splitTerminalPane: async () => null,
     },
     settings: {
       get: () => (window as any).__dinotty_settings_data ?? {},
@@ -477,6 +620,7 @@ function createPluginContext(pluginId: string): PluginContext {
     },
     storage,
     commands,
+    workspace,
     ui: {
       notify: window.__dinotty_ui_notify ?? (() => {}),
       confirm: window.__dinotty_ui_confirm ?? (async () => false),
@@ -485,8 +629,10 @@ function createPluginContext(pluginId: string): PluginContext {
       window.__dinotty_open_plugin?.(pluginId)
     },
     events: {
-      subscribe: <T = unknown>(name: string, handler: (data: T, e: SyncEvent) => void) =>
-        eventSubscribe(name, handler, { pluginId: pluginId }),
+      subscribe: <T = unknown>(name: string, handler: (data: T, e: SyncEvent) => void) => {
+        const unsubscribe = eventSubscribe(name, handler, { pluginId: pluginId })
+        return { dispose: unsubscribe }
+      },
       emit: (name: string, data: unknown, opts?: { target_plugin_id?: string }) =>
         eventEmit(name, data, { plugin_id: pluginId, ...opts }),
     },
@@ -537,6 +683,18 @@ async function loadPlugin(id: string): Promise<LoadedPlugin> {
     const cssRes = await authFetch(cssUrl)
     if (cssRes.ok) {
       const cssText = await cssRes.text()
+      const globalSelectorRe = /(?:^|,)\s*(html|body|:root|\*)\s*[{,]/gm
+      const offenders = new Set<string>()
+      let m: RegExpExecArray | null
+      while ((m = globalSelectorRe.exec(cssText)) !== null) {
+        offenders.add(m[1])
+      }
+      if (offenders.size > 0) {
+        console.warn(
+          `[plugin ${id}] CSS uses global selector(s): ${[...offenders].join(', ')}. ` +
+            `Scope to \`.plugin-host-${id}\` to avoid polluting the host UI.`
+        )
+      }
       const styleEl = document.createElement('style')
       styleEl.textContent = cssText
       styleEl.dataset.pluginId = id
@@ -623,6 +781,17 @@ async function unloadPlugin(id: string, options: { stopUiProcesses?: boolean } =
   // Clean up quick picks
   for (const [qpId, entry] of pluginQuickPicks) {
     if (entry.pluginId === id) pluginQuickPicks.delete(qpId)
+  }
+
+  // Close any lingering workspace watch WebSockets the plugin forgot to dispose
+  const watchSockets = pluginWatchSockets.get(id)
+  if (watchSockets) {
+    for (const ws of watchSockets) {
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+        ws.close()
+      }
+    }
+    pluginWatchSockets.delete(id)
   }
 
   removePluginCSS(id)

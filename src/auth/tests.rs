@@ -267,19 +267,15 @@ fn check_token_query_param_ignored() {
 }
 
 // ── check_ws_origin ────────────────────────────────────────────
-// 暂时全部 ignore：check_ws_origin 已关闭，函数恒返回 true。
-// 修复反代场景下的 Origin/Host 比对问题后恢复。
 
 #[test]
-#[ignore = "check_ws_origin disabled - see auth/mod.rs"]
-fn ws_origin_loopback_always_allowed() {
+fn ws_origin_native_loopback_without_origin_allowed() {
     let headers = HeaderMap::new();
     let loopback: IpAddr = "127.0.0.1".parse().unwrap();
     assert!(check_ws_origin(&headers, &[], loopback, &[]));
 }
 
 #[test]
-#[ignore = "check_ws_origin disabled - see auth/mod.rs"]
 fn ws_origin_no_origin_header_allowed() {
     let headers = HeaderMap::new();
     let ip: IpAddr = "192.168.1.100".parse().unwrap();
@@ -287,7 +283,6 @@ fn ws_origin_no_origin_header_allowed() {
 }
 
 #[test]
-#[ignore = "check_ws_origin disabled - see auth/mod.rs"]
 fn ws_origin_same_origin_matches() {
     let mut headers = HeaderMap::new();
     headers.insert(header::ORIGIN, "https://nas.example.com".parse().unwrap());
@@ -297,7 +292,6 @@ fn ws_origin_same_origin_matches() {
 }
 
 #[test]
-#[ignore = "check_ws_origin disabled - see auth/mod.rs"]
 fn ws_origin_mismatch_behind_proxy_fails_without_trusted() {
     // Proxy rewrites Host to internal address; Origin stays external.
     let mut headers = HeaderMap::new();
@@ -308,7 +302,6 @@ fn ws_origin_mismatch_behind_proxy_fails_without_trusted() {
 }
 
 #[test]
-#[ignore = "check_ws_origin disabled - see auth/mod.rs"]
 fn ws_origin_x_forwarded_host_with_trusted_proxy() {
     let mut headers = HeaderMap::new();
     headers.insert(header::ORIGIN, "https://nas.example.com".parse().unwrap());
@@ -320,7 +313,6 @@ fn ws_origin_x_forwarded_host_with_trusted_proxy() {
 }
 
 #[test]
-#[ignore = "check_ws_origin disabled - see auth/mod.rs"]
 fn ws_origin_x_forwarded_host_not_used_for_untrusted() {
     let mut headers = HeaderMap::new();
     headers.insert(header::ORIGIN, "https://nas.example.com".parse().unwrap());
@@ -332,7 +324,6 @@ fn ws_origin_x_forwarded_host_not_used_for_untrusted() {
 }
 
 #[test]
-#[ignore = "check_ws_origin disabled - see auth/mod.rs"]
 fn ws_origin_hostname_only_fallback() {
     // Proxy strips port from Host header.
     let mut headers = HeaderMap::new();
@@ -343,7 +334,6 @@ fn ws_origin_hostname_only_fallback() {
 }
 
 #[test]
-#[ignore = "check_ws_origin disabled - see auth/mod.rs"]
 fn ws_origin_allowed_origins_fallback() {
     let mut headers = HeaderMap::new();
     headers.insert(header::ORIGIN, "https://custom.domain.com".parse().unwrap());
@@ -354,7 +344,6 @@ fn ws_origin_allowed_origins_fallback() {
 }
 
 #[test]
-#[ignore = "check_ws_origin disabled - see auth/mod.rs"]
 fn ws_origin_x_forwarded_host_with_port() {
     let mut headers = HeaderMap::new();
     headers.insert(header::ORIGIN, "https://nas.example.com:8443".parse().unwrap());
@@ -366,7 +355,6 @@ fn ws_origin_x_forwarded_host_with_port() {
 }
 
 #[test]
-#[ignore = "check_ws_origin disabled - see auth/mod.rs"]
 fn ws_origin_x_forwarded_host_comma_separated() {
     let mut headers = HeaderMap::new();
     headers.insert(header::ORIGIN, "https://nas.example.com".parse().unwrap());
@@ -375,4 +363,57 @@ fn ws_origin_x_forwarded_host_comma_separated() {
     let ip: IpAddr = "192.168.1.100".parse().unwrap();
     let trusted = vec!["192.168.1.0/24".to_string()];
     assert!(check_ws_origin(&headers, &[], ip, &trusted));
+}
+
+#[test]
+fn ws_origin_loopback_does_not_bypass_malicious_browser_origin() {
+    let mut headers = HeaderMap::new();
+    headers.insert(header::ORIGIN, "https://evil.example".parse().unwrap());
+    headers.insert(header::HOST, "127.0.0.1:8999".parse().unwrap());
+    let loopback: IpAddr = "127.0.0.1".parse().unwrap();
+    assert!(!check_ws_origin(&headers, &[], loopback, &[]));
+}
+
+#[test]
+fn ws_origin_null_is_rejected() {
+    let mut headers = HeaderMap::new();
+    headers.insert(header::ORIGIN, "null".parse().unwrap());
+    headers.insert(header::HOST, "127.0.0.1:8999".parse().unwrap());
+    let loopback: IpAddr = "127.0.0.1".parse().unwrap();
+    assert!(!check_ws_origin(&headers, &[], loopback, &[]));
+}
+
+#[test]
+fn ws_origin_tauri_is_loopback_only() {
+    let mut headers = HeaderMap::new();
+    headers.insert(header::ORIGIN, "http://tauri.localhost".parse().unwrap());
+    headers.insert(header::HOST, "127.0.0.1:8999".parse().unwrap());
+    let loopback: IpAddr = "127.0.0.1".parse().unwrap();
+    let remote: IpAddr = "192.168.1.100".parse().unwrap();
+    assert!(check_ws_origin(&headers, &[], loopback, &[]));
+    assert!(!check_ws_origin(&headers, &[], remote, &[]));
+}
+
+#[test]
+fn loopback_auth_bypass_is_limited_to_tauri_origin() {
+    let loopback: IpAddr = "127.0.0.1".parse().unwrap();
+    let whitelist = vec!["127.0.0.1".to_string(), "::1".to_string()];
+
+    let no_origin = HeaderMap::new();
+    assert!(!can_bypass_ip_auth(&no_origin, loopback, loopback, &whitelist));
+
+    let mut malicious = HeaderMap::new();
+    malicious.insert(header::ORIGIN, "https://evil.example".parse().unwrap());
+    assert!(!can_bypass_ip_auth(&malicious, loopback, loopback, &whitelist));
+
+    let mut tauri = HeaderMap::new();
+    tauri.insert(header::ORIGIN, "http://tauri.localhost".parse().unwrap());
+    assert!(can_bypass_ip_auth(&tauri, loopback, loopback, &whitelist));
+}
+
+#[test]
+fn non_loopback_explicit_whitelist_still_bypasses_auth() {
+    let client: IpAddr = "192.168.1.20".parse().unwrap();
+    let whitelist = vec!["192.168.1.0/24".to_string()];
+    assert!(can_bypass_ip_auth(&HeaderMap::new(), client, client, &whitelist));
 }

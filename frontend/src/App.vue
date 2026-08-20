@@ -1,10 +1,22 @@
 <template>
-  <SetupPage v-if="!authenticated && needsSetup" @success="onLoginSuccess" />
+  <EmbeddedServerErrorPage
+    v-if="embeddedStartupError"
+    :error="embeddedStartupError"
+    :retrying="embeddedStartupRetrying"
+    @retry="retryEmbeddedServer"
+  />
+  <SetupPage v-else-if="!authenticated && needsSetup" @success="onLoginSuccess" />
   <LoginPage v-else-if="!authenticated && authProbe === 'done'" @success="onLoginSuccess" />
   <div v-else-if="!authenticated" class="auth-probe-screen">
     <RefreshCw :size="20" class="auth-probe-spinner" />
   </div>
-  <div v-else id="app-root">
+  <div
+    v-else
+    id="app-root"
+    @mousedown.capture="onAppMouseReplayCapture"
+    @click.capture="onAppMouseReplayCapture"
+    @touchstart.capture="onAppTouchStartCapture"
+  >
     <TabBar
       ref="tabBarRef"
       :tabs="visibleTabList"
@@ -43,16 +55,44 @@
         </button>
       </template>
       <template #right>
-        <button
-          v-if="activeTabType === 'terminal'"
-          type="button"
-          class="tab-bar-icon-btn"
-          :title="t('app.preview')"
-          @click="openPreview"
-          @touchend.prevent="openPreview"
-        >
-          <Monitor :size="16" />
-        </button>
+        <div v-if="activeTabType === 'terminal'" class="preview-menu-wrap">
+          <button
+            type="button"
+            class="tab-bar-icon-btn"
+            :class="{ 'is-active': previewMenuOpen }"
+            :title="t('app.preview')"
+            @click="previewMenuOpen = !previewMenuOpen"
+            @touchend.prevent="previewMenuOpen = !previewMenuOpen"
+          >
+            <Monitor :size="16" />
+          </button>
+          <div
+            v-if="previewMenuOpen"
+            class="preview-menu-backdrop"
+            @click="previewMenuOpen = false"
+            @contextmenu.prevent="previewMenuOpen = false"
+          ></div>
+          <div v-if="previewMenuOpen" class="preview-menu-dropdown" role="menu">
+            <button
+              type="button"
+              class="preview-menu-item"
+              role="menuitem"
+              @click="previewMenuOpen = false; openOrFocusPreview('files')"
+            >
+              <FolderTree :size="14" />
+              <span>{{ t('previewPanel.switchFiles') }}</span>
+            </button>
+            <button
+              type="button"
+              class="preview-menu-item"
+              role="menuitem"
+              @click="previewMenuOpen = false; openOrFocusPreview('web')"
+            >
+              <Globe :size="14" />
+              <span>{{ t('previewPanel.switchWeb') }}</span>
+            </button>
+          </div>
+        </div>
         <button
           type="button"
           class="tab-bar-icon-btn"
@@ -90,7 +130,10 @@
     <div
       id="tab-content"
       @mousedown.capture="onTabContentMouseDownCapture"
+      @pointerdown.capture="onTabContentPointerDownCapture"
+      @touchstart.capture="onTabContentTouchStartCapture"
       @touchend="onTerminalTouch"
+      @touchcancel.capture="onTabContentTouchCancelCapture"
     >
       <div
         v-for="tab in tabs"
@@ -98,8 +141,6 @@
         class="tab-page"
         :class="{
           active: tab.paneId === activePaneId,
-          'has-preview': tab.type === 'terminal' && tab.previewVisible,
-          ['pos-' + resolvedPosition]: tab.type === 'terminal' && tab.previewVisible,
         }"
       >
         <template v-if="tab.type === 'terminal'">
@@ -139,36 +180,6 @@
             @divider-drag-end="onDividerDragEnd(tab)"
             @reconnect="onSshReconnect"
           />
-          <PreviewPanel
-            v-if="tab.paneId === activePaneId"
-            :ref="setPreviewPanelRef"
-            :visible="tab.previewVisible"
-            :pane-id="tab.activePaneId"
-            :address="tab.previewAddress"
-            :kind="tab.previewKind"
-            :web-url="tab.previewUrl"
-            :panel-position="resolvedPosition"
-            :remote="isRemote"
-            @close="closePreview(tab.paneId)"
-            @update:address="
-              (v: string) => {
-                tab.previewAddress = v
-                persist()
-              }
-            "
-            @update:kind="
-              (v: 'web' | 'files') => {
-                tab.previewKind = v
-                persist()
-              }
-            "
-            @update:web-url="
-              (v: string) => {
-                tab.previewUrl = v
-                persist()
-              }
-            "
-          />
         </template>
       </div>
     </div>
@@ -186,6 +197,7 @@
       @close="settingsOpen = false"
       @token-changed="onTokenChanged"
       @open-plugin="openPlugin"
+      @open-about="settingsOpen = true"
     />
 
     <ConfirmCloseDialog @confirm="onConfirmClose" />
@@ -211,14 +223,34 @@
       @cancel="promptCancel"
     />
 
-    <ConfirmModal
+    <WindowCloseDialog
       :visible="windowCloseConfirmVisible"
+      :can-hide-to-tray="desktopLifecycle.capabilities.value.canHideToTray"
       :title="t('confirm.closeWindowTitle')"
-      :message="t('confirm.closeWindowMessage')"
-      :confirm-text="t('confirm.closeWindowConfirm')"
+      :message="
+        desktopLifecycle.capabilities.value.canHideToTray
+          ? t('confirm.closeWindowMessage')
+          : t('confirm.closeWindowMessageNoTray')
+      "
+      :hide-text="t('confirm.closeWindowHide')"
+      :quit-text="t('confirm.closeWindowQuit')"
       :cancel-text="t('confirm.closeWindowCancel')"
-      @confirm="onWindowCloseConfirm"
+      :remember-text="t('confirm.closeWindowRemember')"
+      @hide="onWindowCloseHide"
+      @quit="onWindowCloseQuit"
       @cancel="onWindowCloseCancel"
+    />
+
+    <TrayVisibilityDialog
+      :visible="trayVisibilityDialogVisible"
+      :title="t('traySetup.title')"
+      :message="t('traySetup.message')"
+      :open-settings-text="t('traySetup.openSettings')"
+      :confirm-text="t('traySetup.confirmAndHide')"
+      :cancel-text="t('traySetup.cancel')"
+      @open-settings="onOpenSystemTraySettings"
+      @confirm="onTrayVisibilityConfirmed"
+      @cancel="onTrayVisibilityCancel"
     />
 
     <CommandBookmarks ref="bookmarksRef" :get-send-fn="getSendFn" :create-tab="newTab" />
@@ -236,23 +268,49 @@
     />
 
     <MobileKeyboard
-      :visible="kbVisible"
-      :pane-id="activeTab?.type === 'terminal' ? activeTab.activePaneId : ''"
+      v-if="effectiveMobileInputMode === 'builtin'"
+      :visible="kbVisible && hasActiveTerminalLeaf"
+      :pane-id="activeTerminalLeaf?.paneId ?? ''"
       :get-send-fn="getSendFn"
-      @update:visible="(v: boolean) => (kbVisible = v)"
+      @update:visible="onBuiltinKeyboardVisibilityChange"
       @bookmarks="bookmarksRef?.open()"
       @app-action="dispatchAppAction"
       @dismiss="onKeyboardDismiss"
       @typing-change="(v: boolean) => (kbTyping = v)"
     />
 
+    <SystemKeyboardToolbar
+      v-if="effectiveMobileInputMode === 'system'"
+      :visible="systemToolbarVisible"
+      :pane-id="activeTerminalLeaf?.paneId ?? ''"
+      :get-send-fn="getSendFn"
+      :action-open="systemActionKeyboardOpen"
+      :ime-open="terminalImeFocused"
+      @update:action-open="onSystemActionKeyboardChange"
+      @modifier-change="onSystemModifierChange"
+      @bookmarks="bookmarksRef?.open()"
+      @app-action="dispatchAppAction"
+      @dismiss="dismissTerminalKeyboard"
+      @toggle-ime="toggleSystemIme"
+      @focus-xterm="focusSystemInput"
+      @paste-text="pasteActiveTerminal"
+    />
+
+    <MobileInputGuide
+      :visible="mobileInputGuideVisible"
+      @choose="onMobileInputGuideChoose"
+      @close="mobileInputGuideVisible = false"
+    />
+
     <KbToggleButton
       v-show="
         (appSettings.show_virtual_keyboard || hasOpenGuard(appSettings.keyboard_guard_mode)) &&
-        !kbVisible
+        hasActiveTerminalLeaf &&
+        !systemToolbarVisible &&
+        !mobileInputGuideVisible
       "
       :visible="kbVisible"
-      @toggle="kbVisible = !kbVisible"
+      @toggle="toggleTerminalKeyboard"
     />
 
     <WorkspaceOverview
@@ -305,6 +363,7 @@ import {
   onMounted,
   onBeforeUnmount,
   nextTick,
+  h,
 } from 'vue'
 import TabBar from './components/terminal/TabBar.vue'
 import type { TabInfo } from './components/terminal/TabBar.vue'
@@ -315,16 +374,19 @@ import CommandPalette from './components/command/CommandPalette.vue'
 import type { Command } from './components/command/CommandPalette.vue'
 import MobileKeyboard from './components/keyboard/MobileKeyboard.vue'
 import KbToggleButton from './components/keyboard/KbToggleButton.vue'
+import MobileInputGuide from './components/keyboard/MobileInputGuide.vue'
+import SystemKeyboardToolbar from './components/keyboard/SystemKeyboardToolbar.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import ConfirmCloseDialog from './components/ui/ConfirmCloseDialog.vue'
 import ConfirmModal from './components/ui/ConfirmModal.vue'
+import WindowCloseDialog from './components/ui/WindowCloseDialog.vue'
+import TrayVisibilityDialog from './components/ui/TrayVisibilityDialog.vue'
 import { confirmState, uiConfirm, confirmResolve, confirmCancel } from './composables/useConfirm'
 import PromptModal from './components/ui/PromptModal.vue'
 import MultiSelectPicker from './components/ui/MultiSelectPicker.vue'
 import SaveTemplateDialog from './components/ui/SaveTemplateDialog.vue'
 import TemplatePicker from './components/ui/TemplatePicker.vue'
 import { promptState, promptResolve, promptCancel } from './composables/usePrompt'
-import PreviewPanel from './components/preview/PreviewPanel.vue'
 import CommandBookmarks from './components/command/CommandBookmarks.vue'
 import ServerList from './components/ServerList.vue'
 import SshHostsPanel from './components/ssh/SshHostsPanel.vue'
@@ -334,21 +396,28 @@ import type { Tab, TerminalTab, PluginTab, PaneLayout, LeafPane, DropPosition } 
 import { getAllLeaves, findLeaf, findFirstLeaf, ensureSplitRoot, paneKind } from './types/pane'
 import { createFrozenSendFn, type SendDataFn } from './utils/frozenSend'
 import { initializePaneMru } from './types/paneMru'
+import { setTauriWindowTitle, updateDocumentTitle } from './utils/windowTitle'
 // useSettings replaced by useSettingsStore
 import {
   getApiBase,
+  getEmbeddedServerBootstrap,
   checkTokenConfigured,
-  fetchAutoToken,
-  validateToken,
+  authenticateEmbeddedDesktop,
   apiUrl,
   markCookieAuthenticated,
+  normalizeEmbeddedServerStartupError,
+  retryEmbeddedServerDynamic,
+  type EmbeddedServerStartupError,
 } from './composables/apiBase'
 import { isTauri, tauriInvoke } from './composables/useTransport'
 import {
   isKbTypingLocked,
   isTouchDevice,
+  applyAfterTerminalComposition,
+  configureAllMobileInputTextareas,
   setActivePaneId,
   setKbTypingLock,
+  setSystemImeAuthorized,
 } from './composables/useTerminal'
 import { useI18n } from './composables/useI18n'
 import { keyEventMatchesBinding, useKeybindings } from './composables/useKeybindings'
@@ -357,8 +426,13 @@ import { useSshAuth } from './composables/useSshAuth'
 import { useCursorPicker } from './composables/useCursorPicker'
 import { useOverviewCallbacks } from './composables/useOverviewCallbacks'
 import { useTabPersistence } from './composables/useTabPersistence'
+import {
+  resolveWindowCloseAction,
+  useDesktopLifecycle,
+} from './composables/useDesktopLifecycle'
 import { useViewportResize } from './composables/useViewportResize'
 import { useDeviceKeyboardSettings } from './composables/useDeviceKeyboardSettings'
+import type { MobileInputMode } from './composables/useSettings'
 import { useKeyboardOverlap } from './composables/useKeyboardOverlap'
 import { usePluginLauncher } from './composables/usePluginLauncher'
 import { useSshConnectFlow } from './composables/useSshConnectFlow'
@@ -367,16 +441,19 @@ import { setMcSender } from './composables/useMissionControlState'
 import { clearFileWorkspaceState } from './composables/useFileWorkspaceState'
 import { useSplitPane } from './composables/useSplitPane'
 import { useSuperviseTabs } from './composables/useSuperviseTabs'
+import {
+  emptyMobileTerminalModifiers,
+  type MobileTerminalModifiers,
+} from './utils/terminalInput'
 import { useSyncWebSocket } from './composables/useSyncWebSocket'
 import type { SyncClientMsg } from './types/protocol'
-import { isWebPreviewInput } from './utils/previewRouting'
 import { isWindowsClient } from './utils/clientPlatform'
 import { nextRevealNavGen, currentRevealNavGen } from './utils/navGen'
 import { pickSuccessorTab } from './utils/tabSuccessor'
 import { workspaceIdFromPaneId } from './utils/pluginPaneId'
 import { initMonitorHistory } from './composables/useMonitor'
 import NotificationPanel from './components/notification/NotificationPanel.vue'
-import { POSITION, useToast } from 'vue-toastification'
+import { useToast } from 'vue-toastification'
 import {
   useNotification,
   pushNotification,
@@ -412,14 +489,21 @@ import {
   AppWindow,
   Radar,
   RefreshCw,
+  FolderTree,
+  Globe,
 } from 'lucide-vue-next'
 import WorkspaceOverview from './components/overview/WorkspaceOverview.vue'
 import { refreshPluginPreview, invalidatePluginPreview } from './composables/useTabPreview'
 import { useIsMobile } from './composables/useIsMobile'
-import { useWorkspaces, DEFAULT_WORKSPACE_ID } from './composables/useWorkspaces'
+import {
+  useWorkspaces,
+  DEFAULT_WORKSPACE_ID,
+  toActiveWorkspaceId,
+} from './composables/useWorkspaces'
 // formatCloseTabMessage moved to ConfirmCloseDialog component
 import LoginPage from './components/LoginPage.vue'
 import SetupPage from './components/SetupPage.vue'
+import EmbeddedServerErrorPage from './components/EmbeddedServerErrorPage.vue'
 import { storeToRefs } from 'pinia'
 import { useSessionStore } from './stores/sessionStore'
 import { useUiStore } from './stores/uiStore'
@@ -432,42 +516,64 @@ import { createHostClipboardPasteController } from './utils/hostClipboardPaste'
 import { readHostClipboard } from './utils/clipboard'
 import { hasCollapseGuard, hasOpenGuard } from './utils/keyboardGuardMode'
 import type { AppActionOptions } from './components/keyboard/mkbTypes'
+import { canFixShellErrorInSettings, shellErrorMessage } from './utils/shellError'
+import { resolveResponsiveToastPosition } from './utils/toastPosition'
 
 // ── Stores ──────────────────────────────────────────────────────
 const session = useSessionStore()
 const { tabs, activePaneId, tabList, activeTabType, activeTab, isBroadcastActive, canBroadcast } =
   storeToRefs(session)
 
-const {
-  persist,
-  persistNow,
-  flushOnUnload,
-  dispose: disposePersist,
-} = useTabPersistence({ tabs, activePaneId })
+const { persist, persistNow, dispose: disposePersist } = useTabPersistence({ tabs, activePaneId })
 
 const ui = useUiStore()
 const { syncConnected, kbVisible, settingsOpen, authenticated, authProbe, needsSetup } =
   storeToRefs(ui)
+const embeddedStartupError = ref<EmbeddedServerStartupError | null>(null)
+const embeddedStartupRetrying = ref(false)
 
 const settingsStore = useSettingsStore()
 const appSettings = settingsStore.settings
 
+const desktopLifecycle = useDesktopLifecycle({
+  persistNow,
+  saveSettings: () => settingsStore.save(),
+})
+
 const windowCloseConfirmVisible = ref(false)
+const trayVisibilityDialogVisible = ref(false)
+let rememberHideAfterTrayConfirmation = false
+const previewMenuOpen = ref(false)
 
 let linkJustActivated = false
 let scrollGestureDetected = false
 let scrollGestureTimer = 0
+const TERMINAL_LONG_PRESS_MS = 500
+const TERMINAL_MOUSE_REPLAY_MS = 500
+let terminalTouchOpenPending = false
+let terminalTouchOpenStartedAt = 0
+let terminalTouchMouseReplayUntil = 0
+let terminalTouchFocusBlockUntil = 0
 // Sticky typing mode: true while the mobile keyboard's text input is focused.
 const kbTyping = ref(false)
+const terminalImeFocused = ref(false)
+const mobileInputGuideVisible = ref(false)
+const systemActionKeyboardOpen = ref(false)
+const { imeKeyboardOverlapPx } = useDeviceKeyboardSettings()
+const effectiveMobileInputMode = computed<MobileInputMode>(
+  () => appSettings.mobile_input_mode ?? 'builtin'
+)
+const activeTerminalLeaf = computed(() => {
+  const tab = activeTab.value
+  if (!tab || tab.type !== 'terminal') return null
+  const leaf = findLeaf(tab.layout, tab.activePaneId)
+  return leaf && paneKind(leaf) === 'terminal' ? leaf : null
+})
+const hasActiveTerminalLeaf = computed(() => activeTerminalLeaf.value !== null)
 
 // ── Template refs (purely UI concerns) ─────────────────────────
 const paletteRef = ref<InstanceType<typeof CommandPalette>>()
 const tabBarRef = ref<InstanceType<typeof TabBar> | null>(null)
-const previewPanelRef = ref<InstanceType<typeof PreviewPanel> | null>(null)
-
-function setPreviewPanelRef(el: any) {
-  previewPanelRef.value = el
-}
 const bookmarksRef = ref<InstanceType<typeof CommandBookmarks>>()
 const serverListRef = ref<InstanceType<typeof ServerList>>()
 const sshPanelRef = ref<InstanceType<typeof SshHostsPanel>>()
@@ -477,6 +583,32 @@ const notif = useNotification()
 const presentationSettings = useNotificationPresentation().settings
 const { supervise } = useSuperviseTabs()
 const toast = useToast()
+
+function showShellApiError(error: unknown, fallbackKey: string) {
+  const message = shellErrorMessage(error, t, fallbackKey)
+  if (!canFixShellErrorInSettings(error)) {
+    toast.error(message)
+    return
+  }
+
+  toast.error(
+    h('div', { class: 'notif-toast-content' }, [
+      h('span', { class: 'notif-toast-body' }, message),
+      h(
+        'button',
+        {
+          class: 'notif-toast-btn',
+          onClick: () => {
+            settingsOpen.value = true
+          },
+        },
+        t('settings.title')
+      ),
+    ]),
+    { timeout: 8000 }
+  )
+}
+
 const hostClipboardPaste = createHostClipboardPasteController({
   fetchText: async () => {
     const text = await readHostClipboard()
@@ -484,17 +616,19 @@ const hostClipboardPaste = createHostClipboardPasteController({
     return text
   },
   paste: (text, autoEnter) => {
-    if (!activePaneId.value) return
-    const tab = tabs.value.find((candidate) => candidate.paneId === activePaneId.value)
-    if (!tab || tab.type !== 'terminal') return
-    termRefs[tab.activePaneId]?.pasteFromClipboard(text, autoEnter)
+    getActiveTerminalRef()?.pasteFromClipboard(
+      text,
+      autoEnter,
+      !systemActionKeyboardOpen.value && canRestoreSystemInputFocus()
+    )
   },
   clipboardEmpty: () =>
-    toast.info(t('mobileKb.clipboardEmpty'), { position: POSITION.BOTTOM_CENTER }),
-  pasteFailed: () => toast.error(t('mobileKb.pasteFailed'), { position: POSITION.BOTTOM_CENTER }),
+    toast.info(t('mobileKb.clipboardEmpty'), { position: resolveResponsiveToastPosition() }),
+  pasteFailed: () =>
+    toast.error(t('mobileKb.pasteFailed'), { position: resolveResponsiveToastPosition() }),
   confirmMultiline: (lines) =>
     toast.info(t('mobileKb.confirmMultiline', { n: lines }), {
-      position: POSITION.BOTTOM_CENTER,
+      position: resolveResponsiveToastPosition(),
     }),
 })
 const cursorPicker = useCursorPicker({
@@ -521,6 +655,15 @@ const clearActiveReadContext = setActiveReadContext({
 const stopForegroundGainSubscription = onAppForegroundGain(evaluateActiveRead)
 const { loadedPlugins, loadAll, getPluginContext, pluginList, allCommands } = usePluginLoader()
 const { isMobile } = useIsMobile()
+const persistentSystemToolbar = computed(
+  () =>
+    effectiveMobileInputMode.value === 'system' &&
+    isMobile.value &&
+    appSettings.system_toolbar_mode === 'persistent_mobile'
+)
+const systemToolbarVisible = computed(
+  () => hasActiveTerminalLeaf.value && (kbVisible.value || persistentSystemToolbar.value)
+)
 
 // Workspace filtering
 const {
@@ -536,9 +679,9 @@ const {
 
 function workspaceIdOfTab(tab: Tab): string | null {
   if (tab.type === 'plugin') {
-    return tab.workspaceId ?? workspaceIdFromPaneId(tab.paneId) ?? null
+    return toActiveWorkspaceId(tab.workspaceId ?? workspaceIdFromPaneId(tab.paneId))
   }
-  return (
+  return toActiveWorkspaceId(
     matchWorkspace(
       tab.cwd ?? '',
       tab.connectionId,
@@ -624,12 +767,17 @@ const notificationPaneLabels = computed(() => {
 })
 
 const termRefs = shallowReactive<Record<string, InstanceType<typeof TerminalPane>>>({})
+const filesRefs = shallowReactive<Record<string, any>>({})
+const webRefs = shallowReactive<Record<string, any>>({})
 
 const { isLandscape, dispose: disposeViewport } = useViewportResize({
   kbVisible,
+  terminalImeFocused,
   activePaneId,
   tabs,
   termRefs,
+  builtinTextareaFocused: kbTyping,
+  onSystemKeyboardClose: onSystemKeyboardClosed,
 })
 
 const onSshConnectRef = shallowRef<
@@ -638,6 +786,7 @@ const onSshConnectRef = shallowRef<
     pane_id: string
     layout: any
     connection_id?: string
+    workspace_id?: string
   }) => Promise<void>
 >(async () => {
   throw new Error('onSshConnect not wired')
@@ -677,11 +826,11 @@ const {
   termRefs,
   isMobile,
   tabBarRef,
-  kbVisible,
   persist,
   persistNow,
   onSshConnectRef,
   sendSync: (msg) => sendSyncFn(msg),
+  showCreateTerminalError: (error) => showShellApiError(error, 'terminal.createFailed'),
 })
 
 const {
@@ -701,6 +850,7 @@ const {
   termRefs,
   session,
   activateTab,
+  activateWorkspace,
   closeTab,
   requestCloseTab,
   newTab,
@@ -744,23 +894,46 @@ watch(
   { immediate: true }
 )
 
+// Manual-open protection controls only the touch software IME. Keep xterm's
+// textarea focusable for hardware input, but expose inputMode=text only after
+// the explicit keyboard action authorizes it. Synchronous updates preserve the
+// browser user-gesture stack required to open mobile keyboards.
+watch(
+  [terminalImeFocused, () => appSettings.keyboard_guard_mode],
+  ([open]) => {
+    setSystemImeAuthorized(open)
+    if (effectiveMobileInputMode.value === 'system') configureAllMobileInputTextareas('system')
+  },
+  { immediate: true, flush: 'sync' }
+)
+
+watch(
+  () => appSettings.mobile_input_mode,
+  (mode, previousMode) => {
+    applyAfterTerminalComposition(() => {
+      configureAllMobileInputTextareas(mode)
+      if (previousMode != null && previousMode !== mode && kbVisible.value) {
+        dismissTerminalKeyboard()
+      }
+    })
+  },
+  { immediate: true, flush: 'sync' }
+)
+
 // Capture plugin preview when active tab changes to a plugin tab (handles initial load)
+// and remember the last terminal cwd so plugins can derive a default working directory
+// even when a non-terminal tab (e.g. a plugin tab) is currently active.
+const lastTerminalCwd = ref<string | null>(null)
 watch(activePaneId, (paneId) => {
   const tab = tabs.value.find((t) => t.paneId === paneId)
   if (!tab) return
-  // Legacy PluginTab or migrated TerminalTab-with-plugin-leaf.
-  if (tab.type === 'plugin') {
-    nextTick(() => refreshPluginPreview(tab.paneId))
-  } else if (tab.type === 'terminal') {
+  if (tab.type === 'terminal') {
+    if (tab.cwd) lastTerminalCwd.value = tab.cwd
     const pluginLeaf = getAllLeaves(tab.layout).find((l) => l.kind === 'plugin')
     if (pluginLeaf) nextTick(() => refreshPluginPreview(pluginLeaf.paneId))
+  } else if (tab.type === 'plugin') {
+    nextTick(() => refreshPluginPreview(tab.paneId))
   }
-})
-
-const resolvedPosition = computed(() => {
-  const pos = appSettings.panel_position ?? 'auto'
-  if (pos === 'auto') return isLandscape.value ? 'right' : 'top'
-  return pos
 })
 
 const isSingleTerminalTab = computed(() => {
@@ -769,21 +942,12 @@ const isSingleTerminalTab = computed(() => {
   const leaves = getAllLeaves(tab.layout)
   return leaves.length === 1 && paneKind(leaves[0]) === 'terminal'
 })
-const hasVerticalPreview = computed(() => {
-  const tab = activeTab.value
-  return (
-    tab?.type === 'terminal' &&
-    tab.previewVisible &&
-    (resolvedPosition.value === 'top' || resolvedPosition.value === 'bottom')
-  )
-})
-const { imeKeyboardOverlapPx } = useDeviceKeyboardSettings()
 useKeyboardOverlap({
   settingPx: imeKeyboardOverlapPx,
   kbVisible,
   textInputFocused: kbTyping,
   isSingleTerminalTab,
-  hasVerticalPreview,
+  hasVerticalPreview: computed(() => false),
 })
 
 watch(
@@ -794,16 +958,13 @@ watch(
   { immediate: true }
 )
 watch(
-  () => {
-    return activeWorkspaceName.value ?? 'dinotty'
-  },
+  () => activeWorkspaceName.value,
   (wsName) => {
-    document.title = wsName
+    const title = updateDocumentTitle(wsName)
     if (isTauri()) {
-      tauriInvoke('set_window_title', { title: wsName }).catch(() => {
-        const tauriWindow = (window as any).__TAURI__?.window?.getCurrentWindow?.()
-        tauriWindow?.setTitle?.(wsName)
-      })
+      void setTauriWindowTitle(title, tauriInvoke, () =>
+        (window as any).__TAURI__?.window?.getCurrentWindow?.()
+      )
     }
   },
   { immediate: true }
@@ -821,11 +982,32 @@ watch(activePaneId, syncActivePaneId, { immediate: true })
 watch(() => tabs.value.length, syncActivePaneId)
 // Fire when active terminal tab's internal focus changes (sync WS, etc.)
 watch(
-  () => {
-    const tab = tabs.value.find((t) => t.paneId === activePaneId.value)
-    return tab?.type === 'terminal' ? tab.activePaneId : null
-  },
-  (paneId) => setActivePaneId(paneId)
+  [
+    () => {
+      const tab = tabs.value.find((t) => t.paneId === activePaneId.value)
+      return tab?.type === 'terminal' ? tab.activePaneId : null
+    },
+    hasActiveTerminalLeaf,
+  ],
+  ([paneId, isTerminalLeaf], [previousPaneId]) => {
+    setActivePaneId(paneId)
+    const previousTerminal = previousPaneId ? (termRefs[previousPaneId] ?? null) : null
+    if (previousPaneId && previousPaneId !== paneId) {
+      previousTerminal?.setVirtualModifiers(emptyMobileTerminalModifiers())
+    }
+    if (!isTerminalLeaf) {
+      dismissTerminalKeyboard(previousTerminal)
+      return
+    }
+    if (
+      paneId &&
+      effectiveMobileInputMode.value === 'system' &&
+      kbVisible.value &&
+      !systemActionKeyboardOpen.value
+    ) {
+      nextTick(focusSystemInput)
+    }
+  }
 )
 
 const outputListeners = new Set<(paneId: string, data: string) => void>()
@@ -871,14 +1053,20 @@ const splitPane = useSplitPane({
   sendSync: (msg) => sendSyncFn(msg),
   sendLayoutSync: syncWs.sendLayoutSync,
   persist,
+  showSplitTerminalError: (error) => showShellApiError(error, 'terminal.splitFailed'),
 })
 
-function registerTermRef(paneId: string, el: InstanceType<typeof TerminalPane> | null) {
-  if (el) {
+function registerTermRef(paneId: string, el: any) {
+  if (!el) return
+  if (typeof el.setOutputListener === 'function') {
     termRefs[paneId] = el
     el.setOutputListener((data: string) => {
       outputListeners.forEach((cb) => cb(paneId, data))
     })
+  } else if (typeof el.openFromTerminal === 'function') {
+    filesRefs[paneId] = el
+  } else if (typeof el.openFromWebUrl === 'function') {
+    webRefs[paneId] = el
   }
 }
 
@@ -981,51 +1169,35 @@ function onPreviewLink(leafPaneId: string, url: string) {
     return !!findLeaf(t.layout, leafPaneId)
   }) as TerminalTab | undefined
   if (!tab) return
-  tab.previewKind = 'web'
-  tab.previewUrl = url
-  tab.previewAddress = url
-  tab.previewVisible = true
-  persist()
-}
 
-function closePreview(tabId: string) {
-  const tab = tabs.value.find((t) => t.paneId === tabId)
-  if (tab && tab.type === 'terminal') {
-    tab.previewVisible = false
-    persist()
+  const existing = getAllLeaves(tab.layout).find((l) => paneKind(l) === 'web')
+  if (existing) {
+    splitPane.focusPane(existing.paneId)
+    nextTick(() => webRefs[existing.paneId]?.openFromWebUrl(url))
+    return
   }
+  void splitPane.insertNonTerminalPane('web', { url })
 }
-
-const isRemote = computed(() => {
-  const tabId = activePaneId.value
-  if (!tabId) return false
-  const tab = tabs.value.find((t) => t.paneId === tabId)
-  if (!tab || tab.type !== 'terminal') return false
-  return findLeaf(tab.layout, tab.activePaneId)?.shell_type === 'ssh'
-})
 
 function reloadApp() {
   window.location.reload()
 }
 
-function openPreview() {
+function openOrFocusPreview(kind: 'files' | 'web') {
   const tabId = activePaneId.value
   if (!tabId) return
   const tab = tabs.value.find((t) => t.paneId === tabId)
   if (!tab || tab.type !== 'terminal') return
-  const isSsh = findLeaf(tab.layout, tab.activePaneId)?.shell_type === 'ssh'
-  if (isSsh || !tab.previewAddress.trim()) {
-    tab.previewKind = 'files'
+
+  const leaves = getAllLeaves(tab.layout)
+  const existing = leaves.find((l) => paneKind(l) === kind)
+  if (existing) {
+    splitPane.focusPane(existing.paneId)
+    return
   }
-  tab.previewVisible = true
-  persist()
-  nextTick(() => {
-    if (tab.previewKind !== 'files') return
-    const raw = tab.previewAddress.trim()
-    if (raw && !isWebPreviewInput(raw)) {
-      previewPanelRef.value?.openFromPath(raw)
-    }
-  })
+  const payload: { path?: string; url?: string } =
+    kind === 'files' ? { path: tab.cwd || '' } : {}
+  void splitPane.insertNonTerminalPane(kind, payload)
 }
 
 function onFileClick(path: string) {
@@ -1033,21 +1205,28 @@ function onFileClick(path: string) {
   if (!tabId) return
   const tab = tabs.value.find((t) => t.paneId === tabId)
   if (!tab || tab.type !== 'terminal') return
-  tab.previewKind = 'files'
-  tab.previewAddress = path
-  tab.previewVisible = true
-  persist()
-  nextTick(() => previewPanelRef.value?.openFromPath(path))
+
+  const existing = getAllLeaves(tab.layout).find((l) => paneKind(l) === 'files')
+  if (existing) {
+    splitPane.focusPane(existing.paneId)
+    nextTick(() => filesRefs[existing.paneId]?.openFromTerminal(path))
+    return
+  }
+  void splitPane.insertNonTerminalPane('files', { path })
 }
 
 function getSendFn(): SendDataFn | null {
   if (!activePaneId.value) return null
   const tab = tabs.value.find((t) => t.paneId === activePaneId.value)
   if (!tab || tab.type !== 'terminal') return null
-  const paneId = tab.activePaneId
+  const activeLeaf = findLeaf(tab.layout, tab.activePaneId)
+  if (!activeLeaf || paneKind(activeLeaf) !== 'terminal') return null
+  const paneId = activeLeaf.paneId
   if (!termRefs[paneId]) return null
   const broadcastMode = tab.broadcastMode
-  const frozenLeaves = broadcastMode ? getAllLeaves(tab.layout) : []
+  const frozenLeaves = broadcastMode
+    ? getAllLeaves(tab.layout).filter((leaf) => paneKind(leaf) === 'terminal')
+    : []
   const recipientIds = [
     paneId,
     ...frozenLeaves.filter((leaf) => leaf.paneId !== paneId).map((leaf) => leaf.paneId),
@@ -1060,6 +1239,146 @@ function getSendFn(): SendDataFn | null {
     ),
     broadcastMode && recipientIds.length > 1 ? () => tab.broadcastActivity++ : undefined
   )
+}
+
+function getActiveTerminalRef() {
+  const paneId = activeTerminalLeaf.value?.paneId
+  return paneId ? (termRefs[paneId] ?? null) : null
+}
+
+function canRestoreSystemInputFocus() {
+  return !(
+    isTouchDevice() &&
+    effectiveMobileInputMode.value === 'system' &&
+    hasOpenGuard(appSettings.keyboard_guard_mode) &&
+    !terminalImeFocused.value
+  )
+}
+
+function focusSystemInput(authorizeOpen = false) {
+  if (
+    effectiveMobileInputMode.value !== 'system' ||
+    systemActionKeyboardOpen.value ||
+    !hasActiveTerminalLeaf.value ||
+    (!authorizeOpen && !canRestoreSystemInputFocus())
+  )
+    return
+  terminalImeFocused.value = true
+  setKbTypingLock(false)
+  getActiveTerminalRef()?.focus()
+}
+
+function pasteActiveTerminal(text: string) {
+  if (!text) return
+  getActiveTerminalRef()?.pasteFromClipboard(
+    text,
+    false,
+    !systemActionKeyboardOpen.value && canRestoreSystemInputFocus()
+  )
+}
+
+function onSystemModifierChange(modifiers: MobileTerminalModifiers) {
+  getActiveTerminalRef()?.setVirtualModifiers(modifiers)
+}
+
+function onSystemActionKeyboardChange(open: boolean) {
+  systemActionKeyboardOpen.value = open
+  if (open) {
+    getActiveTerminalRef()?.blur()
+    terminalImeFocused.value = false
+  }
+}
+
+function dismissTerminalKeyboard(terminal = getActiveTerminalRef()) {
+  systemActionKeyboardOpen.value = false
+  kbVisible.value = false
+  terminalImeFocused.value = false
+  mobileInputGuideVisible.value = false
+  terminal?.blur()
+
+  const activeElement = document.activeElement
+  if (
+    activeElement instanceof HTMLElement &&
+    (activeElement.classList.contains('xterm-helper-textarea') ||
+      activeElement.closest('#mobile-kb, #system-mobile-kb'))
+  ) {
+    activeElement.blur()
+  }
+}
+
+function closeSystemIme(terminal = getActiveTerminalRef()) {
+  systemActionKeyboardOpen.value = false
+  terminalImeFocused.value = false
+  if (!persistentSystemToolbar.value) kbVisible.value = false
+  terminal?.blur()
+  const activeElement = document.activeElement
+  if (
+    activeElement instanceof HTMLElement &&
+    activeElement.classList.contains('xterm-helper-textarea')
+  ) {
+    activeElement.blur()
+  }
+}
+
+function toggleSystemIme() {
+  if (terminalImeFocused.value) closeSystemIme()
+  else requestTerminalKeyboard()
+}
+
+function onSystemKeyboardClosed() {
+  if (
+    effectiveMobileInputMode.value !== 'system' ||
+    !kbVisible.value ||
+    systemActionKeyboardOpen.value
+  )
+    return
+  const activeElement = document.activeElement
+  if (
+    activeElement instanceof HTMLElement &&
+    activeElement.classList.contains('xterm-helper-textarea')
+  ) {
+    closeSystemIme()
+  }
+}
+
+function requestTerminalKeyboard() {
+  if (!hasActiveTerminalLeaf.value) return
+  if (isTouchDevice() && appSettings.mobile_input_mode == null) {
+    kbVisible.value = false
+    mobileInputGuideVisible.value = true
+    return
+  }
+
+  mobileInputGuideVisible.value = false
+  systemActionKeyboardOpen.value = false
+  kbVisible.value = true
+  if (effectiveMobileInputMode.value === 'system') focusSystemInput(true)
+}
+
+function toggleTerminalKeyboard() {
+  if (kbVisible.value) dismissTerminalKeyboard()
+  else requestTerminalKeyboard()
+}
+
+function onBuiltinKeyboardVisibilityChange(visible: boolean) {
+  if (visible) requestTerminalKeyboard()
+  else kbVisible.value = false
+}
+
+function onMobileInputGuideChoose(mode: MobileInputMode) {
+  // This handler is reached synchronously from the card's click event. Keeping
+  // focus in this stack is required for iOS Safari/PWA to open the software IME.
+  appSettings.mobile_input_mode = mode
+  void settingsStore.save()
+  configureAllMobileInputTextareas(mode)
+  mobileInputGuideVisible.value = false
+  if (!hasActiveTerminalLeaf.value) {
+    dismissTerminalKeyboard()
+    return
+  }
+  systemActionKeyboardOpen.value = false
+  kbVisible.value = true
+  if (mode === 'system') focusSystemInput(true)
 }
 
 function onKeyboardDismiss() {
@@ -1114,13 +1433,31 @@ function onTerminalRunCode(e: Event) {
   const send = getSendFn()
   if (!activeLeaf || !send) return
 
+  if (activeLeaf.shell_type === 'wsl') {
+    toast.warning(t('terminal.wslRunCodeUnsupported'))
+    return
+  }
+
   // 步骤2：按活动 shell 生成命令，并发送回车立即执行。
   const command = buildRunCodeCommand(path, activeLeaf.shell_type ?? '')
   if (command) send(`${command}\r`)
 }
 
 function onLinkActivate() {
+  if (
+    effectiveMobileInputMode.value === 'system' &&
+    terminalTouchMouseReplayUntil > 0
+  ) {
+    const withinReplayWindow = performance.now() < terminalTouchMouseReplayUntil
+    terminalTouchMouseReplayUntil = 0
+    if (withinReplayWindow) closeSystemIme()
+    return
+  }
   linkJustActivated = true
+}
+
+function onOpenSettingsRequest() {
+  settingsOpen.value = true
 }
 
 // Sticky typing mode, native focus-move guard.
@@ -1146,17 +1483,98 @@ function onLinkActivate() {
 // (form controls / contenteditable) and only guard taps on inert terminal
 // chrome. Buttons and links are unaffected either way: preventing a mousedown's
 // default does not cancel the subsequent click.
-function onTabContentMouseDownCapture(e: MouseEvent) {
-  if (!isKbTypingLocked()) return
+function guardTerminalFocusEvent(e: Event) {
   const target = e.target as HTMLElement | null
+  // Rejected touches can still synthesize a mousedown. Stop it before xterm's
+  // bubble listener focuses the helper textarea; normal pointerdown is untouched.
+  if (
+    e.type === 'mousedown' &&
+    isTouchDevice() &&
+    effectiveMobileInputMode.value === 'system' &&
+    !terminalImeFocused.value &&
+    performance.now() < terminalTouchFocusBlockUntil &&
+    target?.closest('.terminal-pane-container') &&
+    !target.closest('input, textarea, select, [contenteditable="true"]')
+  ) {
+    e.preventDefault()
+    e.stopPropagation()
+    return
+  }
+  if (
+    isTouchDevice() &&
+    effectiveMobileInputMode.value === 'system' &&
+    !terminalImeFocused.value &&
+    hasOpenGuard(appSettings.keyboard_guard_mode) &&
+    target?.closest('.terminal-pane-container') &&
+    !target.closest('input, textarea, select, [contenteditable="true"]')
+  ) {
+    e.preventDefault()
+    return
+  }
+  if (!isKbTypingLocked()) return
   if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
   e.preventDefault()
 }
 
+function onTabContentMouseDownCapture(e: MouseEvent) {
+  guardTerminalFocusEvent(e)
+}
+
+function onTabContentPointerDownCapture(e: PointerEvent) {
+  guardTerminalFocusEvent(e)
+}
+
+function onAppMouseReplayCapture(e: MouseEvent) {
+  if (performance.now() >= terminalTouchMouseReplayUntil) {
+    terminalTouchMouseReplayUntil = 0
+    return
+  }
+  const target = e.target as HTMLElement | null
+  if (!target?.closest('#system-mobile-kb')) return
+  e.preventDefault()
+  e.stopPropagation()
+  if (e.type === 'click') terminalTouchMouseReplayUntil = 0
+}
+
+function onAppTouchStartCapture(e: TouchEvent) {
+  const target = e.target as HTMLElement | null
+  if (target?.closest('#system-mobile-kb')) terminalTouchMouseReplayUntil = 0
+}
+
+function armTerminalTouchOpen(e: Event) {
+  const target = e.target as HTMLElement | null
+  if (
+    isTouchDevice() &&
+    effectiveMobileInputMode.value === 'system' &&
+    !terminalImeFocused.value &&
+    target?.closest('.terminal-pane-container') &&
+    !target.closest('input, textarea, select, [contenteditable="true"]')
+  ) {
+    terminalTouchFocusBlockUntil = 0
+    terminalTouchOpenPending = true
+    terminalTouchOpenStartedAt = performance.now()
+  }
+}
+
+function onTabContentTouchStartCapture(e: TouchEvent) {
+  armTerminalTouchOpen(e)
+}
+
+function onTabContentTouchCancelCapture() {
+  terminalTouchOpenPending = false
+  terminalTouchFocusBlockUntil = performance.now() + TERMINAL_MOUSE_REPLAY_MS
+}
+
 function onTerminalTouch(e: TouchEvent) {
   if (!isTouchDevice()) return
+  const openPending = terminalTouchOpenPending
+  const endedAt = performance.now()
+  const heldFor = endedAt - terminalTouchOpenStartedAt
+  terminalTouchOpenPending = false
   const target = e.target as HTMLElement
   if (target.closest('.terminal-pane-container')) {
+    if (effectiveMobileInputMode.value === 'system' && openPending)
+      terminalTouchFocusBlockUntil = endedAt + TERMINAL_MOUSE_REPLAY_MS
     // Don't show keyboard when tapping a link (file path or URL)
     if (linkJustActivated) {
       linkJustActivated = false
@@ -1166,7 +1584,7 @@ function onTerminalTouch(e: TouchEvent) {
     if (scrollGestureDetected) {
       scrollGestureDetected = false
       if (kbVisible.value && !hasCollapseGuard(appSettings.keyboard_guard_mode))
-        kbVisible.value = false
+        effectiveMobileInputMode.value === 'system' ? closeSystemIme() : (kbVisible.value = false)
       return
     }
     const tab = tabs.value.find((t) => t.paneId === activePaneId.value)
@@ -1175,10 +1593,21 @@ function onTerminalTouch(e: TouchEvent) {
     if (term && term.touchMoved) {
       term.touchMoved = false
       if (kbVisible.value && !hasCollapseGuard(appSettings.keyboard_guard_mode))
-        kbVisible.value = false
+        effectiveMobileInputMode.value === 'system' ? closeSystemIme() : (kbVisible.value = false)
       return
     }
-    if (!hasOpenGuard(appSettings.keyboard_guard_mode)) kbVisible.value = true
+    if (
+      effectiveMobileInputMode.value === 'system' &&
+      (!openPending || heldFor >= TERMINAL_LONG_PRESS_MS)
+    )
+      return
+    if (!hasOpenGuard(appSettings.keyboard_guard_mode)) {
+      if (effectiveMobileInputMode.value === 'system') {
+        terminalTouchFocusBlockUntil = 0
+        terminalTouchMouseReplayUntil = endedAt + TERMINAL_MOUSE_REPLAY_MS
+      }
+      requestTerminalKeyboard()
+    }
   }
 }
 
@@ -1188,9 +1617,11 @@ function onTerminalScroll() {
   scrollGestureTimer = window.setTimeout(() => {
     scrollGestureDetected = false
   }, 300)
-  // With the collapse guard enabled, scrolling back through history must not
-  // dismiss the keyboard the user is typing on.
   if (hasCollapseGuard(appSettings.keyboard_guard_mode)) return
+  if (effectiveMobileInputMode.value === 'system') {
+    closeSystemIme()
+    return
+  }
   if (kbVisible.value) kbVisible.value = false
 }
 
@@ -1280,8 +1711,8 @@ async function onTemplateApplied(
     } else {
       toast?.success(t('template.applyToast'))
     }
-  } catch (e: any) {
-    toast?.error(e?.message || 'Apply failed')
+  } catch (e: unknown) {
+    showShellApiError(e, 'template.applyFailed')
   }
   void scope
 }
@@ -1326,6 +1757,13 @@ window.__dinotty_terminal_api = {
     const tab = tabs.value.find((t) => t.paneId === activePaneId.value)
     return tab?.type === 'terminal' ? tab.activePaneId : activePaneId.value
   },
+  activeCwd() {
+    const tab = tabs.value.find((t) => t.paneId === activePaneId.value)
+    if (tab?.type === 'terminal' && tab.cwd) return tab.cwd
+    if (lastTerminalCwd.value) return lastTerminalCwd.value
+    const wsPath = activeWorkspacePath.value
+    return wsPath ?? null
+  },
   listPanes() {
     const result: { id: string; title: string; active: boolean }[] = []
     for (const t of tabs.value) {
@@ -1355,9 +1793,19 @@ window.__dinotty_terminal_api = {
   },
   async createTerminalTab(opts: { cwd: string; argv: string[]; title?: string }) {
     const ws = matchWorkspace(opts.cwd)
-    const targetId = ws?.id ?? null
-    if (targetId !== activeWorkspaceId.value) await activateWorkspace(targetId)
+    const targetId = toActiveWorkspaceId(ws?.id)
+    if (targetId !== activeWorkspaceId.value) {
+      const committed = await activateWorkspace(targetId)
+      if (!committed) return ''
+    }
     return newTab(opts.cwd, opts.argv, opts.title)
+  },
+  async splitTerminalPane(opts?: {
+    direction?: 'horizontal' | 'vertical'
+    cwd?: string
+  }): Promise<string | null> {
+    const direction = opts?.direction ?? 'vertical'
+    return splitPane.splitPane(direction, false, opts?.cwd)
   },
 }
 // Test hooks for P3 verification (focusActive + isComposing guard).
@@ -1439,9 +1887,15 @@ const paletteCommands = computed<Command[]>(() => {
     },
     {
       icon: '⊡',
-      title: t('palette.openPreview'),
-      subtitle: t('palette.openPreviewDesc'),
-      action: () => openPreview(),
+      title: t('palette.openFilePreview'),
+      subtitle: t('palette.openFilePreviewDesc'),
+      action: () => openOrFocusPreview('files'),
+    },
+    {
+      icon: '⊙',
+      title: t('palette.openWebPreview'),
+      subtitle: t('palette.openWebPreviewDesc'),
+      action: () => openOrFocusPreview('web'),
     },
     {
       icon: '⠿',
@@ -1638,6 +2092,45 @@ const _focusHandler = () => {
   nextTick(() => focusActive())
 }
 
+function onDocumentFocusIn(event: FocusEvent) {
+  const target = event.target as HTMLElement | null
+  if (!target) return
+  if (target.classList.contains('xterm-helper-textarea')) {
+    // Reject only a touch gesture already classified as scroll/long-press/cancelled.
+    // Manual-open protection uses inputMode=none instead of blur so hardware input
+    // keeps working while the touch software keyboard remains closed.
+    if (
+      isTouchDevice() &&
+      effectiveMobileInputMode.value === 'system' &&
+      (terminalTouchOpenPending || performance.now() < terminalTouchFocusBlockUntil) &&
+      !terminalImeFocused.value
+    ) {
+      target.blur()
+      return
+    }
+    if (
+      isTouchDevice() &&
+      effectiveMobileInputMode.value === 'system' &&
+      hasOpenGuard(appSettings.keyboard_guard_mode) &&
+      !terminalImeFocused.value
+    )
+      return
+    terminalImeFocused.value = effectiveMobileInputMode.value === 'system'
+    return
+  }
+  if (
+    effectiveMobileInputMode.value === 'system' &&
+    kbVisible.value &&
+    target.matches('input, textarea, select, [contenteditable="true"]') &&
+    !target.closest('#system-mobile-kb')
+  ) {
+    systemActionKeyboardOpen.value = false
+    kbVisible.value = false
+    terminalImeFocused.value = false
+    getActiveTerminalRef()?.setVirtualModifiers(emptyMobileTerminalModifiers())
+  }
+}
+
 // Tauri window close confirmation
 // On macOS, Cmd+W is bound to the native "Close" menu item and fires CloseRequested
 // in addition to the JS keydown handler. Track when the tab-close shortcut fires so
@@ -1653,34 +2146,112 @@ function setupTauriWindowClose() {
     if (Date.now() - lastTabCloseShortcutAt < 500) {
       return
     }
-    if (appSettings.confirm_before_close_tab && tabs.value.some((t) => t.type === 'terminal')) {
-      windowCloseConfirmVisible.value = true
+    const action = resolveWindowCloseAction(
+      appSettings.close_window_behavior,
+      desktopLifecycle.capabilities.value.canHideToTray
+    )
+    if (action === 'hide') {
+      void onWindowCloseHide(false)
+    } else if (action === 'quit') {
+      void desktopLifecycle.requestQuit('window')
     } else {
-      tauriInvoke('close_window')
+      windowCloseConfirmVisible.value = true
     }
   }).then((fn: () => void) => {
     unlistenWindowClose = fn
   })
 }
-function onWindowCloseConfirm() {
+async function rememberCloseWindowBehavior(behavior: 'hide_to_tray' | 'quit') {
+  appSettings.close_window_behavior = behavior
+  await settingsStore.save()
+}
+async function onWindowCloseHide(remember: boolean) {
   windowCloseConfirmVisible.value = false
-  flushOnUnload()
-  tauriInvoke('close_window')
+  if (desktopLifecycle.needsTrayVisibilityConfirmation()) {
+    rememberHideAfterTrayConfirmation = remember
+    trayVisibilityDialogVisible.value = true
+    return
+  }
+  if ((await performHideToTray()) && remember) {
+    await rememberCloseWindowBehavior('hide_to_tray')
+  }
+}
+async function performHideToTray() {
+  try {
+    await desktopLifecycle.hideToTray()
+    return true
+  } catch (error) {
+    const message =
+      typeof error === 'object' && error && 'message' in error
+        ? String((error as { message: unknown }).message)
+        : String(error)
+    toast.error(message)
+    return false
+  }
+}
+async function onOpenSystemTraySettings() {
+  try {
+    await desktopLifecycle.openSystemTraySettings()
+  } catch (error) {
+    const message =
+      typeof error === 'object' && error && 'message' in error
+        ? String((error as { message: unknown }).message)
+        : String(error)
+    toast.error(message)
+  }
+}
+async function onTrayVisibilityConfirmed() {
+  desktopLifecycle.confirmTrayVisibility()
+  trayVisibilityDialogVisible.value = false
+  const remember = rememberHideAfterTrayConfirmation
+  rememberHideAfterTrayConfirmation = false
+  if ((await performHideToTray()) && remember) {
+    await rememberCloseWindowBehavior('hide_to_tray')
+  }
+}
+function onTrayVisibilityCancel() {
+  rememberHideAfterTrayConfirmation = false
+  trayVisibilityDialogVisible.value = false
+}
+function onWindowCloseQuit(remember: boolean) {
+  windowCloseConfirmVisible.value = false
+  if (remember) appSettings.close_window_behavior = 'quit'
+  void desktopLifecycle.requestQuit('window')
 }
 function onWindowCloseCancel() {
   windowCloseConfirmVisible.value = false
 }
 
+async function retryEmbeddedServer() {
+  if (embeddedStartupRetrying.value) return
+  embeddedStartupRetrying.value = true
+  try {
+    await retryEmbeddedServerDynamic()
+    window.location.reload()
+  } catch (error) {
+    embeddedStartupError.value = normalizeEmbeddedServerStartupError(error)
+    embeddedStartupRetrying.value = false
+  }
+}
+
 onMounted(async () => {
   setupTauriWindowClose()
+  await desktopLifecycle.setup()
   document.addEventListener('keydown', onGlobalKeydown)
+  document.addEventListener('focusin', onDocumentFocusIn)
   document.addEventListener('terminal-scroll', onTerminalScroll)
   window.addEventListener('focus', _focusHandler)
   window.addEventListener('terminal-insert-path', onTerminalInsertPath)
   window.addEventListener('terminal-insert-text', onTerminalInsertText)
   window.addEventListener('terminal-run-code', onTerminalRunCode)
+  window.addEventListener('dinotty:open-settings', onOpenSettingsRequest)
   window.addEventListener('pane-drag-hover-switch', onPaneDragHoverSwitch)
+  let embeddedBootstrapReady = !isTauri()
   try {
+    if (isTauri()) {
+      await getEmbeddedServerBootstrap()
+      embeddedBootstrapReady = true
+    }
     if (authenticated.value) {
       await getApiBase()
       await settingsStore.load()
@@ -1714,10 +2285,6 @@ onMounted(async () => {
                 ),
                 broadcastMode: false,
                 broadcastActivity: 0,
-                previewVisible: false,
-                previewAddress: '',
-                previewUrl: '',
-                previewKind: 'web',
                 connectionId: tab.connection_id,
               })
             }
@@ -1748,25 +2315,23 @@ onMounted(async () => {
         // First-time setup: show setup page (server mode only)
         needsSetup.value = true
       } else if (!serverMode) {
-        // Desktop mode: honor an existing cookie session first (e.g. LAN
-        // access after manual login). Fall back to loopback auto-token only
-        // when the cookie is absent/invalid.
-        let cookieOk = false
-        try {
-          const res = await fetch(apiUrl('/api/settings'), { credentials: 'include' })
-          cookieOk = res.ok
-        } catch {
-          // network error - fall through to auto-token
-        }
-        if (cookieOk) {
-          await onLoginSuccess()
+        if (isTauri()) {
+          // Tauri REST calls use the Rust HTTP bridge, which does not share
+          // the WebView cookie jar. Always initialize its in-memory Bearer
+          // token from the DPAPI-backed desktop token before loading the app.
+          if (await authenticateEmbeddedDesktop()) {
+            await onLoginSuccess()
+          }
         } else {
-          const autoToken = await fetchAutoToken()
-          if (autoToken) {
-            const r = await validateToken(autoToken)
-            if (r.ok) {
+          // A LAN browser uses the WebView/browser cookie session and cannot
+          // access the privileged desktop token command.
+          try {
+            const res = await fetch(apiUrl('/api/settings'), { credentials: 'include' })
+            if (res.ok) {
               await onLoginSuccess()
             }
+          } catch {
+            // Network error — show LoginPage.
           }
         }
       } else {
@@ -1782,6 +2347,18 @@ onMounted(async () => {
         }
       }
     }
+  } catch (error) {
+    const isEmbeddedFailure =
+      !!error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      typeof error.code === 'string' &&
+      error.code.startsWith('embedded_')
+    if (isTauri() && (!embeddedBootstrapReady || isEmbeddedFailure)) {
+      embeddedStartupError.value = normalizeEmbeddedServerStartupError(error)
+    } else {
+      console.error('[startup] application initialization failed:', error)
+    }
   } finally {
     ui.markAuthProbeDone()
   }
@@ -1795,13 +2372,16 @@ onBeforeUnmount(() => {
   clearActiveReadContext()
   clearToastInstance()
   disposePersist()
+  desktopLifecycle.dispose()
   unlistenWindowClose?.()
   document.removeEventListener('keydown', onGlobalKeydown)
+  document.removeEventListener('focusin', onDocumentFocusIn)
   document.removeEventListener('terminal-scroll', onTerminalScroll)
   window.removeEventListener('focus', _focusHandler)
   window.removeEventListener('terminal-insert-path', onTerminalInsertPath)
   window.removeEventListener('terminal-insert-text', onTerminalInsertText)
   window.removeEventListener('terminal-run-code', onTerminalRunCode)
+  window.removeEventListener('dinotty:open-settings', onOpenSettingsRequest)
   window.removeEventListener('pane-drag-hover-switch', onPaneDragHoverSwitch)
   disposeViewport()
   syncWs.closeWs()
@@ -1837,55 +2417,6 @@ onBeforeUnmount(() => {
     100% - max(0px, var(--mkb-height, 0px) - var(--kb-overlap, 0px)) - var(--sys-kb-height, 0px)
   );
 }
-.tab-page.active.has-preview {
-  display: flex;
-}
-.tab-page.active.has-preview.pos-right,
-.tab-page.active.has-preview.pos-left {
-  flex-direction: row;
-}
-.tab-page.active.has-preview.pos-top,
-.tab-page.active.has-preview.pos-bottom {
-  flex-direction: column;
-}
-.tab-page.active.has-preview > .terminal-pane-container,
-.tab-page.active.has-preview > .split-container,
-.tab-page.active.has-preview > .split-leaf {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-.tab-page.active.has-preview > .preview-panel {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-.tab-page.active.has-preview.pos-left > .terminal-pane-container,
-.tab-page.active.has-preview.pos-left > .split-container,
-.tab-page.active.has-preview.pos-left > .split-leaf,
-.tab-page.active.has-preview.pos-top > .terminal-pane-container,
-.tab-page.active.has-preview.pos-top > .split-container,
-.tab-page.active.has-preview.pos-top > .split-leaf {
-  order: 1;
-}
-.tab-page.active.has-preview.pos-left > .preview-panel,
-.tab-page.active.has-preview.pos-top > .preview-panel {
-  order: 0;
-}
-.tab-page.active.has-preview.pos-top > .terminal-pane-container,
-.tab-page.active.has-preview.pos-top > .split-container,
-.tab-page.active.has-preview.pos-top > .split-leaf,
-.tab-page.active.has-preview.pos-bottom > .terminal-pane-container,
-.tab-page.active.has-preview.pos-bottom > .split-container,
-.tab-page.active.has-preview.pos-bottom > .split-leaf {
-  flex: 2;
-}
-.tab-page.active.has-preview.pos-top > .preview-panel,
-.tab-page.active.has-preview.pos-bottom > .preview-panel {
-  flex: 1;
-}
 .broadcast-btn {
   position: relative;
   color: #ef4444;
@@ -1918,5 +2449,54 @@ onBeforeUnmount(() => {
   text-align: center;
   padding: 0 3px;
   pointer-events: none;
+}
+
+.preview-menu-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+.preview-menu-wrap .tab-bar-icon-btn.is-active {
+  color: var(--fg-bright);
+  background: var(--tab-hover-bg);
+}
+.preview-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 499;
+  background: transparent;
+}
+.preview-menu-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 500;
+  min-width: 180px;
+  background: var(--bg-surface, #1a1a1a);
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+}
+.preview-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: transparent;
+  border: none;
+  color: var(--fg, #c7c7c7);
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  border-radius: 0;
+}
+.preview-menu-item:hover {
+  background: var(--tab-hover-bg, rgba(255, 255, 255, 0.06));
+  color: var(--fg-bright, #fff);
 }
 </style>

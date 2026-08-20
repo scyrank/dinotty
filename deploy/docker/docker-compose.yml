@@ -12,6 +12,7 @@ services:
 
     environment:
       - DINOTTY_TOKEN=${DINOTTY_TOKEN:-}
+      - DINOTTY_BIND_ADDR=0.0.0.0
       - DINOTTY_PORT=8999
       - RUST_LOG=${RUST_LOG:-info}
       - TZ=${TZ:-UTC}

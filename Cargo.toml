@@ -2,7 +2,7 @@
 members = ["src-tauri"]
 
 [workspace.package]
-version = "0.19.1"
+version = "0.22.1"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/xichan96/dinotty"
@@ -22,7 +22,8 @@ tower-http = { version = "0.5", features = ["fs", "cors"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 semver = "1"
-portable-pty = "0.8"
+time = { version = "0.3", features = ["formatting", "parsing"] }
+portable-pty = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
@@ -60,12 +61,17 @@ tar = "0.4"
 flate2 = "1"
 zip = "2"
 libc = "0.2"
-russh = { version = "0.62", default-features = false, features = ["flate2", "ring", "rsa"] }
-russh-keys = "0.50.0-beta.7"
+russh = { version = "0.62.4", default-features = false, features = ["flate2", "ring"] }
 russh-sftp = "2.3"
 zeroize = { version = "1", features = ["derive"] }
 base64 = "0.22"
 arboard = "3"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Security_Cryptography",
+] }
 
 [package.metadata.deb]
 maintainer = "Dinotty Contributors <noreply@github.com>"
@@ -99,3 +105,10 @@ server = []
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
+
+[patch.crates-io]
+# portable-pty 0.9 enables PSEUDOCONSOLE_INHERIT_CURSOR unconditionally.
+# Dinotty runs without a parent console on Windows, where that flag can stall
+# ConPTY input/exit handling. Keep the maintained 0.9 dependency and apply the
+# minimal headless-safe flag patch in-tree.
+portable-pty = { path = "vendor/portable-pty" }

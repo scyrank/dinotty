@@ -5,8 +5,8 @@ use super::normalize::{
     clamp_quick_send_threshold, clamp_text_config, clamp_text_on_load, normalize_action_keyboards,
 };
 use super::types::{
-    default_upload_dir, KeyboardGuardMode, Settings, WorkspaceBadgeMode, CURRENT_SETTINGS_VERSION,
-    LEGACY_UPLOAD_DIR,
+    default_upload_dir, ActionKey, KeyboardGuardMode, Settings, SystemKeyboardConfig,
+    SystemToolbarMode, WorkspaceBadgeMode, CURRENT_SETTINGS_VERSION, LEGACY_UPLOAD_DIR,
 };
 use super::{config_dir, SettingsState};
 
@@ -24,10 +24,24 @@ pub(crate) fn bg_image_path() -> PathBuf {
 
 #[must_use]
 pub fn load_token() -> Option<String> {
-    std::fs::read_to_string(token_path())
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+    let data = std::fs::read(token_path()).ok()?;
+    let (decoded, protected) = match crate::platform::secret::decode_persisted(&data) {
+        Ok(value) => value,
+        Err(e) => {
+            error!("decrypt token: {}", e);
+            return None;
+        }
+    };
+    let token = String::from_utf8(decoded).ok()?.trim().to_string();
+    if token.is_empty() {
+        return None;
+    }
+    if !protected {
+        if let Err(e) = save_token(&token) {
+            error!("migrate plaintext token storage: {}", e);
+        }
+    }
+    Some(token)
 }
 
 /// # Errors
@@ -36,38 +50,52 @@ pub fn save_token(token: &str) -> Result<(), String> {
     let dir = config_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = token_path();
-    std::fs::write(&path, token).map_err(|e| e.to_string())?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
-    }
+    let persisted = crate::platform::secret::encode_persisted(token.as_bytes())?;
+    std::fs::write(&path, persisted).map_err(|e| e.to_string())?;
+    crate::platform::fs::set_private_file_permissions(&path).map_err(|e| e.to_string())?;
     Ok(())
 }
 
 pub fn load_settings() -> Settings {
     let path = settings_path();
     let mut settings = if path.exists() {
-        match std::fs::read_to_string(&path) {
-            Ok(data) => match serde_json::from_str::<Settings>(&data) {
-                Ok(mut settings) => {
-                    let mut migrated = migrate_settings(&mut settings);
-                    if settings.upload_dir.trim().is_empty() {
-                        settings.upload_dir = default_upload_dir();
-                        migrated = true;
-                    }
-                    let text_changed = clamp_text_config(&mut settings.text);
-                    let threshold_changed = clamp_quick_send_threshold(&mut settings);
-                    let action_keyboard_changed = normalize_action_keyboards(&mut settings);
-                    if migrated || text_changed || threshold_changed || action_keyboard_changed {
-                        if let Err(e) = save_settings(&settings) {
-                            error!("persist settings on load: {}", e);
+        match std::fs::read(&path) {
+            Ok(persisted) => match crate::platform::secret::decode_persisted(&persisted) {
+                Ok((decoded, protected)) => match String::from_utf8(decoded) {
+                    Ok(data) => match serde_json::from_str::<Settings>(&data) {
+                        Ok(mut settings) => {
+                            let mut migrated = migrate_settings(&mut settings);
+                            migrated |= !protected;
+                            if settings.upload_dir.trim().is_empty() {
+                                settings.upload_dir = default_upload_dir();
+                                migrated = true;
+                            }
+                            let text_changed = clamp_text_config(&mut settings.text);
+                            let threshold_changed = clamp_quick_send_threshold(&mut settings);
+                            let action_keyboard_changed = normalize_action_keyboards(&mut settings);
+                            if migrated
+                                || text_changed
+                                || threshold_changed
+                                || action_keyboard_changed
+                            {
+                                if let Err(e) = save_settings(&settings) {
+                                    error!("persist settings on load: {}", e);
+                                }
+                            }
+                            return settings;
                         }
+                        Err(e) => {
+                            error!("parse settings: {}", e);
+                            Settings::default()
+                        }
+                    },
+                    Err(e) => {
+                        error!("settings are not valid UTF-8: {}", e);
+                        Settings::default()
                     }
-                    return settings;
-                }
+                },
                 Err(e) => {
-                    error!("parse settings: {}", e);
+                    error!("decrypt settings: {}", e);
                     Settings::default()
                 }
             },
@@ -135,15 +163,114 @@ pub(crate) fn migrate_settings(settings: &mut Settings) -> bool {
             KeyboardGuardMode::Off
         };
     }
+    // v8: quick-keyboard and system-IME toolbars are configured independently.
+    // Clone the formerly shared list so upgrading does not make either toolbar lose keys.
+    if settings.settings_version < 8 {
+        settings.system_toolbar_quick_keys = settings.toolbar_quick_keys.clone();
+    }
+    // v9: replace the fixed system-IME toolbar with one synchronized, fully customizable layout.
+    // `None` is the factory sentinel, so an empty legacy custom row remains a resettable default.
+    if settings.settings_version < 9 {
+        settings.system_toolbar_mode = SystemToolbarMode::FollowIme;
+        if settings.system_toolbar_quick_keys.is_empty() {
+            settings.system_keyboard = None;
+        } else {
+            let mut config = factory_system_keyboard();
+            config.upper.append(&mut settings.system_toolbar_quick_keys);
+            settings.system_keyboard = Some(config);
+        }
+    }
+    // v10: pages are now a wire-compatible carrier for one complete ordered lower stream.
+    // Runtime derives whole pages from integer grid units, so legacy manual page boundaries
+    // are flattened without dropping or reordering any key.
+    if settings.settings_version < 10 {
+        if let Some(config) = settings.system_keyboard.as_mut() {
+            config.pages = vec![config.pages.drain(..).flatten().collect()];
+            config.lower_enabled = true;
+            config.upper_pinned = 0;
+            config.lower_pinned = 0;
+            for key in config.upper.iter_mut().chain(config.pages[0].iter_mut()) {
+                if let Some(grow) = key.grow {
+                    key.grow = grow.is_finite().then(|| grow.round().clamp(1.0, 10.0));
+                }
+            }
+        }
+    }
+    // v11 adds a synchronized user-default snapshot for the complete system-IME toolbar.
+    // The optional field uses its serde default, so existing layouts need no data transform.
+    // v12 adds an independent lower pinned prefix and expands both pinned limits to five.
+    // Serde defaults legacy lower counts to zero while existing upper counts remain intact.
+    // v13 adds the remembered desktop window-close behavior. Missing or invalid legacy
+    // values safely default to asking every time, so no explicit data transform is needed.
     settings.settings_version = CURRENT_SETTINGS_VERSION;
     true
+}
+
+fn system_action(label: &str, action: &str) -> ActionKey {
+    ActionKey {
+        label: label.to_string(),
+        kind: Some("action".to_string()),
+        action: Some(action.to_string()),
+        ..ActionKey::default()
+    }
+}
+
+fn system_send(label: &str, send: &str) -> ActionKey {
+    ActionKey {
+        label: label.to_string(),
+        kind: Some("send".to_string()),
+        send: send.to_string(),
+        ..ActionKey::default()
+    }
+}
+
+pub(crate) fn factory_system_keyboard() -> SystemKeyboardConfig {
+    let mut ctrl = system_send("Ctrl", "");
+    ctrl.special = Some("ctrl".to_string());
+    ctrl.display = Some("text".to_string());
+    let mut alt = system_send("Alt", "");
+    alt.special = Some("alt".to_string());
+    alt.display = Some("text".to_string());
+
+    SystemKeyboardConfig {
+        upper: vec![
+            system_action("History", "system.history"),
+            system_action("Bookmarks", "openBookmarks"),
+            system_action("Extended", "system.extended"),
+            system_action("Actions", "system.actions"),
+        ],
+        pages: vec![
+            vec![
+                system_send("Esc", "\u{1b}"),
+                system_send("Tab", "\t"),
+                ctrl,
+                alt,
+                system_send("/", "/"),
+                system_send("|", "|"),
+            ],
+            vec![
+                system_send("~", "~"),
+                system_send("-", "-"),
+                system_send("^C", "\u{3}"),
+                system_send("^I", "\t"),
+                system_send("^S", "\u{13}"),
+                system_send("^Z", "\u{1a}"),
+            ],
+        ],
+        lower_enabled: true,
+        upper_pinned: 0,
+        lower_pinned: 0,
+    }
 }
 
 pub(crate) fn save_settings(settings: &Settings) -> Result<(), String> {
     let dir = config_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let json = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
-    std::fs::write(settings_path(), json).map_err(|e| e.to_string())?;
+    let persisted = crate::platform::secret::encode_persisted(json.as_bytes())?;
+    let path = settings_path();
+    std::fs::write(&path, persisted).map_err(|e| e.to_string())?;
+    crate::platform::fs::set_private_file_permissions(&path).map_err(|e| e.to_string())?;
     Ok(())
 }
 

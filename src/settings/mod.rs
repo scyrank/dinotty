@@ -16,26 +16,33 @@ pub use io::{create_settings_state, load_settings, load_token, save_settings_syn
 pub use logging::{get_log, init_logging, log_dir, log_file_path};
 pub use types::{
     default_upload_dir, ActionBottomCluster, ActionKey, ActionKeyboardConfig, AuthConfig,
-    BackgroundConfig, BellNotificationConfig, CommandBookmark, CommandCompleteConfig, CustomColors,
-    KeyBinding, KeywordRule, LogConfig, MonitorConfig, NotificationChannels, NotificationConfig,
-    NotificationHook, NotificationSounds, NotificationType, OpenApiConfig, PanelPosition,
-    PreviewConfig, RecentEntry, SavedTheme, SensitiveString, Settings, SettingsState, SoundConfig,
-    SshAuthMethod, SshProfile, TextConfig, ThemeColors, ThemeConfig, WebBookmark,
+    BackgroundConfig, BellNotificationConfig, CloseWindowBehavior, CommandBookmark,
+    CommandCompleteConfig, CustomColors, KeyBinding, KeywordRule, LogConfig, MobileInputMode,
+    MonitorConfig, NotificationChannels, NotificationConfig, NotificationHook, NotificationSounds,
+    NotificationType, OpenApiConfig, PanelPosition, PreviewConfig, RecentEntry, SavedTheme,
+    SensitiveString, Settings, SettingsState, SoundConfig, SshAuthMethod, SshProfile,
+    SystemKeyboardConfig, SystemToolbarMode, TextConfig, ThemeColors, ThemeConfig, WebBookmark,
     WorkspaceBadgeMode, WorkspaceBookmark, CURRENT_SETTINGS_VERSION,
 };
 
 #[cfg(test)]
+pub(crate) use handlers::preserve_current_system_settings_on_legacy_put;
+#[cfg(test)]
 pub(crate) use io::migrate_settings;
 #[cfg(test)]
 pub(crate) use normalize::{
-    clamp_custom_fonts, clamp_quick_send_threshold, clamp_text_config, clamp_text_on_load,
-    clamp_theme_on_put, normalize_action_keyboards,
+    clamp_custom_fonts, clamp_text_config, clamp_text_on_load, clamp_theme_on_put,
+    normalize_action_keyboards,
 };
 #[cfg(test)]
 pub(crate) use types::default_scroll_acceleration;
 
 #[must_use]
 pub fn config_dir() -> PathBuf {
+    if let Some(path) = std::env::var_os("DINOTTY_CONFIG_DIR").filter(|path| !path.is_empty()) {
+        return PathBuf::from(path);
+    }
+
     // Compile-time suffix (set via build script / `DINOTTY_CONFIG_SUFFIX` at
     // build) takes precedence; otherwise fall back to the runtime env var
     // (used by integration tests to isolate each server's config dir).
