@@ -27,6 +27,7 @@ static REGISTRY_CACHE: std::sync::LazyLock<RegistryCache> =
 
 /// Fetch the registry JSON, using a 5-minute in-memory cache to avoid
 /// repeated cold-start HTTP round-trips to GitHub on every page load.
+#[allow(clippy::result_large_err)]
 async fn fetch_cached_registry() -> Result<String, Response> {
     {
         let guard = REGISTRY_CACHE.data.read().await;

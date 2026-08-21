@@ -62,6 +62,7 @@ pub enum ClipboardPasteTarget {
     Unknown,
 }
 
+#[cfg(any(windows, test))]
 #[derive(Clone, Debug)]
 struct ProcessDescriptor {
     pid: u32,
@@ -70,6 +71,7 @@ struct ProcessDescriptor {
     command_line: String,
 }
 
+#[cfg(any(windows, test))]
 fn classify_clipboard_paste_process(
     name: &str,
     command_line: &str,
@@ -92,6 +94,7 @@ fn classify_clipboard_paste_process(
     None
 }
 
+#[cfg(any(windows, test))]
 fn classify_clipboard_paste_process_tree(
     root_pid: u32,
     processes: &[ProcessDescriptor],

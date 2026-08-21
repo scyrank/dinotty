@@ -33,6 +33,7 @@ fn is_private_ip(ip: IpAddr) -> bool {
     }
 }
 
+#[allow(clippy::result_large_err)]
 async fn check_host_not_private(parsed: &reqwest::Url, msg: &str) -> Result<(), Response> {
     let Some(host) = parsed.host_str() else {
         return Ok(());

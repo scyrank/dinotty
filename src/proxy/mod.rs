@@ -329,6 +329,7 @@ p{{color:#888;font-size:14px}}a{{color:#89b4fa;text-decoration:none}}a:hover{{te
     .await
 }
 
+#[allow(clippy::result_large_err)]
 async fn extract_request(
     req: Request,
 ) -> Result<(axum::http::Method, axum::http::HeaderMap, Bytes), Response> {

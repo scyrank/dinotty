@@ -49,6 +49,9 @@ pub(crate) struct SshClientHandler {
 impl client::Handler for SshClientHandler {
     type Error = russh::Error;
 
+    // Rust 1.98 recognizes this trait-required async method as intentionally
+    // synchronous; older supported Clippy versions do not know the lint yet.
+    #[allow(unknown_lints, clippy::unused_async_trait_impl)]
     async fn check_server_key(
         &mut self,
         server_public_key: &PublicKey,
