@@ -12,6 +12,8 @@ vi.mock('../composables/useSyncWebSocket', () => ({
 
 import SystemKeyboardToolbar from '../components/keyboard/SystemKeyboardToolbar.vue'
 import { settings } from '../composables/useSettings'
+import { createKeyboardContext } from '../keyboard/createKeyboardContext'
+import { nextTick, ref } from 'vue'
 
 beforeEach(() => {
   settings.locale = 'en'
@@ -25,34 +27,79 @@ afterEach(() => {
 })
 
 function mountToolbar(actionOpen = false, send = vi.fn()) {
-  return mount(SystemKeyboardToolbar, {
+  const deps = {
+    visible: ref(true),
+    activePaneId: ref('pane-1'),
+    sendActive: async (data: string) => send(data),
+    sendBroadcast: async () => {},
+    sendToPane: async () => {},
+    nativeImeOpen: ref(true),
+    setNativeImeOpen: vi.fn(),
+    onHostEvent: vi.fn(),
+  }
+  const wrapper = mount(SystemKeyboardToolbar, {
     attachTo: document.body,
     props: {
+      ctx: createKeyboardContext(deps),
       visible: true,
-      paneId: 'pane-1',
       actionOpen,
-      imeOpen: true,
-      getSendFn: () => send,
     },
     global: {
       stubs: { HistoryPanel: true },
     },
   })
+  return { wrapper, deps }
 }
 
 describe('SystemKeyboardToolbar', () => {
-  it('keeps the existing fixed-toolbar height owner so terminal content is not covered', () => {
+  it('docks in app flex flow without a second height or bottom-offset owner', () => {
     const app = readFileSync(join(process.cwd(), 'src/App.vue'), 'utf8')
     const toolbar = readFileSync(
       join(process.cwd(), 'src/components/keyboard/SystemKeyboardToolbar.vue'),
       'utf8'
     )
     const css = readFileSync(join(process.cwd(), 'src/styles/mobile-keyboard.css'), 'utf8')
+    const viewport = readFileSync(
+      join(process.cwd(), 'src/composables/useViewportResize.ts'),
+      'utf8'
+    )
 
-    expect(toolbar).toContain("style.setProperty('--mkb-height'")
-    expect(toolbar).toContain('new ResizeObserver(updateHeight)')
-    expect(css).toMatch(/#system-mobile-kb\s*\{[^}]*position:\s*fixed/s)
-    expect(app).toContain('var(--mkb-height, 0px)')
+    expect(app).toMatch(/id="app-root"[^>]*system-toolbar-docked/s)
+    const dockedRule = app.match(/#app-root\.system-toolbar-docked\s*\{([^}]*)\}/s)?.[1] ?? ''
+    const toolbarRule = css.match(/#system-mobile-kb\s*\{([^}]*)\}/s)?.[1] ?? ''
+    const toolbarPadding = toolbarRule.match(/padding:\s*([^;]+);/s)?.[1] ?? ''
+    expect(dockedRule).toContain('bottom: var(--sys-kb-height, 0px)')
+    expect(dockedRule).toMatch(/height:\s*auto/)
+    expect(toolbar).not.toContain("style.setProperty('--mkb-height'")
+    expect(toolbar).not.toContain('ResizeObserver')
+    expect(toolbarRule).toMatch(/position:\s*relative/)
+    expect(toolbarRule).toMatch(/flex-shrink:\s*0/)
+    expect(toolbarPadding).toContain('8px')
+    expect(toolbarPadding).not.toContain('safe-area-inset-bottom')
+    expect(css).not.toContain('--system-toolbar-bottom')
+    expect(viewport).not.toContain('toolbarBottom')
+    expect(viewport).not.toContain('--system-toolbar-bottom')
+  })
+
+  it('reclaims configured system-IME overlap without moving the shortcut toolbar', () => {
+    const app = readFileSync(join(process.cwd(), 'src/App.vue'), 'utf8')
+    const dockedRule = app.match(/#app-root\.system-toolbar-docked\s*\{([^}]*)\}/s)?.[1] ?? ''
+    const openRule =
+      app.match(/#app-root\.system-toolbar-docked\.system-ime-open\s*\{([^}]*)\}/s)?.[1] ?? ''
+    const toolbarOffsetRule =
+      app.match(
+        /#app-root\.system-toolbar-docked\.system-ime-open\s*>\s*#system-mobile-kb\s*\{([^}]*)\}/s
+      )?.[1] ?? ''
+
+    expect(dockedRule).toContain('bottom: var(--sys-kb-height, 0px)')
+    expect(dockedRule).not.toContain('--system-ime-overlap')
+    expect(openRule).toContain('--system-ime-overlap: var(--kb-overlap, 0px)')
+    expect(openRule).not.toContain('min(')
+    expect(openRule).toContain(
+      'bottom: calc(var(--sys-kb-height, 0px) - var(--system-ime-overlap))'
+    )
+    expect(toolbarOffsetRule).toContain('top: calc(-1 * var(--system-ime-overlap))')
+    expect(toolbarOffsetRule).not.toMatch(/(?:^|;)\s*(?:bottom|margin-bottom)\s*:/)
   })
 
   it('renders the exact custom upper and lower regions without fixed functional slots', () => {
@@ -67,7 +114,7 @@ describe('SystemKeyboardToolbar', () => {
       lower_pinned: 1,
     }
 
-    const wrapper = mountToolbar()
+    const { wrapper } = mountToolbar()
 
     expect(wrapper.find('.system-kb-upper-shell').text()).toContain('custom-upper')
     expect(wrapper.find('.system-kb-lower-shell').text()).toContain('custom-lower')
@@ -95,7 +142,7 @@ describe('SystemKeyboardToolbar', () => {
       upper_pinned: 0,
       lower_pinned: 1,
     }
-    const wrapper = mountToolbar()
+    const { wrapper } = mountToolbar()
 
     expect(wrapper.get('.system-kb-lower-shell > .system-kb-pinned-key').text()).toContain(
       'lower-pin'
@@ -126,7 +173,7 @@ describe('SystemKeyboardToolbar', () => {
   })
 
   it('uses resettable factory actions, keeps only the IME toggle pinned, and retains upload input', () => {
-    const wrapper = mountToolbar()
+    const { wrapper } = mountToolbar()
     const controls = wrapper.findAll('.system-kb-upper-pager .mkb-btn')
 
     expect(controls).toHaveLength(4)
@@ -143,7 +190,7 @@ describe('SystemKeyboardToolbar', () => {
 
   it('opens the Termius-style extended keyboard from the icon button', async () => {
     const send = vi.fn()
-    const wrapper = mountToolbar(false, send)
+    const { wrapper } = mountToolbar(false, send)
     const extendedButton = wrapper.findAll('.system-kb-upper-pager .mkb-btn')[2]
 
     await extendedButton.trigger('mousedown')
@@ -182,7 +229,7 @@ describe('SystemKeyboardToolbar', () => {
 
   it('renders all factory lower keys across reachable pages', async () => {
     const send = vi.fn()
-    const wrapper = mountToolbar(false, send)
+    const { wrapper } = mountToolbar(false, send)
     let keys = wrapper.findAll('.system-kb-lower-page .mkb-btn')
 
     expect(keys.map((key) => key.text())).toEqual([
@@ -221,7 +268,7 @@ describe('SystemKeyboardToolbar', () => {
 
   it('switches lower pages with a horizontal swipe', async () => {
     const send = vi.fn()
-    const wrapper = mountToolbar(false, send)
+    const { wrapper } = mountToolbar(false, send)
     const touchedKey = wrapper.findAll('.system-kb-lower-page .mkb-btn')[0]
 
     await touchedKey.trigger('touchstart', { touches: [{ clientX: 220, clientY: 20 }] })
@@ -248,7 +295,7 @@ describe('SystemKeyboardToolbar', () => {
       lower_enabled: false,
       upper_pinned: 1,
     }
-    const wrapper = mountToolbar()
+    const { wrapper } = mountToolbar()
 
     expect(wrapper.find('.system-kb-lower-page').exists()).toBe(false)
     expect(wrapper.find('.system-kb-page-dots').classes()).toContain('upper-only')
@@ -267,7 +314,7 @@ describe('SystemKeyboardToolbar', () => {
     textarea.className = 'xterm-helper-textarea'
     document.body.appendChild(textarea)
     textarea.focus()
-    const wrapper = mountToolbar()
+    const { wrapper } = mountToolbar()
 
     await wrapper.findAll('.system-kb-upper-pager .mkb-btn')[3].trigger('pointerdown')
 
@@ -276,7 +323,7 @@ describe('SystemKeyboardToolbar', () => {
   })
 
   it('opens the existing full action keyboard and requests xterm focus when returning', async () => {
-    const wrapper = mountToolbar()
+    const { wrapper, deps } = mountToolbar()
 
     await wrapper.findAll('.system-kb-upper-pager .mkb-btn')[3].trigger('mousedown')
     expect(wrapper.emitted('update:actionOpen')).toContainEqual([true])
@@ -284,7 +331,7 @@ describe('SystemKeyboardToolbar', () => {
     await wrapper.setProps({ actionOpen: true })
     await wrapper.find('.system-kb-action-header button').trigger('click')
     expect(wrapper.emitted('update:actionOpen')).toContainEqual([false])
-    expect(wrapper.emitted('focus-xterm')).toHaveLength(1)
+    expect(deps.onHostEvent).toHaveBeenCalledWith('focus-xterm', undefined)
     wrapper.unmount()
   })
 
@@ -302,7 +349,7 @@ describe('SystemKeyboardToolbar', () => {
       upper_pinned: 0,
     }
     const send = vi.fn()
-    const wrapper = mountToolbar(false, send)
+    const { wrapper, deps } = mountToolbar(false, send)
 
     const keys = wrapper.findAll('.system-kb-lower-page .mkb-btn')
     await keys[0].trigger('mousedown')
@@ -314,9 +361,9 @@ describe('SystemKeyboardToolbar', () => {
     expect(keys[1].classes()).toContain('mkb-locked')
     expect(keys[0].attributes('aria-pressed')).toBe('true')
     expect(keys[1].attributes('aria-pressed')).toBe('true')
-    expect(wrapper.emitted('modifier-change')).toContainEqual([
-      { ctrl: 'locked', shift: 'locked', alt: 'off', meta: 'off' },
-    ])
+    expect(deps.onHostEvent).toHaveBeenCalledWith('modifier-change', {
+      modifiers: { ctrl: 'locked', shift: 'locked', alt: 'off', meta: 'off' },
+    })
 
     await keys[2].trigger('mousedown')
     expect(send).toHaveBeenCalledWith('\x03')
@@ -327,6 +374,40 @@ describe('SystemKeyboardToolbar', () => {
     expect(keys[0].classes()).not.toContain('mkb-active')
     expect(keys[1].classes()).toContain('mkb-active')
     expect(keys[1].classes()).toContain('mkb-locked')
+    wrapper.unmount()
+  })
+
+  it('syncs modifiers-consumed residual state instead of clearing locked modifiers', async () => {
+    settings.system_keyboard = {
+      upper: [],
+      pages: [[{ label: 'Ctrl', kind: 'send', special: 'ctrl:lock', display: 'text' }]],
+      lower_enabled: true,
+      upper_pinned: 0,
+    }
+    const { wrapper } = mountToolbar()
+    const key = wrapper.find('.system-kb-lower-page .mkb-btn')
+    await key.trigger('mousedown')
+    expect(key.classes()).toContain('mkb-locked')
+
+    // Terminal consumed a modifier on this pane; the residual state keeps
+    // ctrl locked, so the toolbar must not drop the highlight.
+    window.dispatchEvent(
+      new CustomEvent('dinotty-mobile-modifiers-consumed', {
+        detail: {
+          paneId: 'pane-1',
+          modifiers: { ctrl: 'locked', shift: 'off', alt: 'off', meta: 'off' },
+        },
+      })
+    )
+    await nextTick()
+    expect(key.classes()).toContain('mkb-locked')
+
+    // Without a payload the toolbar clears everything (back-compat).
+    window.dispatchEvent(
+      new CustomEvent('dinotty-mobile-modifiers-consumed', { detail: { paneId: 'pane-1' } })
+    )
+    await nextTick()
+    expect(key.classes()).not.toContain('mkb-active')
     wrapper.unmount()
   })
 
@@ -344,7 +425,7 @@ describe('SystemKeyboardToolbar', () => {
       lower_enabled: true,
       upper_pinned: 0,
     }
-    const wrapper = mountToolbar()
+    const { wrapper } = mountToolbar()
     const [cmd, win, alt, opt] = wrapper.findAll('.system-kb-lower-page .mkb-btn')
 
     await cmd.trigger('mousedown')
@@ -377,7 +458,7 @@ describe('SystemKeyboardToolbar', () => {
       upper_pinned: 0,
     }
     const send = vi.fn()
-    const wrapper = mountToolbar(false, send)
+    const { wrapper, deps } = mountToolbar(false, send)
 
     const [ctrl, cmd, win, c] = wrapper.findAll('.system-kb-lower-page .mkb-btn')
     await ctrl.trigger('mousedown')
@@ -389,9 +470,9 @@ describe('SystemKeyboardToolbar', () => {
     expect(ctrl.attributes('aria-pressed')).toBe('false')
     expect(send).toHaveBeenCalledTimes(1)
     expect(send).toHaveBeenCalledWith('\x03')
-    expect(wrapper.emitted('modifier-change')).toContainEqual([
-      { ctrl: 'off', shift: 'off', alt: 'off', meta: 'off' },
-    ])
+    expect(deps.onHostEvent).toHaveBeenCalledWith('modifier-change', {
+      modifiers: { ctrl: 'off', shift: 'off', alt: 'off', meta: 'off' },
+    })
 
     await cmd.trigger('mousedown')
     expect(cmd.classes()).toContain('mkb-active')
@@ -410,7 +491,7 @@ describe('SystemKeyboardToolbar', () => {
       upper_pinned: 1,
     }
 
-    const wrapper = mountToolbar()
+    const { wrapper } = mountToolbar()
 
     expect(wrapper.find('.system-kb-upper-pager').exists()).toBe(false)
     expect(wrapper.get('.system-kb-pinned-key').attributes('style')).toContain('span 9')
@@ -418,13 +499,14 @@ describe('SystemKeyboardToolbar', () => {
     wrapper.unmount()
   })
 
-  it('uses the pinned structural button only to request an IME toggle', async () => {
-    const wrapper = mountToolbar()
+  it('uses the pinned structural button only to request an IME toggle through the context', async () => {
+    const { wrapper, deps } = mountToolbar()
 
     await wrapper.get('.system-kb-ime-toggle').trigger('click')
 
-    expect(wrapper.emitted('toggle-ime')).toHaveLength(1)
-    expect(wrapper.emitted('dismiss')).toBeUndefined()
+    expect(deps.setNativeImeOpen).toHaveBeenCalledOnce()
+    expect(deps.setNativeImeOpen).toHaveBeenCalledWith(false)
+    expect(deps.onHostEvent).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 })

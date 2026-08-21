@@ -337,7 +337,7 @@ import { useCsvFilter, type VisibleCsvRow } from '../../composables/useCsvFilter
 import { useCsvEncoding } from '../../composables/useCsvEncoding'
 import CsvColumnDialog from './CsvColumnDialog.vue'
 
-interface PaginatedRow extends VisibleCsvRow {}
+type PaginatedRow = VisibleCsvRow
 
 const props = withDefaults(
   defineProps<{

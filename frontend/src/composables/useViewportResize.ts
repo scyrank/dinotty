@@ -1,4 +1,4 @@
-import { computed, ref, watch, onMounted, onBeforeUnmount, type Ref } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount, type Ref } from 'vue'
 import type { Tab } from '../types/pane'
 import { getAllLeaves } from '../types/pane'
 import { isIPhoneClient } from '../utils/clientPlatform'
@@ -10,7 +10,6 @@ export interface ViewportResizeOptions {
   activePaneId: Ref<string | null>
   tabs: Ref<Tab[]>
   termRefs: Record<string, { fit: () => void }>
-  terminalImeFocused?: Ref<boolean>
   builtinTextareaFocused: Ref<boolean>
   onSystemKeyboardClose?: () => void
 }
@@ -20,8 +19,6 @@ export interface ViewportResizeState {
   imeOccluding: Ref<boolean>
   systemKeyboardOpen: Ref<boolean>
   systemKeyboardHeight: Ref<number>
-  terminalImeFocused: Ref<boolean>
-  toolbarBottom: Ref<number>
   onViewportResize: () => void
   onOrientationChange: () => void
   reset: () => void
@@ -36,10 +33,6 @@ export function useViewportResize(opts: ViewportResizeOptions): ViewportResizeSt
   const imeOccluding = ref(false)
   const systemKeyboardOpen = ref(false)
   const systemKeyboardHeight = ref(0)
-  const terminalImeFocused = opts.terminalImeFocused ?? ref(false)
-  const toolbarBottom = computed(() =>
-    terminalImeFocused.value && systemKeyboardOpen.value ? systemKeyboardHeight.value : 0
-  )
   let viewportRefitTimer = 0
   let orientationRevalidateFrame = 0
   let earlyPanReleaseFrame = 0
@@ -99,10 +92,6 @@ export function useViewportResize(opts: ViewportResizeOptions): ViewportResizeSt
     const keyboardClosed = lastSampledKeyboardOpen && !sysKbOpen
     lastSampledKeyboardOpen = sysKbOpen
     document.documentElement.style.setProperty('--sys-kb-height', `${keyboardHeight}px`)
-    document.documentElement.style.setProperty(
-      '--system-toolbar-bottom',
-      `${toolbarBottom.value}px`
-    )
     document.documentElement.style.setProperty(
       '--kb-open',
       sysKbOpen || kbVisible.value ? '1' : '0'
@@ -181,7 +170,6 @@ export function useViewportResize(opts: ViewportResizeOptions): ViewportResizeSt
     systemKeyboardHeight.value = 0
     document.documentElement.style.setProperty('--sys-kb-height', '0px')
     document.documentElement.style.setProperty('--kb-open', kbVisible.value ? '1' : '0')
-    document.documentElement.style.setProperty('--system-toolbar-bottom', '0px')
   }
 
   function reset() {
@@ -224,10 +212,6 @@ export function useViewportResize(opts: ViewportResizeOptions): ViewportResizeSt
     document.documentElement.style.setProperty('--kb-open', v ? '1' : '0')
   })
 
-  watch(toolbarBottom, (value) => {
-    document.documentElement.style.setProperty('--system-toolbar-bottom', `${value}px`)
-  })
-
   onMounted(() => {
     window.addEventListener('resize', onOrientationChange)
     window.addEventListener('blur', reset)
@@ -267,7 +251,6 @@ export function useViewportResize(opts: ViewportResizeOptions): ViewportResizeSt
       window.visualViewport.removeEventListener('scroll', onViewportResize)
     }
     document.documentElement.style.removeProperty('--sys-kb-height')
-    document.documentElement.style.removeProperty('--system-toolbar-bottom')
     document.documentElement.style.setProperty('--kb-open', '0')
   }
 
@@ -278,8 +261,6 @@ export function useViewportResize(opts: ViewportResizeOptions): ViewportResizeSt
     imeOccluding,
     systemKeyboardOpen,
     systemKeyboardHeight,
-    terminalImeFocused,
-    toolbarBottom,
     onViewportResize,
     onOrientationChange,
     reset,

@@ -840,6 +840,12 @@ pub fn run_server(
             "desktop".into(),
         ));
         plugins.scan();
+        // Seed the bundled keyboard plugin (installs when missing, updates when
+        // the installed copy is older). Best-effort.
+        if let Err(error) = plugins.ensure_seed().await {
+            tracing::warn!(%error, "failed to ensure bundled seed plugin");
+        }
+        plugins.scan();
         let _plugin_process_guard = PluginProcessGuard(Arc::clone(&plugins));
 
         let auth_token = Arc::new(tokio::sync::RwLock::new(initial_token));

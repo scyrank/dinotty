@@ -621,7 +621,7 @@ mod tests {
         let (api_url, task) = spawn_mock(state).await;
         let response = get_update_status(State(test_checker(api_url, SUCCESS_TTL))).await;
 
-        assert!(!UPDATE_CHECKS_ENABLED);
+        const { assert!(!UPDATE_CHECKS_ENABLED) };
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         assert_eq!(response.headers().get(header::CACHE_CONTROL).unwrap(), "no-store");
         let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();

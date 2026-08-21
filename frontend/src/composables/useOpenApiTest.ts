@@ -2,10 +2,6 @@ import { ref, computed, type ComputedRef } from 'vue'
 import { apiUrl, authFetch, getApiBase } from './apiBase'
 import { unescapeData } from './useKeySequenceUtils'
 
-export interface OpenApiTestOptions {
-  // no inputs currently needed
-}
-
 export interface OpenApiTest {
   openApiPaneId: ReturnType<typeof ref<string>>
   openApiData: ReturnType<typeof ref<string>>
@@ -21,7 +17,7 @@ export interface OpenApiTest {
   sendOpenApiTest: () => Promise<void>
 }
 
-export function useOpenApiTest(_opts?: OpenApiTestOptions): OpenApiTest {
+export function useOpenApiTest(): OpenApiTest {
   const openApiPaneId = ref('')
   const openApiData = ref('')
   const openApiMode = ref<'form' | 'raw'>('form')

@@ -26,13 +26,13 @@ pub use types::{
 };
 
 #[cfg(test)]
-pub(crate) use handlers::preserve_current_system_settings_on_legacy_put;
+pub(crate) use handlers::preserve_current_settings_on_legacy_put;
 #[cfg(test)]
 pub(crate) use io::migrate_settings;
 #[cfg(test)]
 pub(crate) use normalize::{
-    clamp_custom_fonts, clamp_text_config, clamp_text_on_load, clamp_theme_on_put,
-    normalize_action_keyboards,
+    clamp_custom_fonts, clamp_ime_keyboard_overlap_px, clamp_text_config, clamp_text_on_load,
+    clamp_theme_on_put, normalize_action_keyboards,
 };
 #[cfg(test)]
 pub(crate) use types::default_scroll_acceleration;

@@ -36,19 +36,22 @@ fn close_window_behavior_round_trips_and_invalid_values_fail_safe() {
 }
 
 #[test]
-fn stale_client_put_preserves_remembered_close_behavior() {
+fn either_v13_client_shape_preserves_combined_v14_fields() {
     let existing = Settings {
         settings_version: CURRENT_SETTINGS_VERSION,
         close_window_behavior: CloseWindowBehavior::Quit,
+        ime_keyboard_overlap_px: Some(72),
         ..Settings::default()
     };
     let mut incoming = Settings {
-        settings_version: 12,
+        settings_version: 13,
         close_window_behavior: CloseWindowBehavior::Ask,
+        ime_keyboard_overlap_px: None,
         ..Settings::default()
     };
 
-    preserve_current_system_settings_on_legacy_put(Some(12), &mut incoming, &existing);
+    preserve_current_settings_on_legacy_put(Some(13), &mut incoming, &existing);
 
     assert_eq!(incoming.close_window_behavior, CloseWindowBehavior::Quit);
+    assert_eq!(incoming.ime_keyboard_overlap_px, Some(72));
 }

@@ -61,6 +61,7 @@ const mocks = vi.hoisted(() => {
     apiActivateWorkspace: vi.fn<(id: string) => Promise<void>>(async () => {}),
     apiDeactivateWorkspace: vi.fn<() => Promise<void>>(async () => {}),
     onSystemKeyboardClose: undefined as undefined | (() => void),
+    systemKeyboardOpen: undefined as undefined | { value: boolean },
     setSystemImeAuthorized: vi.fn(),
     apiCreateTab: vi.fn(async () => ({
       tab_id: 't-new',
@@ -132,7 +133,9 @@ vi.mock('../../composables/useViewportResize', async () => {
   return {
     useViewportResize: (options: { onSystemKeyboardClose?: () => void }) => {
       mocks.onSystemKeyboardClose = options.onSystemKeyboardClose
-      return { isLandscape: ref(false), dispose: vi.fn() }
+      const systemKeyboardOpen = ref(false)
+      mocks.systemKeyboardOpen = systemKeyboardOpen
+      return { isLandscape: ref(false), systemKeyboardOpen, dispose: vi.fn() }
     },
   }
 })
@@ -396,7 +399,9 @@ export const ConfirmCloseDialogStub = defineComponent({
 
 export const MobileKeyboardStub = defineComponent({
   name: 'MobileKeyboard',
-  emits: ['app-action', 'dismiss'],
+  props: {
+    ctx: { type: Object, required: true },
+  },
   setup() {
     return () => h('div', { class: 'mobile-keyboard-stub' })
   },
@@ -406,20 +411,10 @@ export const SystemKeyboardToolbarStub = defineComponent({
   name: 'SystemKeyboardToolbar',
   props: {
     visible: Boolean,
-    paneId: { type: String, required: true },
-    getSendFn: { type: Function as PropType<() => unknown>, required: true },
     actionOpen: Boolean,
-    imeOpen: Boolean,
+    ctx: { type: Object, required: true },
   },
-  emits: [
-    'update:actionOpen',
-    'modifier-change',
-    'app-action',
-    'dismiss',
-    'toggle-ime',
-    'focus-xterm',
-    'paste-text',
-  ],
+  emits: ['update:actionOpen'],
   setup(props) {
     return () =>
       h('div', {
@@ -501,6 +496,7 @@ afterEach(() => {
   mocks.apiDeactivateWorkspace.mockReset()
   mocks.apiDeactivateWorkspace.mockResolvedValue(undefined)
   mocks.onSystemKeyboardClose = undefined
+  mocks.systemKeyboardOpen = undefined
   mocks.setSystemImeAuthorized.mockReset()
   mocks.mintNotificationRequestId.mockClear()
   mocks.resetNotificationRequestIds()

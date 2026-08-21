@@ -2,14 +2,15 @@
   <div class="plugin-view" :class="plugin ? `plugin-host-${plugin.id}` : ''">
     <template v-if="plugin">
       <component
-        v-if="plugin.state === 'active' && plugin.exports?.component && !hasError"
         :is="plugin.exports.component"
+        v-if="plugin.state === 'active' && plugin.exports?.component && !hasError"
         :api="api"
         :pane-id="paneId"
         :workspace-id="workspaceId"
         :is-visible="isVisible"
         :is-focused="isFocused"
       />
+      <component :is="hostView" v-else-if="plugin.state === 'active' && hostView && !hasError" />
       <div v-else-if="hasError" class="plugin-error">
         <p>Plugin runtime error: {{ errorMsg }}</p>
       </div>
@@ -24,10 +25,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onErrorCaptured } from 'vue'
+import { ref, computed, onErrorCaptured } from 'vue'
+import { HOST_PLUGIN_VIEWS } from '../../utils/hostPluginViews'
 import type { LoadedPlugin, PluginContext } from '../../composables/usePluginLoader'
 
-defineProps<{
+const props = defineProps<{
   plugin: LoadedPlugin
   api: PluginContext
   paneId: string
@@ -36,6 +38,7 @@ defineProps<{
   isFocused: boolean
 }>()
 
+const hostView = computed(() => HOST_PLUGIN_VIEWS[props.plugin.id])
 const hasError = ref(false)
 const errorMsg = ref('')
 
