@@ -38,11 +38,11 @@ The desktop ships in two formats:
 
 ### Windows
 
-Download the NSIS installer (`Dinotty_<version>_x64-setup.exe`) and run it, or use the portable build (`Dinotty_<version>_x64-portable.exe`) with no installation.
+Download the NSIS installer (`Dinotty_<version>_x64-setup.exe`) and run it, or use the portable build with no installation. Each Release provides both a stable filename, `Dinotty_x64-portable.exe`, and a versioned archive filename, `Dinotty_<version>_x64-portable.exe`. Use the stable filename for desktop shortcuts and login autostart; replace that file in place when upgrading.
 
 ```powershell
 # Portable launch example
-.\Dinotty_<version>_x64-portable.exe
+.\Dinotty_x64-portable.exe
 ```
 
 ## Server deb (Linux)

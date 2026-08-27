@@ -83,7 +83,7 @@ Deleting an `.app` directly does not run an uninstall hook. Disable autostart in
 Download packages from the CI `dinotty-windows` artifact or from GitHub Releases:
 
 - NSIS installer: suitable for normal install and uninstall flows.
-- Portable `.exe`: suitable for install-free testing.
+- Portable `.exe`: suitable for install-free testing. Each Release includes both the stable filename `Dinotty_x64-portable.exe` and a versioned archive; shortcuts and autostart should target the stable filename.
 
 Dinotty registers one system tray icon for the lifetime of the process. Windows decides whether it appears next to the clock or in the `^` overflow area; Dinotty does not modify this preference:
 
@@ -91,7 +91,7 @@ Dinotty registers one system tray icon for the lifetime of the process. Windows 
 - Windows 10: open Taskbar settings → Select which icons appear on the taskbar, then enable Dinotty.
 - The NSIS installer and portable executable use different paths, so Windows may treat them as separate entries that must be enabled independently.
 
-Enable per-user login autostart under Settings → General → Startup. Dinotty writes the exact current exe path plus the single `--background` argument to the `Dinotty` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`; login does not automatically open the main window. Fixed and removable local drives are supported, while mapped network drives, UNC paths, optical media, RAM disks, and unknown volume types are rejected. Portable builds are not maintained by an installer. Before enabling autostart, Dinotty asks you to keep the executable in a trusted, permanent location that is available at login. Moving, renaming, or deleting it, or updating to a differently named file, leaves the startup entry pointing to the old copy; Dinotty does not automatically migrate or remove it. Disable autostart before removing the current copy. After switching copies, configure autostart again from the replacement to take over the old entry.
+Enable per-user login autostart under Settings → General → Startup. Dinotty writes the exact current exe path plus the single `--background` argument to the `Dinotty` value under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`; login does not automatically open the main window. Fixed and removable local drives are supported, while mapped network drives, UNC paths, optical media, RAM disks, and unknown volume types are rejected. Portable builds are not maintained by an installer. Before enabling autostart, keep the stable-named executable in a trusted, permanent location that is available at login. Future versions can replace that file in place without breaking shortcuts or autostart. Moving, renaming, or deleting it still leaves the startup entry pointing to the old copy; disable autostart before removing the current copy.
 
 NSIS in-place updates preserve autostart. A normal uninstall removes the Run value only when it is a `REG_SZ` that still points exactly to the executable in that installation directory. Values pointing to another Dinotty copy, containing extra arguments, using another registry type, or having malformed content are left untouched. Windows may also suppress a configured startup item in system settings; Dinotty does not modify the undocumented `StartupApproved` state.
 

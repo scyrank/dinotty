@@ -33,31 +33,32 @@ vi.mock('vue-toastification', () => ({
   useToast: () => ({ info: aboutMocks.toastInfo }),
 }))
 
-describe('AboutTab personal fork update policy', () => {
+describe('AboutTab personal fork update checks', () => {
   beforeEach(() => {
     aboutMocks.stopForeground.mockClear()
     aboutMocks.toastInfo.mockClear()
     apiMocks.authFetch.mockReset()
-    apiMocks.authFetch.mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          version: '0.22.0',
-          repo_url: 'https://github.com/scyrank/dinotty',
-        }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
-      )
-    )
+    apiMocks.authFetch.mockImplementation(async (input: string) => {
+      const body =
+        input === '/api/info'
+          ? { version: '0.22.0', repo_url: 'https://github.com/scyrank/dinotty' }
+          : { status: 'up_to_date', current_version: '0.22.1', latest_version: '0.22.1' }
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    })
   })
 
-  it('shows version information without checks, controls, cards, or prompts', async () => {
+  it('shows version information and the fork update control', async () => {
     const { default: AboutTab } = await import('../components/settings/AboutTab.vue')
     const wrapper = mount(AboutTab)
     await flushPromises()
 
     expect(wrapper.text()).toContain('0.22.0')
-    expect(wrapper.find('#auto-check-updates').exists()).toBe(false)
+    expect(wrapper.find('#auto-check-updates').exists()).toBe(true)
     expect(wrapper.find('.update-card').exists()).toBe(false)
-    expect(apiMocks.authFetch).toHaveBeenCalledOnce()
+    expect(apiMocks.authFetch).toHaveBeenCalledTimes(2)
     expect(apiMocks.authFetch).toHaveBeenCalledWith('/api/info')
     expect(aboutMocks.toastInfo).not.toHaveBeenCalled()
 

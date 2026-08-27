@@ -33,12 +33,12 @@
       <div class="settings-row">
         <label>{{ t('settings.about.repository') }}</label>
         <a
-          href="https://github.com/xichan96/dinotty"
+          href="https://github.com/scyrank/dinotty"
           target="_blank"
           rel="noopener"
           class="about-link"
         >
-          https://github.com/xichan96/dinotty
+          https://github.com/scyrank/dinotty
         </a>
       </div>
       <div class="settings-row">
@@ -55,12 +55,12 @@
       <div class="settings-row">
         <label>{{ t('settings.about.feedback') }}</label>
         <a
-          href="https://github.com/xichan96/dinotty/issues"
+          href="https://github.com/scyrank/dinotty/issues"
           target="_blank"
           rel="noopener"
           class="about-link"
         >
-          https://github.com/xichan96/dinotty/issues
+          https://github.com/scyrank/dinotty/issues
         </a>
       </div>
       <div v-if="UPDATE_CHECKS_ENABLED" class="settings-row auto-update-row">

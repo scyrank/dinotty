@@ -1,6 +1,6 @@
 import { isTauri } from '../composables/useTransport'
 
-const RELEASE_PATH_PREFIX = '/xichan96/dinotty/releases/tag/'
+const RELEASE_PATH_PREFIX = '/scyrank/dinotty/releases/tag/'
 
 export function isOfficialDinottyReleaseUrl(rawUrl: string): boolean {
   try {

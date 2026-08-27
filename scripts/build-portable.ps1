@@ -170,28 +170,38 @@ try {
 
     New-Item -ItemType Directory -Path $distDir -Force | Out-Null
 
-    # Tauri 当前没有单独的 portable bundle，这里复制 release exe 并按发布规则命名。
-    $portableName = "Dinotty_{0}_{1}-portable.exe" -f $version, $arch
-    $portablePath = Join-Path $distDir $portableName
+    # Tauri 当前没有单独的 portable bundle。输出一个稳定文件名供快捷方式/
+    # 自启动使用，同时保留带版本号的副本用于归档和 Release。
+    $portableNames = @(
+        "Dinotty_{0}-portable.exe" -f $arch
+        "Dinotty_{0}_{1}-portable.exe" -f $version, $arch
+    )
+    $portablePaths = $portableNames | ForEach-Object { Join-Path $distDir $_ }
     try {
-        Copy-Item -LiteralPath $exePath -Destination $portablePath -Force
+        foreach ($path in $portablePaths) {
+            Copy-Item -LiteralPath $exePath -Destination $path -Force
+        }
     } catch [System.IO.IOException] {
-        throw "无法写入 $portablePath。请先关闭正在运行的 portable 程序，然后重试。原始错误：$($_.Exception.Message)"
+        throw "无法写入 portable 产物。请先关闭正在运行的 portable 程序，然后重试。原始错误：$($_.Exception.Message)"
     }
 
     $releaseHash = (Get-FileHash -LiteralPath $exePath -Algorithm SHA256).Hash
-    $portableHash = (Get-FileHash -LiteralPath $portablePath -Algorithm SHA256).Hash
-    if ($releaseHash -ne $portableHash) {
-        throw "portable 产物校验失败：dist 文件与本次 release 构建不一致。"
+    foreach ($path in $portablePaths) {
+        $portableHash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+        if ($releaseHash -ne $portableHash) {
+            throw "portable 产物校验失败：$path 与本次 release 构建不一致。"
+        }
     }
 
     Write-Host ""
     Write-Host "portable 包已生成：" -ForegroundColor Green
-    Write-Host "  $portablePath"
+    foreach ($path in $portablePaths) {
+        Write-Host "  $path"
+    }
 
     if ($Run) {
         Write-Step "启动 portable 程序"
-        Start-Process -FilePath $portablePath -WorkingDirectory $distDir
+        Start-Process -FilePath $portablePaths[0] -WorkingDirectory $distDir
     }
 } finally {
     if ($temporaryTauriConfig -and (Test-Path -LiteralPath $temporaryTauriConfig.FullName)) {

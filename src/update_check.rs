@@ -12,9 +12,9 @@ use serde::{Deserialize, Serialize};
 use time::{format_description::well_known::Rfc3339, Duration, OffsetDateTime};
 use tokio::{sync::Mutex, time::Instant};
 
-const GITHUB_LATEST_RELEASE_URL: &str =
-    "https://api.github.com/repos/xichan96/dinotty/releases/latest";
-const RELEASE_PATH_PREFIX: &str = "/xichan96/dinotty/releases/tag/";
+const GITHUB_RELEASES_URL: &str = "https://api.github.com/repos/scyrank/dinotty/releases";
+const RELEASE_PATH_PREFIX: &str = "/scyrank/dinotty/releases/tag/";
+const PERSONAL_TAG_PREFIX: &str = "personal-v";
 const GITHUB_ACCEPT: &str = "application/vnd.github+json";
 const GITHUB_API_VERSION: &str = "2022-11-28";
 const SUCCESS_TTL: StdDuration = StdDuration::from_hours(6);
@@ -22,8 +22,8 @@ const FAILURE_BACKOFF: StdDuration = StdDuration::from_mins(10);
 const MAX_FAILURE_BACKOFF: StdDuration = StdDuration::from_hours(6);
 const RELEASE_GRACE_PERIOD: Duration = Duration::hours(24);
 
-/// Personal fork policy: never contact the upstream release feed.
-pub const UPDATE_CHECKS_ENABLED: bool = false;
+/// Update checks are served from this fork's GitHub Releases feed.
+pub const UPDATE_CHECKS_ENABLED: bool = true;
 
 pub type UpdateCheckState = Arc<UpdateChecker>;
 
@@ -31,7 +31,7 @@ pub type UpdateCheckState = Arc<UpdateChecker>;
 struct GitHubRelease {
     tag_name: String,
     html_url: String,
-    published_at: String,
+    published_at: Option<String>,
     draft: bool,
     prerelease: bool,
 }
@@ -89,7 +89,7 @@ pub struct UpdateChecker {
 }
 
 impl UpdateChecker {
-    /// Creates a checker for the official Dinotty release feed.
+    /// Creates a checker for this fork's GitHub release feed.
     ///
     /// # Panics
     ///
@@ -112,7 +112,7 @@ impl UpdateChecker {
             user_agent: format!("dinotty/{current_version}"),
             current_version,
             config: CheckerConfig {
-                api_url: GITHUB_LATEST_RELEASE_URL.to_string(),
+                api_url: GITHUB_RELEASES_URL.to_string(),
                 success_ttl: SUCCESS_TTL,
                 failure_backoff: FAILURE_BACKOFF,
                 max_failure_backoff: MAX_FAILURE_BACKOFF,
@@ -213,11 +213,12 @@ impl UpdateChecker {
 
         let etag =
             response.headers().get(ETAG).and_then(|value| value.to_str().ok()).map(str::to_owned);
-        let release: GitHubRelease = response.json().await.map_err(|error| RefreshFailure {
-            message: format!("invalid GitHub response: {error}"),
-            retry_after: None,
-        })?;
-        let release = validate_release(release)
+        let releases: Vec<GitHubRelease> =
+            response.json().await.map_err(|error| RefreshFailure {
+                message: format!("invalid GitHub response: {error}"),
+                retry_after: None,
+            })?;
+        let release = select_latest_release(releases)
             .map_err(|message| RefreshFailure { message, retry_after: None })?;
 
         cache.validated_after_grace = now >= release.published_at + RELEASE_GRACE_PERIOD;
@@ -243,30 +244,22 @@ struct RefreshFailure {
 }
 
 fn validate_release(release: GitHubRelease) -> Result<ValidatedRelease, String> {
-    if release.draft || release.prerelease {
-        return Err("latest release was marked draft or prerelease".to_string());
+    if release.draft {
+        return Err("release is a draft".to_string());
     }
 
-    let version_text = release.tag_name.strip_prefix('v').unwrap_or(&release.tag_name);
-    let version = Version::parse(version_text)
-        .map_err(|error| format!("invalid release tag {}: {error}", release.tag_name))?;
-    if !version.pre.is_empty() {
-        return Err("latest release tag contains a prerelease version".to_string());
-    }
+    let version = parse_release_version(&release.tag_name, release.prerelease)?;
 
-    let published_at = OffsetDateTime::parse(&release.published_at, &Rfc3339)
+    let published_at_text =
+        release.published_at.ok_or_else(|| "release has no published_at timestamp".to_string())?;
+    let published_at = OffsetDateTime::parse(&published_at_text, &Rfc3339)
         .map_err(|error| format!("invalid published_at: {error}"))?;
     if published_at.checked_add(RELEASE_GRACE_PERIOD).is_none() {
         return Err("published_at is outside the supported range".to_string());
     }
     let release_url = validate_release_url(&release.html_url, &release.tag_name)?;
 
-    Ok(ValidatedRelease {
-        version,
-        release_url,
-        published_at,
-        published_at_text: release.published_at,
-    })
+    Ok(ValidatedRelease { version, release_url, published_at, published_at_text })
 }
 
 fn validate_release_url(raw_url: &str, expected_tag: &str) -> Result<String, String> {
@@ -283,9 +276,46 @@ fn validate_release_url(raw_url: &str, expected_tag: &str) -> Result<String, Str
         && tag == Some(expected_tag)
         && !expected_tag.is_empty();
     if !valid {
-        return Err("release URL is not an official Dinotty release URL".to_string());
+        return Err("release URL is not a trusted personal Dinotty release URL".to_string());
     }
     Ok(url.into())
+}
+
+fn parse_release_version(tag: &str, prerelease: bool) -> Result<Version, String> {
+    if let Some(rest) = tag.strip_prefix(PERSONAL_TAG_PREFIX) {
+        let (version_text, build_date) =
+            rest.split_once('-').map_or((rest, None), |(v, d)| (v, Some(d)));
+        if let Some(build_date) = build_date {
+            if build_date.is_empty() || !build_date.chars().all(|ch| ch.is_ascii_digit()) {
+                return Err(format!("invalid personal release tag {tag}"));
+            }
+        }
+        return Version::parse(version_text)
+            .map_err(|error| format!("invalid release tag {tag}: {error}"));
+    }
+
+    if prerelease {
+        return Err(format!("unsupported prerelease tag {tag}"));
+    }
+    let version_text = tag.strip_prefix('v').unwrap_or(tag);
+    let version = Version::parse(version_text)
+        .map_err(|error| format!("invalid release tag {tag}: {error}"))?;
+    if !version.pre.is_empty() {
+        return Err(format!("release tag contains a prerelease version: {tag}"));
+    }
+    Ok(version)
+}
+
+fn select_latest_release(releases: Vec<GitHubRelease>) -> Result<ValidatedRelease, String> {
+    releases
+        .into_iter()
+        .filter_map(|release| validate_release(release).ok())
+        .max_by(|left, right| {
+            left.version
+                .cmp(&right.version)
+                .then_with(|| left.published_at.cmp(&right.published_at))
+        })
+        .ok_or_else(|| "no usable personal Dinotty release found".to_string())
 }
 
 fn classify_release(
@@ -365,8 +395,8 @@ mod tests {
     fn github_release(tag: &str, published_at: &str) -> GitHubRelease {
         GitHubRelease {
             tag_name: tag.to_string(),
-            html_url: format!("https://github.com/xichan96/dinotty/releases/tag/{tag}"),
-            published_at: published_at.to_string(),
+            html_url: format!("https://github.com/scyrank/dinotty/releases/tag/{tag}"),
+            published_at: Some(published_at.to_string()),
             draft: false,
             prerelease: false,
         }
@@ -402,13 +432,13 @@ mod tests {
             }
         }
 
-        let mut response = Json(serde_json::json!({
+        let mut response = Json(serde_json::json!([{
             "tag_name": "v0.21.0",
-            "html_url": "https://github.com/xichan96/dinotty/releases/tag/v0.21.0",
+            "html_url": "https://github.com/scyrank/dinotty/releases/tag/v0.21.0",
             "published_at": state.published_at,
             "draft": false,
             "prerelease": false,
-        }))
+        }]))
         .into_response();
         response.headers_mut().insert(ETAG, HeaderValue::from_static("\"release-v1\""));
         response
@@ -482,11 +512,11 @@ mod tests {
     fn rejects_untrusted_or_mismatched_release_data() {
         let published_at = OffsetDateTime::UNIX_EPOCH.format(&Rfc3339).unwrap();
         for url in [
-            "http://github.com/xichan96/dinotty/releases/tag/v0.21.0",
-            "https://example.com/xichan96/dinotty/releases/tag/v0.21.0",
-            "https://github.com:444/xichan96/dinotty/releases/tag/v0.21.0",
-            "https://github.com/xichan96/dinotty/releases/tag/v0.21.0/extra",
-            "https://github.com/xichan96/dinotty/releases/tag/v9.9.9",
+            "http://github.com/scyrank/dinotty/releases/tag/v0.21.0",
+            "https://example.com/scyrank/dinotty/releases/tag/v0.21.0",
+            "https://github.com:444/scyrank/dinotty/releases/tag/v0.21.0",
+            "https://github.com/scyrank/dinotty/releases/tag/v0.21.0/extra",
+            "https://github.com/scyrank/dinotty/releases/tag/v9.9.9",
         ] {
             let mut release = github_release("v0.21.0", &published_at);
             release.html_url = url.to_string();
@@ -497,6 +527,27 @@ mod tests {
         prerelease.prerelease = false;
         assert!(validate_release(prerelease).is_err());
         assert!(validate_release(github_release("not-a-version", &published_at)).is_err());
+    }
+
+    #[test]
+    fn accepts_personal_dated_release_tags() {
+        let published_at = OffsetDateTime::UNIX_EPOCH.format(&Rfc3339).unwrap();
+        let mut release = github_release("personal-v0.22.1-20260821", &published_at);
+        release.prerelease = true;
+        let validated = validate_release(release).unwrap();
+        assert_eq!(validated.version, Version::parse("0.22.1").unwrap());
+    }
+
+    #[test]
+    fn selects_highest_version_across_personal_releases() {
+        let published_at = OffsetDateTime::UNIX_EPOCH.format(&Rfc3339).unwrap();
+        let mut older = github_release("personal-v0.22.1-20260820", &published_at);
+        older.prerelease = true;
+        let mut newer = github_release("personal-v0.22.2-20260821", &published_at);
+        newer.prerelease = true;
+
+        let selected = select_latest_release(vec![older, newer]).unwrap();
+        assert_eq!(selected.version, Version::parse("0.22.2").unwrap());
     }
 
     #[test]
@@ -607,7 +658,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn handler_rejects_personal_build_checks_without_contacting_upstream() {
+    async fn handler_serves_personal_build_checks_from_the_fork() {
         let now = OffsetDateTime::now_utc();
         let calls = Arc::new(AtomicUsize::new(0));
         let state = MockState {
@@ -621,12 +672,10 @@ mod tests {
         let (api_url, task) = spawn_mock(state).await;
         let response = get_update_status(State(test_checker(api_url, SUCCESS_TTL))).await;
 
-        const { assert!(!UPDATE_CHECKS_ENABLED) };
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        const { assert!(UPDATE_CHECKS_ENABLED) };
+        assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.headers().get(header::CACHE_CONTROL).unwrap(), "no-store");
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        assert_eq!(body, r#"{"error":"update_check_disabled"}"#);
-        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
         task.abort();
     }
 }

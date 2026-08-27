@@ -12,7 +12,7 @@ vi.mock('@tauri-apps/plugin-shell', () => ({
 
 import { isOfficialDinottyReleaseUrl, openExternalUrl } from '../utils/openExternalUrl'
 
-const releaseUrl = 'https://github.com/xichan96/dinotty/releases/tag/v0.21.0'
+const releaseUrl = 'https://github.com/scyrank/dinotty/releases/tag/personal-v0.22.2-20260801'
 
 describe('openExternalUrl', () => {
   beforeEach(() => {
@@ -38,11 +38,11 @@ describe('openExternalUrl', () => {
   })
 
   it.each([
-    'http://github.com/xichan96/dinotty/releases/tag/v0.21.0',
-    'https://example.com/xichan96/dinotty/releases/tag/v0.21.0',
-    'https://github.com:444/xichan96/dinotty/releases/tag/v0.21.0',
-    'https://github.com/xichan96/dinotty/releases/tag/',
-    'https://github.com/xichan96/dinotty/releases/tag/v0.21.0/extra',
+    'http://github.com/scyrank/dinotty/releases/tag/v0.22.2',
+    'https://example.com/scyrank/dinotty/releases/tag/v0.22.2',
+    'https://github.com:444/scyrank/dinotty/releases/tag/v0.22.2',
+    'https://github.com/scyrank/dinotty/releases/tag/',
+    'https://github.com/scyrank/dinotty/releases/tag/v0.22.2/extra',
   ])('rejects an untrusted URL: %s', async (url) => {
     transportMocks.isTauri.mockReturnValue(false)
     const open = vi.spyOn(window, 'open')

@@ -311,11 +311,16 @@ jobs:
             'x86' { 'x86' }
             default { $env:PROCESSOR_ARCHITECTURE.ToLowerInvariant() }
           }
-          $portableName = 'Dinotty_{0}_{1}-portable.exe' -f $version, $arch
+          $portableNames = @(
+            'Dinotty_{0}-portable.exe' -f $arch
+            'Dinotty_{0}_{1}-portable.exe' -f $version, $arch
+          )
 
           $portableDir = 'target/release/bundle/portable'
           New-Item -ItemType Directory -Path $portableDir -Force | Out-Null
-          Copy-Item -LiteralPath $exe -Destination (Join-Path $portableDir $portableName) -Force
+          foreach ($portableName in $portableNames) {
+            Copy-Item -LiteralPath $exe -Destination (Join-Path $portableDir $portableName) -Force
+          }
 
       - name: Remove temporary Apple API key
         if: always() && matrix.platform == 'macos'

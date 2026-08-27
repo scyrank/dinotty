@@ -2,10 +2,8 @@ import { readonly, ref } from 'vue'
 import { apiUrl, authFetch, getApiBase } from './apiBase'
 import { isOfficialDinottyReleaseUrl } from '../utils/openExternalUrl'
 
-// Personal fork policy: release discovery is intentionally disabled. Keep the
-// implementation available for painless upstream merges, but make every entry
-// point a no-op so persisted settings cannot re-enable network checks.
-export const UPDATE_CHECKS_ENABLED = false
+// Personal fork policy: discover updates from this fork's GitHub Releases.
+export const UPDATE_CHECKS_ENABLED = true
 
 export type UpdateCheckStatus =
   | 'idle'

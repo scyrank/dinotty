@@ -2,10 +2,10 @@
 members = ["src-tauri"]
 
 [workspace.package]
-version = "0.22.1"
+version = "0.22.2"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/xichan96/dinotty"
+repository = "https://github.com/scyrank/dinotty"
 
 [package]
 name = "dinotty-server"

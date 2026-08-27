@@ -38,11 +38,11 @@ macOS 产物已通过 Apple Developer ID 签名并完成公证，首次打开无
 
 ### Windows
 
-下载 NSIS 安装包（`Dinotty_<version>_x64-setup.exe`）双击安装，或使用 portable 版本（`Dinotty_<version>_x64-portable.exe`）免安装直接运行。
+下载 NSIS 安装包（`Dinotty_<version>_x64-setup.exe`）双击安装，或使用 portable 版本免安装直接运行。Release 同时提供固定文件名 `Dinotty_x64-portable.exe` 和带版本号的归档文件 `Dinotty_<version>_x64-portable.exe`。固定文件名适合创建桌面快捷方式和登录自启动，后续更新时直接覆盖该文件即可。
 
 ```powershell
 # Portable 启动示例
-.\Dinotty_<version>_x64-portable.exe
+.\Dinotty_x64-portable.exe
 ```
 
 ## 服务端 deb（Linux）

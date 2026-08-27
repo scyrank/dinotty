@@ -83,7 +83,7 @@ AppImage 是不由系统包管理器维护的便携包。启用自启动前，Di
 从 CI 的 `dinotty-windows` artifact 或 GitHub Release 下载：
 
 - NSIS 安装包：适合正常安装和卸载。
-- portable `.exe`：适合免安装测试。
+- portable `.exe`：适合免安装测试。每个 Release 同时提供固定文件名 `Dinotty_x64-portable.exe` 和带版本号的归档文件；快捷方式和自启动应指向固定文件名。
 
 Dinotty 运行时会持续注册一个系统托盘图标。Windows 决定该图标直接显示在时间旁还是收入 `^` 溢出区域，应用不会修改系统偏好：
 
@@ -91,7 +91,7 @@ Dinotty 运行时会持续注册一个系统托盘图标。Windows 决定该图�
 - Windows 10：打开“任务栏设置 → 选择哪些图标显示在任务栏上”，开启 Dinotty。
 - NSIS 安装版与 portable 版的可执行文件路径不同，Windows 可能将它们视为两个独立条目，需要分别设置。
 
-可在“设置 → 通用 → 启动”中启用当前用户登录自启动。Dinotty 将精确的当前 exe 路径和唯一的 `--background` 参数写入 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 的 `Dinotty` 值；登录后不会自动打开主窗口。固定本地盘和可移动本地盘支持启用，网络映射盘、UNC、光盘、RAM disk 和未知卷不支持。portable 版不由安装程序维护，启用前会提示将 exe 放在可信、固定且登录时可访问的位置；移动、改名、删除文件或换用不同文件名的新版后，启动项仍会指向旧副本，应用不会自动迁移或清理。移除当前副本前应先关闭自启动；换用新副本后需从新副本重新配置，以接管旧记录。
+可在“设置 → 通用 → 启动”中启用当前用户登录自启动。Dinotty 将精确的当前 exe 路径和唯一的 `--background` 参数写入 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 的 `Dinotty` 值；登录后不会自动打开主窗口。固定本地盘和可移动本地盘支持启用，网络映射盘、UNC、光盘、RAM disk 和未知卷不支持。portable 版不由安装程序维护，启用前会提示将固定文件名的 exe 放在可信、固定且登录时可访问的位置；后续版本直接覆盖同一文件即可保持快捷方式和自启动有效。移动、改名或删除该文件仍会使启动项失效；移除当前副本前应先关闭自启动。
 
 NSIS 覆盖更新会保留自启动。普通卸载只在 Run 值为 `REG_SZ` 且仍精确指向本次安装目录时删除它；指向另一份 Dinotty、包含额外参数、类型异常或格式异常的值均保持不变。Windows 还可能在系统设置中抑制已配置的启动项，Dinotty 不修改 undocumented `StartupApproved` 状态。
 
