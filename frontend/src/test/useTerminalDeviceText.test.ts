@@ -36,8 +36,12 @@ vi.mock('@xterm/xterm', () => ({
     }
     registerLinkProvider() {}
     onTitleChange() {}
-    onData(handler: (data: string) => void) { this.dataHandler = handler }
-    hasSelection() { return false }
+    onData(handler: (data: string) => void) {
+      this.dataHandler = handler
+    }
+    hasSelection() {
+      return false
+    }
     paste = vi.fn()
     dispose() {}
     focus() {}
@@ -45,15 +49,29 @@ vi.mock('@xterm/xterm', () => ({
   },
 }))
 
-vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit = vi.fn() } }))
+vi.mock('@xterm/addon-fit', () => ({
+  FitAddon: class {
+    fit = vi.fn()
+  },
+}))
 vi.mock('@xterm/addon-unicode11', () => ({ Unicode11Addon: class {} }))
-vi.mock('@xterm/addon-webgl', () => ({ WebglAddon: class { onContextLoss() {}; dispose() {} } }))
+vi.mock('@xterm/addon-webgl', () => ({
+  WebglAddon: class {
+    onContextLoss() {}
+    dispose() {}
+  },
+}))
 vi.mock('@xterm/addon-search', () => ({ SearchAddon: class {} }))
 vi.mock('../composables/useTransport', () => ({
   isTauri: mocks.isTauri,
   tauriInvoke: mocks.tauriInvoke,
   createTransport: () => ({
-    onConnect() {}, onMessage() {}, onDisconnect() {}, connect() {}, disconnect() {}, send() {},
+    onConnect() {},
+    onMessage() {},
+    onDisconnect() {},
+    connect() {},
+    disconnect() {},
+    send() {},
   }),
 }))
 vi.mock('../utils/clientPlatform', () => ({
@@ -84,12 +102,24 @@ import {
 
 class MemoryStorage implements Storage {
   private data = new Map<string, string>()
-  get length() { return this.data.size }
-  clear() { this.data.clear() }
-  getItem(key: string) { return this.data.get(key) ?? null }
-  key(index: number) { return [...this.data.keys()][index] ?? null }
-  removeItem(key: string) { this.data.delete(key) }
-  setItem(key: string, value: string) { this.data.set(key, String(value)) }
+  get length() {
+    return this.data.size
+  }
+  clear() {
+    this.data.clear()
+  }
+  getItem(key: string) {
+    return this.data.get(key) ?? null
+  }
+  key(index: number) {
+    return [...this.data.keys()][index] ?? null
+  }
+  removeItem(key: string) {
+    this.data.delete(key)
+  }
+  setItem(key: string, value: string) {
+    this.data.set(key, String(value))
+  }
 }
 
 function attach(id: string) {
@@ -102,6 +132,39 @@ function attach(id: string) {
 
 function lastXterm() {
   return mocks.instances[mocks.instances.length - 1]
+}
+
+function dispatchTextareaInsert(
+  textarea: HTMLTextAreaElement,
+  before: string,
+  selectionStart: number,
+  data: string,
+  after: string,
+  emitRaw = true
+) {
+  textarea.value = before
+  textarea.setSelectionRange(selectionStart, before.length)
+  textarea.dispatchEvent(
+    new InputEvent('beforeinput', {
+      bubbles: true,
+      composed: true,
+      data,
+      inputType: 'insertText',
+      isComposing: false,
+    })
+  )
+  textarea.value = after
+  textarea.setSelectionRange(after.length, after.length)
+  if (emitRaw) lastXterm().dataHandler!(data)
+  textarea.dispatchEvent(
+    new InputEvent('input', {
+      bubbles: true,
+      composed: true,
+      data,
+      inputType: 'insertText',
+      isComposing: false,
+    })
+  )
 }
 
 describe('useTerminal device text integration', () => {
@@ -126,13 +189,22 @@ describe('useTerminal device text integration', () => {
     settings.text.cursor_blink = true
     settings.text.scrollback = 10000
     document.documentElement.style.setProperty('--font-mono', 'test-mono-stack')
-    vi.stubGlobal('ResizeObserver', class { observe() {}; disconnect() {} })
-    vi.stubGlobal('WebSocket', class {
-      static OPEN = 1
-      readyState = 0
-      close() {}
-      send() {}
-    })
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      }
+    )
+    vi.stubGlobal(
+      'WebSocket',
+      class {
+        static OPEN = 1
+        readyState = 0
+        close() {}
+        send() {}
+      }
+    )
   })
 
   it('initializes xterm from effective text', () => {
@@ -319,7 +391,7 @@ describe('useTerminal device text integration', () => {
       const term = attach('p1')
       expect(term.xterm?.options.fontFamily).toBe('test-mono-stack')
       term.destroy()
-    },
+    }
   )
 
   it('broadcasts local changes to two panes and refits each once', () => {
@@ -332,7 +404,8 @@ describe('useTerminal device text integration', () => {
     expect(two.xterm?.options.fontSize).toBe(26)
     expect(refitOne).toHaveBeenCalledTimes(1)
     expect(refitTwo).toHaveBeenCalledTimes(1)
-    one.destroy(); two.destroy()
+    one.destroy()
+    two.destroy()
   })
 
   it('zooms from the effective value, clamps, and reset returns the server default', () => {
@@ -367,7 +440,6 @@ describe('useTerminal device text integration', () => {
   it.each([
     ['touch system input', false, 1, 'system', 'ios'],
     ['Windows Tauri touch input', true, 1, 'builtin', 'windows-x86_64'],
-    ['Linux Tauri desktop input', true, 0, 'builtin', 'linux-x86_64'],
   ] as const)(
     'reconciles an auto-pair and later closer on %s',
     (_surface, tauri, touchPoints, inputMode, target) => {
@@ -382,7 +454,7 @@ describe('useTerminal device text integration', () => {
       const input = vi.fn()
       term.onInput = input
       const textarea = (term as any)._wrapper.querySelector(
-        '.xterm-helper-textarea',
+        '.xterm-helper-textarea'
       ) as HTMLTextAreaElement
       const keyHandler = lastXterm().keyHandler!
       const edit = (value: string, caret: number, data: string) => {
@@ -390,7 +462,7 @@ describe('useTerminal device text integration', () => {
         textarea.value = value
         textarea.setSelectionRange(caret, caret)
         textarea.dispatchEvent(
-          new InputEvent('input', { inputType: 'insertText', data, isComposing: false }),
+          new InputEvent('input', { inputType: 'insertText', data, isComposing: false })
         )
         keyHandler(new KeyboardEvent('keyup', { keyCode: 229, key: 'Process' }))
       }
@@ -401,8 +473,35 @@ describe('useTerminal device text integration', () => {
       expect(input.mock.calls.map(([data]) => data)).toEqual(['()\x1b[D', '\x1b[C)'])
       expect([textarea.selectionStart, textarea.selectionEnd]).toEqual([3, 3])
       term.destroy()
-    },
+    }
   )
+
+  it('sends raw symbols via sym-pairing on desktop without 229 baseline', () => {
+    mocks.isTauri.mockReturnValue(true)
+    mocks.hostTarget.mockReturnValue('linux-x86_64')
+    Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 0 })
+    settings.mobile_input_mode = 'builtin'
+    const term = attach('p1')
+    const input = vi.fn()
+    term.onInput = input
+    const textarea = (term as any)._wrapper.querySelector(
+      '.xterm-helper-textarea'
+    ) as HTMLTextAreaElement
+    const keyHandler = lastXterm().keyHandler!
+
+    // Desktop does not arm the 229 baseline. Shift+symbol chars are emitted
+    // directly via the sym-pairing rescue; auto-pair is handled by the shell.
+    keyHandler(new KeyboardEvent('keydown', { keyCode: 229, key: 'Process' }))
+    textarea.value = '('
+    textarea.setSelectionRange(1, 1)
+    textarea.dispatchEvent(
+      new InputEvent('input', { inputType: 'insertText', data: '(', isComposing: false })
+    )
+    keyHandler(new KeyboardEvent('keyup', { keyCode: 229, key: 'Process' }))
+
+    expect(input.mock.calls.map(([data]) => data)).toEqual(['('])
+    term.destroy()
+  })
 
   it('does not duplicate a Tauri 229 symbol through the input rescue path', () => {
     mocks.isTauri.mockReturnValue(true)
@@ -411,7 +510,7 @@ describe('useTerminal device text integration', () => {
     const input = vi.fn()
     term.onInput = input
     const textarea = (term as any)._wrapper.querySelector(
-      '.xterm-helper-textarea',
+      '.xterm-helper-textarea'
     ) as HTMLTextAreaElement
     const keyHandler = lastXterm().keyHandler!
 
@@ -419,7 +518,7 @@ describe('useTerminal device text integration', () => {
     textarea.value = '!'
     textarea.setSelectionRange(1, 1)
     textarea.dispatchEvent(
-      new InputEvent('input', { inputType: 'insertText', data: '!', isComposing: false }),
+      new InputEvent('input', { inputType: 'insertText', data: '!', isComposing: false })
     )
     lastXterm().dataHandler!('!')
     keyHandler(new KeyboardEvent('keyup', { keyCode: 229, key: 'Process' }))
@@ -436,15 +535,255 @@ describe('useTerminal device text integration', () => {
     const input = vi.fn()
     term.onInput = input
     const textarea = (term as any)._wrapper.querySelector(
-      '.xterm-helper-textarea',
+      '.xterm-helper-textarea'
     ) as HTMLTextAreaElement
 
     textarea.dispatchEvent(
-      new InputEvent('input', { inputType: 'insertText', data: '！', isComposing: false }),
+      new InputEvent('input', { inputType: 'insertText', data: '！', isComposing: false })
     )
     lastXterm().dataHandler!('！')
 
     expect(input.mock.calls.map(([data]) => data)).toEqual(['！'])
+    term.destroy()
+  })
+
+  it('reconciles iOS dictation tail replacements instead of appending interim transcripts', async () => {
+    vi.useFakeTimers()
+    mocks.isTauri.mockReturnValue(false)
+    Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 1 })
+    settings.mobile_input_mode = 'system'
+    const term = attach('p1')
+    const input = vi.fn()
+    term.onInput = input
+    const textarea = (term as any)._wrapper.querySelector(
+      '.xterm-helper-textarea'
+    ) as HTMLTextAreaElement
+
+    dispatchTextareaInsert(textarea, '', 0, '我', '我')
+    dispatchTextareaInsert(textarea, '我', 0, '我说一句', '我说一句')
+    dispatchTextareaInsert(textarea, '我说一句', 0, '我说一句话', '我说一句话')
+    dispatchTextareaInsert(
+      textarea,
+      '我说一句话',
+      0,
+      '我说一句话，你来理解我',
+      '我说一句话，你来理解我'
+    )
+    dispatchTextareaInsert(
+      textarea,
+      '我说一句话，你来理解我',
+      0,
+      '我说一句话，你来理解我的意思',
+      '我说一句话，你来理解我的意思'
+    )
+    await vi.advanceTimersByTimeAsync(80)
+
+    expect(input.mock.calls.map(([data]) => data)).toEqual(['我', '说一句话，你来理解我的意思'])
+
+    dispatchTextareaInsert(
+      textarea,
+      '我说一句话，你来理解我的意思',
+      12,
+      '意图',
+      '我说一句话，你来理解我的意图'
+    )
+    await vi.advanceTimersByTimeAsync(80)
+    expect(input.mock.calls.map(([data]) => data)).toEqual([
+      '我',
+      '说一句话，你来理解我的意思',
+      '\x7f图',
+    ])
+    term.destroy()
+    vi.useRealTimers()
+  })
+
+  it('reconciles the full observed dictation chain when a later DOM edit does not match', () => {
+    mocks.isTauri.mockReturnValue(false)
+    Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 1 })
+    settings.mobile_input_mode = 'system'
+    const term = attach('p1')
+    const input = vi.fn()
+    term.onInput = input
+    const textarea = (term as any)._wrapper.querySelector(
+      '.xterm-helper-textarea'
+    ) as HTMLTextAreaElement
+
+    dispatchTextareaInsert(textarea, '', 0, '我', '我')
+    dispatchTextareaInsert(textarea, '我', 0, '我说一句', '我说一句')
+    dispatchTextareaInsert(textarea, '我说一句', 0, '我说一句话', '我说一句呢')
+
+    expect(input.mock.calls.map(([data]) => data)).toEqual(['我', '说一句呢'])
+    expect((term as any)._ime229Baseline).toBeNull()
+    term.destroy()
+  })
+
+  it('sends IME committed text via onData on desktop without 229 baseline interference', async () => {
+    vi.useFakeTimers()
+    mocks.isTauri.mockReturnValue(true)
+    Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 0 })
+    const term = attach('p1')
+    const input = vi.fn()
+    term.onInput = input
+    const textarea = (term as any)._wrapper.querySelector(
+      '.xterm-helper-textarea'
+    ) as HTMLTextAreaElement
+    const keyHandler = lastXterm().keyHandler!
+
+    // Desktop (non-touch) does not arm the 229 baseline. The keydown with
+    // keyCode 229 is skipped by xterm, and the IME commit flows through
+    // xterm onData normally.
+    keyHandler(new KeyboardEvent('keydown', { keyCode: 229, key: 'Process' }))
+    lastXterm().dataHandler!('你好')
+    textarea.value = ''
+    textarea.setSelectionRange(0, 0)
+    textarea.dispatchEvent(
+      new InputEvent('input', { inputType: 'insertText', data: '你好', isComposing: false })
+    )
+    await vi.advanceTimersByTimeAsync(80)
+
+    expect(input.mock.calls.map(([data]) => data)).toEqual(['你好'])
+    expect((term as any)._ime229Baseline).toBeNull()
+    term.destroy()
+    vi.useRealTimers()
+  })
+
+  it('does not arm the 229 baseline on iPhone builtin-mode input', () => {
+    mocks.isTauri.mockReturnValue(false)
+    Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 5 })
+    settings.mobile_input_mode = 'builtin'
+    const term = attach('p1')
+    const input = vi.fn()
+    term.onInput = input
+    const keyHandler = lastXterm().keyHandler!
+
+    // Builtin mode drives the system keyboard's IME through the same xterm
+    // textarea, but the 229 snapshot/diff machinery is system-mode only
+    // (HEAD behavior). Arming it here drops the builtin keyboard's input.
+    keyHandler(new KeyboardEvent('keydown', { keyCode: 229, key: 'Process' }))
+    expect((term as any)._ime229Baseline).toBeNull()
+
+    lastXterm().dataHandler!('你')
+    expect(input.mock.calls.map(([data]) => data)).toEqual(['你'])
+    term.destroy()
+  })
+
+  it('does not arm the 229 baseline on desktop WebKit that exposes ontouchstart', async () => {
+    vi.useFakeTimers()
+    mocks.isTauri.mockReturnValue(true)
+    // macOS Safari/WKWebView exposes `ontouchstart` without touch hardware, so
+    // isTouchDevice() is true there. The 229 machinery must still stay off or
+    // fast desktop IME typing drops committed words.
+    ;(window as any).ontouchstart = null
+    Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 0 })
+    const term = attach('p1')
+    const input = vi.fn()
+    term.onInput = input
+    const keyHandler = lastXterm().keyHandler!
+
+    keyHandler(new KeyboardEvent('keydown', { keyCode: 229, key: 'Process' }))
+    expect((term as any)._ime229Baseline).toBeNull()
+    lastXterm().dataHandler!('你好')
+
+    expect(input.mock.calls.map(([data]) => data)).toEqual(['你好'])
+    term.destroy()
+    delete (window as any).ontouchstart
+    vi.useRealTimers()
+  })
+
+  it('does not let an unrelated keyup flush a dictation-owned snapshot', async () => {
+    vi.useFakeTimers()
+    mocks.isTauri.mockReturnValue(false)
+    Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 1 })
+    settings.mobile_input_mode = 'system'
+    const term = attach('p1')
+    const input = vi.fn()
+    term.onInput = input
+    const textarea = (term as any)._wrapper.querySelector(
+      '.xterm-helper-textarea'
+    ) as HTMLTextAreaElement
+
+    dispatchTextareaInsert(textarea, '', 0, '我', '我')
+    dispatchTextareaInsert(textarea, '我', 0, '我说一句', '我说一句')
+    expect(lastXterm().keyHandler!(new KeyboardEvent('keyup', { key: 'Shift' }))).toBe(true)
+    expect(input.mock.calls.map(([data]) => data)).toEqual(['我'])
+
+    await vi.advanceTimersByTimeAsync(80)
+    expect(input.mock.calls.map(([data]) => data)).toEqual(['我', '说一句'])
+    term.destroy()
+    vi.useRealTimers()
+  })
+
+  it('does not synthesize a dictation edit unless xterm emitted the matching raw input', async () => {
+    vi.useFakeTimers()
+    mocks.isTauri.mockReturnValue(false)
+    Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 1 })
+    settings.mobile_input_mode = 'system'
+    const term = attach('p1')
+    const input = vi.fn()
+    term.onInput = input
+    const textarea = (term as any)._wrapper.querySelector(
+      '.xterm-helper-textarea'
+    ) as HTMLTextAreaElement
+
+    dispatchTextareaInsert(textarea, '旧候选', 0, '新候选', '新候选', false)
+    await vi.advanceTimersByTimeAsync(80)
+
+    expect(input).not.toHaveBeenCalled()
+    expect((term as any)._ime229Baseline).toBeNull()
+    term.destroy()
+    vi.useRealTimers()
+  })
+
+  it.each([
+    ['builtin input', 'builtin', false, false],
+    ['screen reader mode', 'system', true, false],
+    ['Tauri touch input', 'system', false, true],
+  ] as const)(
+    'leaves dictation-like tail input on xterm in %s',
+    (_case, mode, screenReaderMode, tauri) => {
+      mocks.isTauri.mockReturnValue(tauri)
+      Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 1 })
+      settings.mobile_input_mode = mode
+      const term = attach('p1')
+      const input = vi.fn()
+      term.onInput = input
+      term.xterm!.options.screenReaderMode = screenReaderMode
+      const textarea = (term as any)._wrapper.querySelector(
+        '.xterm-helper-textarea'
+      ) as HTMLTextAreaElement
+
+      dispatchTextareaInsert(textarea, '旧候选', 0, '新候选', '新候选')
+
+      expect(input.mock.calls.map(([data]) => data)).toEqual(['新候选'])
+      expect((term as any)._ime229Baseline).toBeNull()
+      term.destroy()
+    }
+  )
+
+  it('preserves the desktop replacement-text workaround on Tauri touch input', () => {
+    mocks.isTauri.mockReturnValue(true)
+    Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 1 })
+    settings.mobile_input_mode = 'system'
+    const term = attach('p1')
+    const sendData = vi.spyOn(term, 'sendData')
+    const textarea = (term as any)._wrapper.querySelector(
+      '.xterm-helper-textarea'
+    ) as HTMLTextAreaElement
+    textarea.value = 'ni'
+    textarea.dispatchEvent(
+      new InputEvent('input', { inputType: 'insertText', data: 'ni', isComposing: false })
+    )
+
+    textarea.dispatchEvent(
+      new InputEvent('beforeinput', {
+        inputType: 'insertReplacementText',
+        data: '你',
+        isComposing: false,
+      })
+    )
+
+    expect(sendData).toHaveBeenCalledOnce()
+    expect(sendData).toHaveBeenCalledWith('\x7f\x7f')
     term.destroy()
   })
 })

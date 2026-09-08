@@ -1,5 +1,5 @@
 import { ref, type Ref } from 'vue'
-import * as monaco from 'monaco-editor'
+import type * as monaco from 'monaco-editor'
 import { getEditor, whenEditorReady } from './useEditorRegistry'
 import type { useEditorSplit } from './useEditorSplit'
 
@@ -107,7 +107,7 @@ function findGroupForLeaf(leafId: string): CursorGroup | null {
 
 function broadcastChange(
   sourceLeafId: string,
-  changes: readonly monaco.editor.IModelContentChange[],
+  changes: readonly monaco.editor.IModelContentChange[]
 ): void {
   const group = findGroupForLeaf(sourceLeafId)
   if (!group) return
@@ -128,7 +128,7 @@ function broadcastChange(
           range: c.range,
           text: c.text,
           forceMoveMarkers: true,
-        })),
+        }))
       )
     } finally {
       broadcastingLeaves.delete(entry.leafId)
@@ -136,10 +136,7 @@ function broadcastChange(
   }
 }
 
-function applyToGroup(
-  groupId: string | null,
-  op: 'undo' | 'redo',
-): void {
+function applyToGroup(groupId: string | null, op: 'undo' | 'redo'): void {
   if (!groupId) return
   const group = groups.value.find((g) => g.id === groupId)
   if (!group) return

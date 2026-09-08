@@ -45,7 +45,7 @@ function colorToCss(
   isDefault: boolean,
   isPalette: boolean,
   defaultCss: string,
-  themeColors?: string[],
+  themeColors?: string[]
 ): string {
   if (isDefault) return defaultCss
   if (isRGB) {
@@ -115,7 +115,7 @@ function captureColoredHtml(terminal: TerminalInstance): string {
         cell.isFgDefault(),
         cell.isFgPalette(),
         defaultFg,
-        themeColors,
+        themeColors
       )
 
       if (fg !== lastFg) {
@@ -172,7 +172,7 @@ function capturePreview(terminal: TerminalInstance | null): {
 /** Recursively capture a single pane node (leaf or split) */
 function capturePaneNode(
   node: PaneLayout,
-  termRefs: Record<string, InstanceType<typeof TerminalPane>>,
+  termRefs: Record<string, InstanceType<typeof TerminalPane>>
 ): PanePreviewNode {
   if (node.type === 'leaf') {
     const termRef = termRefs[node.paneId]
@@ -199,7 +199,7 @@ function capturePaneNode(
 /** Capture the full pane layout tree for a tab, collapsing single-pane to string */
 function capturePaneLayout(
   layout: PaneLayout,
-  termRefs: Record<string, InstanceType<typeof TerminalPane>>,
+  termRefs: Record<string, InstanceType<typeof TerminalPane>>
 ): string | PanePreviewNode {
   const leaves = getAllLeaves(layout)
   if (leaves.length <= 1) {
@@ -222,15 +222,46 @@ const PREVIEW_THROTTLE_MS = 1000
 
 /** Visually-relevant CSS properties for preview capture (avoids iterating ~300 computed props) */
 const PREVIEW_STYLE_PROPS = [
-  'display', 'position', 'top', 'left', 'right', 'bottom',
-  'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
-  'margin', 'padding', 'border', 'border-radius',
-  'background', 'background-color', 'color', 'opacity',
-  'font', 'font-size', 'font-weight', 'font-family', 'line-height',
-  'text-align', 'text-decoration', 'white-space', 'overflow',
-  'flex', 'flex-direction', 'flex-wrap', 'justify-content', 'align-items', 'gap',
-  'grid', 'grid-template-columns', 'grid-template-rows',
-  'box-shadow', 'outline',
+  'display',
+  'position',
+  'top',
+  'left',
+  'right',
+  'bottom',
+  'width',
+  'height',
+  'min-width',
+  'min-height',
+  'max-width',
+  'max-height',
+  'margin',
+  'padding',
+  'border',
+  'border-radius',
+  'background',
+  'background-color',
+  'color',
+  'opacity',
+  'font',
+  'font-size',
+  'font-weight',
+  'font-family',
+  'line-height',
+  'text-align',
+  'text-decoration',
+  'white-space',
+  'overflow',
+  'flex',
+  'flex-direction',
+  'flex-wrap',
+  'justify-content',
+  'align-items',
+  'gap',
+  'grid',
+  'grid-template-columns',
+  'grid-template-rows',
+  'box-shadow',
+  'outline',
 ]
 
 /** Capture a plugin DOM element as a preview image using native Canvas API */
@@ -313,7 +344,7 @@ export function invalidatePluginPreview(paneId: string): void {
 export function useTabPreview() {
   function captureAll(
     tabs: Tab[],
-    termRefs: Record<string, InstanceType<typeof TerminalPane>>,
+    termRefs: Record<string, InstanceType<typeof TerminalPane>>
   ): TabCard[] {
     return tabs.map((tab, index) => {
       if (tab.type === 'plugin') {
@@ -334,9 +365,8 @@ export function useTabPreview() {
       const activeLeaf = findLeaf(tab.layout, tab.activePaneId) ?? leaves[0]
       const activeTermRef = termRefs[activeLeaf.paneId]
       const activeTerminal = activeTermRef?.getTerminal()
-      const image = activeTerminal && ENABLE_CANVAS_PREVIEW
-        ? captureCanvasPreview(activeTerminal)
-        : null
+      const image =
+        activeTerminal && ENABLE_CANVAS_PREVIEW ? captureCanvasPreview(activeTerminal) : null
       const htmlContent = capturePaneLayout(tab.layout, termRefs)
 
       return {

@@ -48,7 +48,7 @@ fn stale_client_put_preserves_remembered_close_behavior() {
         ..Settings::default()
     };
 
-    preserve_current_system_settings_on_legacy_put(Some(12), &mut incoming, &existing);
+    preserve_current_settings_on_legacy_put(Some(12), &mut incoming, &existing);
 
     assert_eq!(incoming.close_window_behavior, CloseWindowBehavior::Quit);
 }

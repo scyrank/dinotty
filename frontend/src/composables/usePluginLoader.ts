@@ -2,11 +2,15 @@ import type { Component } from 'vue'
 import { reactive, ref, computed, watch, onMounted, onUnmounted, h } from 'vue'
 import { authFetch, apiUrl, wsUrlWithToken, getApiBase } from './apiBase'
 import { usePluginMonitorStore } from '../stores/pluginMonitor'
+import { usePluginOverlaysStore } from '../stores/pluginOverlays'
 import type { MonitorSeries } from '../stores/pluginMonitor'
 import { subscribe as eventSubscribe, emit as eventEmit } from './useEventBridge'
 import type { SyncEvent } from '../types/protocol'
 import { useI18n, type Locale } from './useI18n'
 import { describeHttpError } from '../utils/httpError'
+import { KEYBOARD_API_VERSION } from '../keyboard/createKeyboardContext'
+import { useKeyboardProviders } from './useKeyboardProviders'
+import type { KeyboardContribution, OverlayContribution } from '../../../plugin-api/index'
 
 // Plugin modules are verified by the server, then loaded from a short-lived
 // blob URL. @vite-ignore keeps the URL dynamic without requiring unsafe-eval.
@@ -58,6 +62,8 @@ export interface PluginManifest {
   }
   commands?: Array<{ id: string; title: string }>
   styles?: string
+  /** Required KeyboardContext.version for keyboard contributions. Host rejects higher versions. */
+  keyboardApiVersion?: number
   permissions?: string[]
   category?: string
   targets?: string[]
@@ -110,6 +116,9 @@ export interface PluginContext {
   terminal: {
     send(paneId: string, data: string): void
     activePaneId(): string | null
+    /** 订阅当前聚焦 pane 变化（paneId 变化即回调，替代轮询 activePaneId()）。
+     *  keyboard-plugin-design.md §三 B，Phase 2。 */
+    onDidChangeActivePane(callback: (paneId: string | null) => void): Disposable
     /** Returns the active terminal tab's cwd, or the last known terminal cwd,
      *  or the active workspace path. null if none are available. */
     activeCwd(): string | null
@@ -182,11 +191,7 @@ export interface PluginContext {
 
   events: {
     subscribe<T = unknown>(eventName: string, handler: (data: T, e: SyncEvent) => void): Disposable
-    emit(
-      eventName: string,
-      data: unknown,
-      opts?: { target_plugin_id?: string },
-    ): void
+    emit(eventName: string, data: unknown, opts?: { target_plugin_id?: string }): void
   }
 
   workspace: {
@@ -252,6 +257,10 @@ export interface PluginExports {
   dispose?: () => void
   deactivate?: () => void
   monitor?: { series: MonitorSeries[] }
+  /** 键盘 provider 贡献点（渲染进宿主预留 band） */
+  keyboard?: KeyboardContribution
+  /** 全局浮层贡献点（渲染进宿主 fixed overlay layer，#app-root 之外） */
+  overlay?: OverlayContribution[]
 }
 
 export interface PluginModule {
@@ -267,6 +276,27 @@ export interface LoadedPlugin {
   state: 'active' | 'error'
   error?: string
   isDevLink?: boolean
+  /** Resolved keyboard contribution id (manifest id when exports.keyboard.id is
+   *  omitted); stored at registration so unload detaches the same entry. */
+  keyboardContributionId?: string
+}
+
+/**
+ * Resolve a keyboard contribution id, enforcing it matches the plugin's own
+ * manifest id (keyboard-plugin-design.md §三 Phase 3). A keyboard provider is
+ * the plugin's own surface; allowing a contribution to register under another
+ * id would let one plugin hijack builtin-keyboard or system. Exported for
+ * contract tests.
+ */
+export function resolveKeyboardContributionId(
+  pluginId: string,
+  contributionId: string | undefined
+): string {
+  const id = contributionId ?? pluginId
+  if (id !== pluginId) {
+    throw new Error(`keyboard contribution id '${id}' must match plugin id '${pluginId}'`)
+  }
+  return id
 }
 
 // ─── Module Scope State ───────────────────────────────────────────────────────
@@ -285,7 +315,7 @@ declare global {
     __dinotty_terminal_api?: PluginContext['terminal']
     __dinotty_ui_notify?: PluginContext['ui']['notify']
     __dinotty_ui_confirm?: PluginContext['ui']['confirm']
-    __dinotty_open_plugin?: (pluginId: string) => void
+    __dinotty_open_plugin?: (pluginId: string, mode?: 'tab' | 'floating' | 'pane') => void
     __dinotty_settings_listener?: PluginContext['settings']['onDidChange']
     // Test hooks for P3 verification (focusActive + isComposing guard).
     __dinotty_test_focus_active?: () => void
@@ -602,6 +632,7 @@ function createPluginContext(pluginId: string): PluginContext {
     terminal: window.__dinotty_terminal_api ?? {
       send() {},
       activePaneId: () => null,
+      onDidChangeActivePane: () => ({ dispose() {} }),
       activeCwd: () => null,
       listPanes: () => [],
       onOutput: () => ({ dispose() {} }),
@@ -650,6 +681,14 @@ async function loadPlugin(id: string): Promise<LoadedPlugin> {
   if (!manifestRes.ok) throw new Error(`Plugin ${id}: manifest not found (${manifestRes.status})`)
   const manifest: PluginManifest = await manifestRes.json()
 
+  // Keyboard contract: the manifest declares the KeyboardContext.version the
+  // plugin requires; the host only loads contributions it can serve.
+  if (manifest.keyboardApiVersion != null && manifest.keyboardApiVersion > KEYBOARD_API_VERSION) {
+    throw new Error(
+      `Plugin ${id}: keyboardApiVersion ${manifest.keyboardApiVersion} is newer than host ${KEYBOARD_API_VERSION}`
+    )
+  }
+
   // 2. Fetch main.js via authFetch (includes auth token) then import from blob URL
   const entry = manifest.entry || './main.js'
   const jsUrl = apiUrl(`/api/plugins/${id}/${entry.replace('./', '')}`)
@@ -663,7 +702,9 @@ async function loadPlugin(id: string): Promise<LoadedPlugin> {
     mod = await dynamicImport(blobUrl)
   } catch (e: any) {
     URL.revokeObjectURL(blobUrl)
-    throw new Error(`Plugin ${id}: failed to load ${jsUrl}: ${e.message}`)
+    throw Object.assign(new Error(`Plugin ${id}: failed to load ${jsUrl}: ${e.message}`), {
+      cause: e,
+    })
   } finally {
     URL.revokeObjectURL(blobUrl)
   }
@@ -723,7 +764,7 @@ async function loadPlugin(id: string): Promise<LoadedPlugin> {
     for (const [qpId, entry] of pluginQuickPicks) {
       if (entry.pluginId === id) pluginQuickPicks.delete(qpId)
     }
-    throw new Error(`Plugin ${id}: activate() threw: ${e.message}`)
+    throw Object.assign(new Error(`Plugin ${id}: activate() threw: ${e.message}`), { cause: e })
   }
 
   // 5. Register monitor series contributions
@@ -731,7 +772,35 @@ async function loadPlugin(id: string): Promise<LoadedPlugin> {
     usePluginMonitorStore().register(id, exports.monitor.series)
   }
 
-  const plugin: LoadedPlugin = { id, manifest, module: mod, exports, state: 'active' }
+  // 5a. Register overlay contributions into the host floating layer. Overlay ids
+  // are recommended-not-enforced (band stacking = registration order).
+  if (exports?.overlay?.length) {
+    usePluginOverlaysStore().register(id, exports.overlay)
+  }
+
+  // 5b. Register keyboard provider contributions into the host registry.
+  // The contribution id must be the plugin's own id (resolveKeyboardContributionId
+  // throws otherwise), so a third-party plugin can never displace the bundled
+  // builtin-keyboard or the host-frozen system provider.
+  let keyboardContributionId: string | undefined
+  if (exports?.keyboard?.component) {
+    keyboardContributionId = resolveKeyboardContributionId(id, exports.keyboard.id)
+    useKeyboardProviders().registerComponent(
+      keyboardContributionId,
+      'plugin',
+      exports.keyboard.component,
+      exports.keyboard.desiredHeight
+    )
+  }
+
+  const plugin: LoadedPlugin = {
+    id,
+    manifest,
+    module: mod,
+    exports,
+    state: 'active',
+    keyboardContributionId,
+  }
   loadedPlugins.set(id, plugin)
   return plugin
 }
@@ -751,6 +820,15 @@ async function unloadPlugin(id: string, options: { stopUiProcesses?: boolean } =
 
   // Unregister monitor series first so sampling stops touching plugin state
   usePluginMonitorStore().unregister(id)
+
+  // Drop the plugin's overlays from the host layer.
+  usePluginOverlaysStore().unregister(id)
+
+  // Detach any keyboard provider component; host-registered providers keep
+  // their entry so the in-core fallback resumes.
+  if (plugin.keyboardContributionId) {
+    useKeyboardProviders().unregisterComponent(plugin.keyboardContributionId)
+  }
 
   try {
     plugin.module.deactivate?.()

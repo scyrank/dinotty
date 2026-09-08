@@ -13,7 +13,7 @@ use std::path::PathBuf;
 
 pub use handlers::{get_background, get_settings, put_settings, upload_background};
 pub use io::{create_settings_state, load_settings, load_token, save_settings_sync, save_token};
-pub use logging::{get_log, init_logging, log_dir, log_file_path};
+pub use logging::{get_log, init_logging, init_stderr_logging, log_dir, log_file_path};
 pub use types::{
     default_upload_dir, ActionBottomCluster, ActionKey, ActionKeyboardConfig, AuthConfig,
     BackgroundConfig, BellNotificationConfig, CloseWindowBehavior, CommandBookmark,
@@ -26,30 +26,34 @@ pub use types::{
 };
 
 #[cfg(test)]
-pub(crate) use handlers::preserve_current_system_settings_on_legacy_put;
+pub(crate) use handlers::preserve_current_settings_on_legacy_put;
 #[cfg(test)]
 pub(crate) use io::migrate_settings;
 #[cfg(test)]
 pub(crate) use normalize::{
-    clamp_custom_fonts, clamp_text_config, clamp_text_on_load, clamp_theme_on_put,
-    normalize_action_keyboards,
+    clamp_custom_fonts, clamp_ime_keyboard_overlap_px, clamp_text_config, clamp_text_on_load,
+    clamp_theme_on_put, normalize_action_keyboards,
 };
 #[cfg(test)]
 pub(crate) use types::default_scroll_acceleration;
+
+#[must_use]
+pub fn instance_suffix() -> String {
+    // Compile-time suffix (set via build script / `DINOTTY_CONFIG_SUFFIX` at
+    // build) takes precedence; otherwise fall back to the runtime env var
+    // (used by integration tests to isolate each server's config dir).
+    option_env!("DINOTTY_CONFIG_SUFFIX")
+        .map(str::to_string)
+        .or_else(|| std::env::var("DINOTTY_CONFIG_SUFFIX").ok())
+        .unwrap_or_default()
+}
 
 #[must_use]
 pub fn config_dir() -> PathBuf {
     if let Some(path) = std::env::var_os("DINOTTY_CONFIG_DIR").filter(|path| !path.is_empty()) {
         return PathBuf::from(path);
     }
-
-    // Compile-time suffix (set via build script / `DINOTTY_CONFIG_SUFFIX` at
-    // build) takes precedence; otherwise fall back to the runtime env var
-    // (used by integration tests to isolate each server's config dir).
-    let suffix = option_env!("DINOTTY_CONFIG_SUFFIX")
-        .map(str::to_string)
-        .or_else(|| std::env::var("DINOTTY_CONFIG_SUFFIX").ok())
-        .unwrap_or_default();
+    let suffix = instance_suffix();
     dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")).join(format!("dinotty{suffix}"))
 }
 

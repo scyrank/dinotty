@@ -73,7 +73,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount, type Ref } from 'vue'
-import * as monaco from 'monaco-editor'
+import type * as monaco from 'monaco-editor'
 import { useI18n } from '../../composables/useI18n'
 import { getApiBase, apiUrl, authFetch, getAuthToken } from '../../composables/apiBase'
 import type { DropPosition } from '../../types/pane'
@@ -121,7 +121,9 @@ function getDropPosition(ev: DragEvent): DropPosition {
 function isTreeMoveDrag(ev: DragEvent): boolean {
   const t = ev.dataTransfer?.types
   if (!t) return false
-  return t.includes ? t.includes('application/x-tree-move') : (t as any).contains('application/x-tree-move')
+  return t.includes
+    ? t.includes('application/x-tree-move')
+    : (t as any).contains('application/x-tree-move')
 }
 
 function onPaneDragOver(ev: DragEvent) {
@@ -281,7 +283,7 @@ onMounted(() => {
         cursorGroup.broadcastChange(props.leafId, e.changes)
       }),
       editor.onKeyDown((e) => {
-        if (e.keyCode !== monaco.KeyCode.KeyZ) return
+        if (e.code !== 'KeyZ') return
         if (!(e.ctrlKey || e.metaKey)) return
         if (!isInActiveGroup.value) return
         e.preventDefault()

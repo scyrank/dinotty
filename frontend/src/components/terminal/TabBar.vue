@@ -1,16 +1,16 @@
 <template>
-  <div id="tab-bar" class="tab-bar">
+  <div id="tab-bar" class="tab-bar" :class="placementClass">
     <!-- Mobile compact mode -->
     <template v-if="isMobile">
       <button class="mc-trigger" @click="$emit('open-overview')">
-      <WorkspaceBadge
-        v-if="showWsMonogram && activeWorkspaceColor"
-        :abbr="activeWorkspaceAbbr"
-        :color="activeWorkspaceColor"
-        :size="16"
-        card-bg-var="--tab-bg"
-      />
-      <LayoutDashboard v-else :size="16" />
+        <WorkspaceBadge
+          v-if="showWsMonogram && activeWorkspaceColor"
+          :abbr="activeWorkspaceAbbr"
+          :color="activeWorkspaceColor"
+          :size="16"
+          card-bg-var="--tab-bg"
+        />
+        <LayoutDashboard v-else :size="16" />
       </button>
       <span class="current-tab-index">{{ currentTabIndex }}</span>
       <span
@@ -31,7 +31,7 @@
     </template>
     <!-- Desktop mode: full tab list -->
     <template v-else>
-    <button class="mc-trigger desktop-mc" @click="$emit('open-overview')">
+      <button class="mc-trigger desktop-mc" @click="$emit('open-overview')">
         <WorkspaceBadge
           v-if="showWsMonogram && activeWorkspaceColor"
           :abbr="activeWorkspaceAbbr"
@@ -40,186 +40,204 @@
           card-bg-var="--tab-bg"
         />
         <LayoutDashboard v-else :size="16" />
-    </button>
-    <div
-      id="tabs-list"
-      ref="tabsListRef"
-      :class="{ 'fade-start': fadeStart, 'fade-end': fadeEnd }"
-    >
-      <div
-        v-for="tab in tabs"
-        :key="tab.paneId"
-        class="tab"
-        :class="{ active: tab.paneId === activePaneId, 'drag-over': dragOverId === tab.paneId }"
-        :data-pane-id="tab.paneId"
-        :data-tab-id="tab.paneId"
-        @mousedown.prevent="onTabMouseDown($event, tab.paneId)"
-        @touchstart="onTabTouchStart($event, tab.paneId)"
-        @click="onTabClick($event, tab.paneId)"
-        @touchend.prevent="onTabTouchEnd($event, tab.paneId)"
-        @contextmenu.prevent="openTabCtx($event, tab)"
-      >
-        <span class="tab-index">{{ tab.index }}</span>
-        <span
-          v-if="showWsBadge && tab.workspace"
-          class="tab-ws-badge"
-          :title="tab.workspace.name"
-        >
-          <span
-            class="tab-ws-dot"
-            :style="{ background: tab.workspace.color ?? 'var(--accent, #8a8a8a)' }"
-          ></span>
-          <span v-if="tab.workspace.remote" class="tab-ws-remote">
-            <Server :size="9" />
-          </span>
-          <span v-if="tab.workspace.abbr" class="tab-ws-abbr">{{ tab.workspace.abbr }}</span>
-        </span>
-        <Puzzle v-if="tab.type === 'plugin'" :size="12" class="tab-plugin-icon" />
-        <Server v-else-if="tab.shellType === 'ssh'" :size="12" class="tab-ssh-icon" />
-        <input
-          v-if="editingPaneId === tab.paneId"
-          ref="editInputRef"
-          class="tab-title-input"
-          :value="editValue"
-          @input="editValue = ($event.target as HTMLInputElement).value"
-          @blur="finishEdit(tab.paneId)"
-          @keydown.enter="finishEdit(tab.paneId)"
-          @keydown.escape.stop="cancelEdit"
-          @mousedown.stop
-          @click.stop
-        />
-        <span
-          v-else
-          class="tab-title"
-          @dblclick="startEdit(tab)"
-        >{{ tab.title }}</span>
-        <span
-          v-if="indicators[tab.paneId]"
-          class="tab-notif-dot"
-          :class="'dot-' + indicators[tab.paneId]"
-        ></span>
-        <button
-          v-if="editingPaneId !== tab.paneId"
-          class="tab-close"
-          @click.stop="$emit('close', tab.paneId)"
-          @touchend.stop.prevent="$emit('close', tab.paneId)"
-        >
-          <X :size="10" />
-        </button>
-      </div>
-    </div>
-    </template>
-    <slot name="left" />
-    <div class="new-tab-split" ref="newMenuWrapRef">
-      <button
-        id="tab-new-btn"
-        :title="`${t('keybinding.newTab')} (${kbdNewTab})`"
-        @click="newMenuOpen = !newMenuOpen"
-        @touchend.prevent="newMenuOpen = !newMenuOpen"
-      >
-        <Terminal :size="16" />
       </button>
-      <div v-if="newMenuOpen" class="new-menu-dropdown" :class="{ 'align-right': newMenuAlignRight }">
+      <div
+        id="tabs-list"
+        ref="tabsListRef"
+        :class="{ 'fade-start': fadeStart, 'fade-end': fadeEnd, 'is-vertical': isVertical }"
+      >
         <div
-          class="new-menu-item"
-          @click="emitAction('new-tab')"
-          @touchend.prevent="emitAction('new-tab')"
+          v-for="tab in tabs"
+          :key="tab.paneId"
+          class="tab"
+          :class="{ active: tab.paneId === activePaneId, 'drag-over': dragOverId === tab.paneId }"
+          :data-pane-id="tab.paneId"
+          :data-tab-id="tab.paneId"
+          @mousedown.prevent="onTabMouseDown($event, tab.paneId)"
+          @touchstart="onTabTouchStart($event, tab.paneId)"
+          @click="onTabClick($event, tab.paneId)"
+          @touchend.prevent="onTabTouchEnd($event, tab.paneId)"
+          @contextmenu.prevent="openTabCtx($event, tab)"
         >
-          <Terminal :size="14" class="new-menu-icon" />
-          <span class="new-menu-label">{{ t('keybinding.newTab') }}</span>
-          <kbd class="new-menu-kbd">{{ kbdNewTab }}</kbd>
+          <span class="tab-index">{{ tab.index }}</span>
+          <span
+            v-if="showWsBadge && tab.workspace"
+            class="tab-ws-badge"
+            :title="tab.workspace.name"
+          >
+            <span
+              class="tab-ws-dot"
+              :style="{ background: tab.workspace.color ?? 'var(--accent, #8a8a8a)' }"
+            ></span>
+            <span v-if="tab.workspace.remote" class="tab-ws-remote">
+              <Server :size="9" />
+            </span>
+            <span v-if="tab.workspace.abbr" class="tab-ws-abbr">{{ tab.workspace.abbr }}</span>
+          </span>
+          <Puzzle v-if="tab.type === 'plugin'" :size="12" class="tab-plugin-icon" />
+          <Server v-else-if="tab.shellType === 'ssh'" :size="12" class="tab-ssh-icon" />
+          <input
+            v-if="editingPaneId === tab.paneId"
+            ref="editInputRef"
+            class="tab-title-input"
+            :value="editValue"
+            @input="editValue = ($event.target as HTMLInputElement).value"
+            @blur="finishEdit(tab.paneId)"
+            @keydown.enter="finishEdit(tab.paneId)"
+            @keydown.escape.stop="cancelEdit"
+            @mousedown.stop
+            @click.stop
+          />
+          <span v-else class="tab-title" @dblclick="startEdit(tab)">{{ tab.title }}</span>
+          <span
+            v-if="indicators[tab.paneId]"
+            class="tab-notif-dot"
+            :class="'dot-' + indicators[tab.paneId]"
+          ></span>
+          <button
+            v-if="editingPaneId !== tab.paneId"
+            class="tab-close"
+            @click.stop="$emit('close', tab.paneId)"
+            @touchend.stop.prevent="$emit('close', tab.paneId)"
+          >
+            <X :size="10" />
+          </button>
         </div>
-        <div class="new-menu-sep" />
+      </div>
+    </template>
+    <div class="tab-bar-tools">
+      <slot name="left" />
+      <div ref="newMenuWrapRef" class="new-tab-split">
+        <button
+          id="tab-new-btn"
+          :title="`${t('keybinding.newTab')} (${kbdNewTab})`"
+          @click="newMenuOpen = !newMenuOpen"
+          @touchend.prevent="newMenuOpen = !newMenuOpen"
+        >
+          <Terminal :size="16" />
+        </button>
         <div
-          class="new-menu-item"
-          @click="emitAction('split-h')"
-          @touchend.prevent="emitAction('split-h')"
+          v-if="newMenuOpen"
+          class="new-menu-dropdown"
+          :class="{ 'align-right': newMenuAlignRight, 'overflow-flip': newMenuOverflowFlip }"
         >
-          <Columns2 :size="14" class="new-menu-icon" />
-          <span class="new-menu-label">{{ t('keybinding.splitHorizontal') }}</span>
-          <kbd class="new-menu-kbd">{{ kbdSplitH }}</kbd>
-        </div>
-        <div
-          class="new-menu-item"
-          @click="emitAction('split-v')"
-          @touchend.prevent="emitAction('split-v')"
-        >
-          <Rows2 :size="14" class="new-menu-icon" />
-          <span class="new-menu-label">{{ t('keybinding.splitVertical') }}</span>
-          <kbd class="new-menu-kbd">{{ kbdSplitV }}</kbd>
-        </div>
-        <template v-if="canBroadcast">
+          <div
+            class="new-menu-item"
+            @click="emitAction('new-tab')"
+            @touchend.prevent="emitAction('new-tab')"
+          >
+            <Terminal :size="14" class="new-menu-icon" />
+            <span class="new-menu-label">{{ t('keybinding.newTab') }}</span>
+            <kbd class="new-menu-kbd">{{ kbdNewTab }}</kbd>
+          </div>
           <div class="new-menu-sep" />
           <div
             class="new-menu-item"
-            @click="emitAction('broadcast')"
-            @touchend.prevent="emitAction('broadcast')"
+            @click="emitAction('split-h')"
+            @touchend.prevent="emitAction('split-h')"
           >
-            <Radio :size="14" class="new-menu-icon" />
-            <span class="new-menu-label">{{ t('split.toggleBroadcast') }}</span>
-            <kbd class="new-menu-kbd">{{ kbdBroadcast }}</kbd>
+            <Columns2 :size="14" class="new-menu-icon" />
+            <span class="new-menu-label">{{ t('keybinding.splitHorizontal') }}</span>
+            <kbd class="new-menu-kbd">{{ kbdSplitH }}</kbd>
           </div>
-          <div v-if="broadcastActive" class="new-menu-status">{{ t('split.broadcastActive') }}</div>
-        </template>
-        <div class="new-menu-sep" />
-        <div
-          class="new-menu-item"
-          @click="emitAction('ssh-connect')"
-          @touchend.prevent="emitAction('ssh-connect')"
-        >
-          <Globe :size="14" class="new-menu-icon" />
-          <span class="new-menu-label">{{ t('palette.sshConnect') }}</span>
-          <kbd class="new-menu-kbd">{{ kbdSshConnect }}</kbd>
-        </div>
-        <div class="new-menu-sep" />
-        <div
-          class="new-menu-item"
-          @click="$emit('apply-template')"
-          @touchend.prevent="$emit('apply-template')"
-        >
-          <LayoutTemplate :size="14" class="new-menu-icon" />
-          <span class="new-menu-label">{{ t('palette.fromTemplate') }}</span>
-        </div>
-      </div>
-    </div>
-    <div v-if="plugins.length > 0 && toolbarPlugins.length > 0" class="tab-bar-plugin-wrap" ref="pluginWrapRef">
-      <button
-        type="button"
-        class="tab-bar-icon-btn"
-        title="Plugins"
-        @click="pluginMenuOpen = !pluginMenuOpen"
-        @touchend.prevent="pluginMenuOpen = !pluginMenuOpen"
-      >
-        <Puzzle :size="16" />
-      </button>
-      <div v-if="pluginMenuOpen" class="plugin-dropdown">
-        <div v-if="toolbarPlugins.length === 0" class="plugin-dropdown-empty">
-          {{ t('plugin.toolbarEmpty') }}
-        </div>
-        <template v-for="group in toolbarPluginGroups" :key="group.category">
-          <div v-if="group.items.length > 0" class="plugin-dropdown-group">
-            <div class="plugin-dropdown-group-title">{{ group.label }}</div>
+          <div
+            class="new-menu-item"
+            @click="emitAction('split-v')"
+            @touchend.prevent="emitAction('split-v')"
+          >
+            <Rows2 :size="14" class="new-menu-icon" />
+            <span class="new-menu-label">{{ t('keybinding.splitVertical') }}</span>
+            <kbd class="new-menu-kbd">{{ kbdSplitV }}</kbd>
+          </div>
+          <template v-if="canBroadcast">
+            <div class="new-menu-sep" />
             <div
-              v-for="p in group.items"
-              :key="p.id"
-              class="plugin-dropdown-item"
-              @click="
-                $emit('open-plugin', p.id);
-                pluginMenuOpen = false;
-              "
-              @touchend.prevent="
-                $emit('open-plugin', p.id);
-                pluginMenuOpen = false;
-              "
+              class="new-menu-item"
+              @click="emitAction('broadcast')"
+              @touchend.prevent="emitAction('broadcast')"
             >
-              <span class="plugin-dropdown-name">{{ p.name }}</span>
-              <span v-if="p.description" class="plugin-dropdown-desc">{{ p.description }}</span>
+              <Radio :size="14" class="new-menu-icon" />
+              <span class="new-menu-label">{{ t('split.toggleBroadcast') }}</span>
+              <kbd class="new-menu-kbd">{{ kbdBroadcast }}</kbd>
             </div>
+            <div v-if="broadcastActive" class="new-menu-status">
+              {{ t('split.broadcastActive') }}
+            </div>
+          </template>
+          <div class="new-menu-sep" />
+          <div
+            class="new-menu-item"
+            @click="emitAction('ssh-connect')"
+            @touchend.prevent="emitAction('ssh-connect')"
+          >
+            <Globe :size="14" class="new-menu-icon" />
+            <span class="new-menu-label">{{ t('palette.sshConnect') }}</span>
+            <kbd class="new-menu-kbd">{{ kbdSshConnect }}</kbd>
           </div>
-        </template>
+          <div class="new-menu-sep" />
+          <div
+            class="new-menu-item"
+            @click="$emit('apply-template')"
+            @touchend.prevent="$emit('apply-template')"
+          >
+            <LayoutTemplate :size="14" class="new-menu-icon" />
+            <span class="new-menu-label">{{ t('palette.fromTemplate') }}</span>
+            <kbd class="new-menu-kbd">{{ kbdApplyTemplate }}</kbd>
+          </div>
+        </div>
       </div>
+      <div
+        v-if="plugins.length > 0 && toolbarPlugins.length > 0"
+        ref="pluginWrapRef"
+        class="tab-bar-plugin-wrap"
+      >
+        <button
+          type="button"
+          class="tab-bar-icon-btn"
+          title="Plugins"
+          @click="pluginMenuOpen = !pluginMenuOpen"
+          @touchend.prevent="pluginMenuOpen = !pluginMenuOpen"
+        >
+          <Puzzle :size="16" />
+        </button>
+        <div
+          v-if="pluginMenuOpen"
+          class="plugin-dropdown"
+          :class="{ 'overflow-flip': pluginMenuOverflowFlip }"
+        >
+          <div v-if="toolbarPlugins.length === 0" class="plugin-dropdown-empty">
+            {{ t('plugin.toolbarEmpty') }}
+          </div>
+          <template v-for="group in toolbarPluginGroups" :key="group.category">
+            <div v-if="group.items.length > 0" class="plugin-dropdown-group">
+              <div class="plugin-dropdown-group-title">{{ group.label }}</div>
+              <div
+                v-for="p in group.items"
+                :key="p.id"
+                class="plugin-dropdown-item"
+                @click="openPlugin(p.id)"
+                @touchend.prevent="openPlugin(p.id)"
+              >
+                <span class="plugin-dropdown-name">{{ p.name }}</span>
+                <span v-if="p.description" class="plugin-dropdown-desc">{{ p.description }}</span>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+      <slot name="right"></slot>
     </div>
-    <slot name="right"></slot>
+    <div
+      v-if="isVertical"
+      class="tab-sidebar-resizer"
+      :class="{ 'is-dragging': resizing }"
+      role="separator"
+      aria-orientation="vertical"
+      :title="t('settings.tabPlacement.resizeHint')"
+      @mousedown.prevent="onResizeMouseDown"
+      @touchstart.prevent="onResizeTouchStart"
+      @dblclick="resetSidebarWidth"
+    ></div>
   </div>
   <ContextMenu
     :visible="ctxVisible"
@@ -249,6 +267,8 @@ import {
   Square,
   Save,
   LayoutTemplate,
+  ClipboardCopy,
+  Copy,
 } from 'lucide-vue-next'
 import { useI18n } from '../../composables/useI18n'
 import { useKeybindings } from '../../composables/useKeybindings'
@@ -260,15 +280,21 @@ import WorkspaceBadge from '../WorkspaceBadge.vue'
 import ContextMenu from '../ui/ContextMenu.vue'
 import type { ContextMenuItem } from '../ui/ContextMenu.vue'
 import { useTabDrag } from '../../composables/useTabDrag'
+import { SIDEBAR_WIDTH_DEFAULT, useTabPlacement } from '../../composables/useTabPlacement'
+import { copyToClipboard } from '../../utils/clipboard'
+import { useToast } from 'vue-toastification'
+import { resolveResponsiveToastPosition } from '../../utils/toastPosition'
 
 const { t } = useI18n()
 const { getBinding, formatBinding } = useKeybindings()
 const settingsStore = useSettingsStore()
+const toast = useToast()
 const kbdNewTab = formatBinding(getBinding('newTab')).join('')
 const kbdSplitH = formatBinding(getBinding('splitHorizontal')).join('')
 const kbdSplitV = formatBinding(getBinding('splitVertical')).join('')
 const kbdBroadcast = formatBinding(getBinding('toggleBroadcast')).join('')
 const kbdSshConnect = formatBinding(getBinding('sshConnect')).join('')
+const kbdApplyTemplate = formatBinding(getBinding('applyTemplate')).join('')
 
 export interface TabInfo {
   paneId: string
@@ -276,6 +302,10 @@ export interface TabInfo {
   index: number
   type: 'terminal' | 'plugin'
   shellType?: string // "ssh" for SSH tabs
+  /** True when the tab has exactly one pane (tab_id === pane_id ambiguous). */
+  singlePane?: boolean
+  /** Pane id when `singlePane`, so users can copy either tab id or pane id. */
+  singlePaneId?: string
   workspace?: {
     id: string
     abbr?: string
@@ -339,7 +369,8 @@ const toolbarPlugins = computed(() => {
 const toolbarPluginGroups = computed(() => {
   const groups = new Map<string, PluginInfo[]>()
   for (const p of toolbarPlugins.value) {
-    const cat = p.category && PLUGIN_CATEGORY_ORDER.includes(p.category as any) ? p.category : 'other'
+    const cat =
+      p.category && PLUGIN_CATEGORY_ORDER.includes(p.category as any) ? p.category : 'other'
     if (!groups.has(cat)) groups.set(cat, [])
     groups.get(cat)!.push(p)
   }
@@ -358,16 +389,13 @@ const currentWorkspace = computed(() => {
 const emit = defineEmits<{
   activate: [paneId: string]
   close: [paneId: string]
-  action: [
-    type:
-      | 'new-tab'
-      | 'split-h'
-      | 'split-v'
-      | 'broadcast'
-      | 'ssh-connect',
-  ]
+  action: [type: 'new-tab' | 'split-h' | 'split-v' | 'broadcast' | 'ssh-connect']
   reorder: [fromId: string, toId: string]
-  'merge-tab-into-pane': [srcTabId: string, targetPaneId: string, direction: 'left' | 'right' | 'top' | 'bottom']
+  'merge-tab-into-pane': [
+    srcTabId: string,
+    targetPaneId: string,
+    direction: 'left' | 'right' | 'top' | 'bottom',
+  ]
   'open-plugin': [pluginId: string]
   rename: [paneId: string, title: string]
   'open-overview': []
@@ -384,18 +412,35 @@ const ctxX = ref(0)
 const ctxY = ref(0)
 const ctxItems = ref<ContextMenuItem[]>([])
 
+// ── Placement (device-scoped) ────────────────────────────────
+const placementState = useTabPlacement()
+const isVertical = placementState.isVertical
+const placementClass = computed(() => [
+  `placement-${placementState.mode.value}`,
+  { 'is-vertical': isVertical.value },
+])
+
 function updateFades() {
   const tabsList = tabsListRef.value
   if (!tabsList) return
 
-  const { scrollLeft, scrollWidth, clientWidth } = tabsList
-  fadeStart.value = scrollLeft > 1
-  fadeEnd.value = scrollLeft + clientWidth < scrollWidth - 1
+  const [offset, total, viewport] = isVertical.value
+    ? [tabsList.scrollTop, tabsList.scrollHeight, tabsList.clientHeight]
+    : [tabsList.scrollLeft, tabsList.scrollWidth, tabsList.clientWidth]
+  fadeStart.value = offset > 1
+  fadeEnd.value = offset + viewport < total - 1
 }
 
 function onTabsWheel(e: WheelEvent) {
   const tabsList = tabsListRef.value
   if (!tabsList) return
+  const vertical = isVertical.value
+  // Vertical mode already scrolls natively on the wheel axis; only the
+  // horizontal bar needs the cross-axis remap.
+  if (vertical) {
+    updateFades()
+    return
+  }
   if (tabsList.scrollWidth <= tabsList.clientWidth) return
   let deltaX = e.deltaX
   let deltaY = e.deltaY
@@ -420,6 +465,19 @@ watch(
   }
 )
 
+// Switching the axis changes which scroll metrics matter, and the browser
+// keeps the old scroll offset on the now-unused axis.
+watch(isVertical, () => {
+  nextTick(() => {
+    const tabsList = tabsListRef.value
+    if (tabsList) {
+      tabsList.scrollLeft = 0
+      tabsList.scrollTop = 0
+    }
+    updateFades()
+  })
+})
+
 watch(
   tabsListRef,
   (tabsList, previousTabsList) => {
@@ -429,7 +487,7 @@ watch(
     tabsList?.addEventListener('wheel', onTabsWheel, { passive: false })
     nextTick(updateFades)
   },
-  { immediate: true },
+  { immediate: true }
 )
 
 onMounted(() => {
@@ -437,8 +495,9 @@ onMounted(() => {
 })
 
 function findTabElement(paneId: string): HTMLElement | undefined {
-  return Array.from(tabsListRef.value?.querySelectorAll<HTMLElement>('.tab[data-pane-id]') ?? [])
-    .find((tab) => tab.dataset.paneId === paneId)
+  return Array.from(
+    tabsListRef.value?.querySelectorAll<HTMLElement>('.tab[data-pane-id]') ?? []
+  ).find((tab) => tab.dataset.paneId === paneId)
 }
 
 function hasTab(paneId: string): boolean {
@@ -494,10 +553,13 @@ function openTabCtx(e: MouseEvent, tab: TabInfo) {
         title: label,
         confirmText: t('overview.closeTabsConfirm'),
         cancelText: t('filePreview.cancel'),
-      },
+      }
     )
     if (!ok) return
-    emit('close-tabs', targets.map((x) => x.paneId))
+    emit(
+      'close-tabs',
+      targets.map((x) => x.paneId)
+    )
   }
 
   function currentSideTabs(side: 'left' | 'right'): TabInfo[] | null {
@@ -519,10 +581,11 @@ function openTabCtx(e: MouseEvent, tab: TabInfo) {
       label: closeWorkspaceLabel,
       icon: Layers,
       disabled: workspaceTabs.length === 0,
-      action: () => confirmCloseTabs(
-        closeWorkspaceLabel,
-        props.tabs.filter((t) => t.type !== 'plugin'),
-      ),
+      action: () =>
+        confirmCloseTabs(
+          closeWorkspaceLabel,
+          props.tabs.filter((t) => t.type !== 'plugin')
+        ),
     },
     {
       label: closeLeftLabel,
@@ -551,6 +614,28 @@ function openTabCtx(e: MouseEvent, tab: TabInfo) {
       action: () => emit('save-as-template', tab.paneId),
     },
     {
+      label: t('overview.copyTabId'),
+      icon: ClipboardCopy,
+      action: () => {
+        void copyToClipboard(tab.paneId)
+        toast.success(t('overview.tabIdCopied'), { position: resolveResponsiveToastPosition() })
+      },
+    },
+    ...(tab.singlePane && tab.singlePaneId
+      ? [
+          {
+            label: t('overview.copyPaneId'),
+            icon: Copy,
+            action: () => {
+              void copyToClipboard(tab.singlePaneId!)
+              toast.success(t('overview.paneIdCopied'), {
+                position: resolveResponsiveToastPosition(),
+              })
+            },
+          },
+        ]
+      : []),
+    {
       label: t('overview.closeTab'),
       icon: Square,
       danger: true,
@@ -578,15 +663,29 @@ const pluginWrapRef = ref<HTMLElement>()
 const newMenuOpen = ref(false)
 const newMenuAlignRight = ref(false)
 const newMenuWrapRef = ref<HTMLElement>()
+// Vertical only: true when the sideways menu has no room outside the sidebar
+// and must overlap it instead of hanging off the viewport edge.
+const newMenuOverflowFlip = ref(false)
+const pluginMenuOverflowFlip = ref(false)
 
-function emitAction(
-  type:
-    | 'new-tab'
-    | 'split-h'
-    | 'split-v'
-    | 'broadcast'
-    | 'ssh-connect'
-) {
+const NEW_MENU_WIDTH = 220
+const PLUGIN_MENU_WIDTH = 260
+
+/**
+ * Decides whether a sideways-opening menu fits outside the sidebar. The menu is
+ * anchored to the bar, not to its 30px button, so the bar's inner edge is what
+ * decides: left-docked menus grow rightward from it, right-docked ones grow
+ * leftward, and each checks the viewport edge it is heading toward.
+ */
+function sideMenuOverflows(wrap: HTMLElement, width: number): boolean {
+  const bar = wrap.closest('#tab-bar')
+  const rect = (bar ?? wrap).getBoundingClientRect()
+  return placementState.mode.value === 'right'
+    ? rect.left - width < 0
+    : rect.right + width > window.innerWidth
+}
+
+function emitAction(type: 'new-tab' | 'split-h' | 'split-v' | 'broadcast' | 'ssh-connect') {
   emit('action', type)
   newMenuOpen.value = false
 }
@@ -598,6 +697,11 @@ function onDocTouchStart(e: TouchEvent) {
   if (newMenuWrapRef.value && !newMenuWrapRef.value.contains(e.target as Node)) {
     newMenuOpen.value = false
   }
+}
+
+function openPlugin(pluginId: string) {
+  emit('open-plugin', pluginId)
+  pluginMenuOpen.value = false
 }
 
 function onDocMenuMouseDown(e: MouseEvent) {
@@ -620,13 +724,102 @@ watch([pluginMenuOpen, newMenuOpen], ([pluginOpen, newOpen]) => {
   if (newOpen) {
     nextTick(() => {
       const wrap = newMenuWrapRef.value
-      if (wrap) {
-        const rect = wrap.getBoundingClientRect()
-        newMenuAlignRight.value = rect.right + 220 > window.innerWidth
-      }
+      if (!wrap) return
+      const rect = wrap.getBoundingClientRect()
+      newMenuAlignRight.value = rect.right + NEW_MENU_WIDTH > window.innerWidth
+      newMenuOverflowFlip.value = isVertical.value && sideMenuOverflows(wrap, NEW_MENU_WIDTH)
+    })
+  }
+  if (pluginOpen) {
+    nextTick(() => {
+      const wrap = pluginWrapRef.value
+      if (!wrap) return
+      pluginMenuOverflowFlip.value = isVertical.value && sideMenuOverflows(wrap, PLUGIN_MENU_WIDTH)
     })
   }
 })
+
+// ── Sidebar width drag (vertical placements only) ────────────
+const resizing = ref(false)
+let stopResize: (() => void) | null = null
+
+function pointerX(e: MouseEvent | TouchEvent): number | null {
+  if ('touches' in e) return e.touches[0]?.clientX ?? null
+  return e.clientX
+}
+
+/**
+ * Drives --tab-sidebar-width live while dragging. The width is measured from
+ * the viewport edge the bar is docked to, so `right` placement mirrors the
+ * delta. Clamping lives in useTabPlacement so a stored value and a dragged one
+ * settle on the same bounds.
+ */
+function startSidebarResize(e: MouseEvent | TouchEvent) {
+  if (!isVertical.value || resizing.value) return
+  const bar = (e.currentTarget as HTMLElement | null)?.closest('#tab-bar') as HTMLElement | null
+  if (!bar) return
+
+  const isTouch = 'touches' in e
+  const dockRight = placementState.mode.value === 'right'
+  resizing.value = true
+
+  // A full-screen overlay keeps the pointer stream from being stolen by the
+  // terminal or a plugin iframe mid-drag.
+  const overlay = isTouch
+    ? null
+    : (() => {
+        const d = document.createElement('div')
+        d.style.cssText = 'position:fixed;inset:0;z-index:9999;cursor:col-resize;'
+        document.body.appendChild(d)
+        return d
+      })()
+
+  const onMove = (ev: MouseEvent | TouchEvent) => {
+    if ('touches' in ev) ev.preventDefault()
+    const x = pointerX(ev)
+    if (x === null) return
+    const rect = bar.getBoundingClientRect()
+    placementState.setSidebarWidth(dockRight ? rect.right - x : x - rect.left)
+  }
+
+  const moveEvent = isTouch ? 'touchmove' : 'mousemove'
+  const endEvent = isTouch ? 'touchend' : 'mouseup'
+
+  const onEnd = () => {
+    if (!resizing.value) return
+    resizing.value = false
+    overlay?.remove()
+    window.removeEventListener(moveEvent, onMove as EventListener)
+    window.removeEventListener(endEvent, onEnd)
+    window.removeEventListener('touchcancel', onEnd)
+    stopResize = null
+    // Nudge xterm's ResizeObserver in case the flex reflow landed in the same frame.
+    window.dispatchEvent(new Event('resize'))
+    updateFades()
+  }
+
+  stopResize = onEnd
+  window.addEventListener(
+    moveEvent,
+    onMove as EventListener,
+    { passive: !isTouch } as AddEventListenerOptions
+  )
+  window.addEventListener(endEvent, onEnd)
+  window.addEventListener('touchcancel', onEnd)
+}
+
+function onResizeMouseDown(e: MouseEvent) {
+  startSidebarResize(e)
+}
+
+function onResizeTouchStart(e: TouchEvent) {
+  startSidebarResize(e)
+}
+
+function resetSidebarWidth() {
+  placementState.setSidebarWidth(SIDEBAR_WIDTH_DEFAULT)
+  window.dispatchEvent(new Event('resize'))
+}
 
 const drag = usePaneDrag()
 
@@ -652,6 +845,7 @@ defineExpose({ hasTab, scrollTabIntoView })
 
 onBeforeUnmount(() => {
   cleanupDrag()
+  stopResize?.()
   tabsListRef.value?.removeEventListener('scroll', updateFades)
   tabsListRef.value?.removeEventListener('wheel', onTabsWheel)
   window.removeEventListener('resize', updateFades)
@@ -737,6 +931,14 @@ onBeforeUnmount(() => {
 .tab.drag-over {
   border-left: 2px solid var(--accent, #8a8a8a);
 }
+/* Stacked rows insert above, not to the left. */
+.is-vertical .tab.drag-over {
+  border-left: none;
+  border-top: 2px solid var(--accent, #8a8a8a);
+}
+.is-vertical .tab-title-input {
+  max-width: none;
+}
 .tab-notif-dot {
   width: 7px;
   height: 7px;
@@ -773,6 +975,12 @@ onBeforeUnmount(() => {
   position: relative;
   flex-shrink: 0;
 }
+/* Vertically the wrapper is a 30px square in the control grid, so anchoring the
+ * menu to it would open it mid-sidebar. Going static hands the containing block
+ * to #tab-bar (already position: relative), i.e. the sidebar's own edges. */
+.is-vertical .tab-bar-plugin-wrap {
+  position: static;
+}
 .plugin-dropdown {
   position: absolute;
   top: 100%;
@@ -786,6 +994,35 @@ onBeforeUnmount(() => {
   padding: 4px 0;
   z-index: 500;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+/* Both menus hang downward from the bar by default. In the other three
+ * placements that puts them past the viewport edge, so flip them against
+ * whichever edge the bar is docked to. */
+.placement-bottom .plugin-dropdown {
+  top: auto;
+  bottom: 100%;
+}
+/* The vertical controls live at the very bottom of the sidebar, so a menu that
+ * grows downward from its button falls off screen. Pin it to the bar's bottom
+ * edge and let it grow upward, capped at the viewport on both axes. */
+.is-vertical .plugin-dropdown {
+  top: auto;
+  bottom: 0;
+  /* The containing block is the sidebar, so 100% is exactly the room above the
+   * anchored bottom edge — the menu can never exceed the bar's own height. */
+  max-height: 100%;
+  overflow-y: auto;
+  /* min-width would win over max-width and reintroduce the overflow. */
+  min-width: 0;
+  max-width: min(260px, calc(100vw - var(--tab-sidebar-width, 180px) - 16px));
+}
+.placement-left .plugin-dropdown {
+  left: 100%;
+  right: auto;
+}
+.placement-right .plugin-dropdown {
+  right: 100%;
+  left: auto;
 }
 .plugin-dropdown-empty {
   padding: 8px 12px;
@@ -830,6 +1067,10 @@ onBeforeUnmount(() => {
   position: relative;
   flex-shrink: 0;
 }
+/* Same reason as .tab-bar-plugin-wrap: anchor to the sidebar, not the square. */
+.is-vertical .new-tab-split {
+  position: static;
+}
 .new-menu-dropdown {
   position: absolute;
   top: 100%;
@@ -845,6 +1086,51 @@ onBeforeUnmount(() => {
 .new-menu-dropdown.align-right {
   left: auto;
   right: 0;
+}
+.placement-bottom .new-menu-dropdown {
+  top: auto;
+  bottom: 100%;
+}
+/* Same containment as the plugin menu: anchored to the sidebar's bottom edge,
+ * growing upward, capped at the viewport rather than running past it. */
+.is-vertical .new-menu-dropdown {
+  top: auto;
+  bottom: 0;
+  max-height: 100%;
+  overflow-y: auto;
+  min-width: 0;
+  max-width: min(220px, calc(100vw - var(--tab-sidebar-width, 180px) - 16px));
+}
+/* The sideways flip wins over .align-right, whose viewport probe only knows
+   about the horizontal bar. */
+.placement-left .new-menu-dropdown,
+.placement-left .new-menu-dropdown.align-right {
+  left: 100%;
+  right: auto;
+}
+.placement-right .new-menu-dropdown,
+.placement-right .new-menu-dropdown.align-right {
+  right: 100%;
+  left: auto;
+}
+/* No room on the outside of the sidebar (narrow window, wide sidebar): overlap
+ * the sidebar instead of hanging off the screen. Last in the cascade so it
+ * beats the sideways rules above at equal specificity. */
+.placement-left .new-menu-dropdown.overflow-flip {
+  left: auto;
+  right: 0;
+}
+.placement-right .new-menu-dropdown.overflow-flip {
+  right: auto;
+  left: 0;
+}
+.placement-left .plugin-dropdown.overflow-flip {
+  left: auto;
+  right: 0;
+}
+.placement-right .plugin-dropdown.overflow-flip {
+  right: auto;
+  left: 0;
 }
 .new-menu-item {
   display: flex;

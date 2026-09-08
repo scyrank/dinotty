@@ -1,4 +1,4 @@
-import { reactive, readonly, ref, watch } from 'vue'
+import { computed, reactive, readonly, ref, watch, type WritableComputedRef } from 'vue'
 import { applyThemeToDOM, getXtermTheme } from '../themes'
 import { getApiBase, apiUrl, authFetch, hasAuthToken } from './apiBase'
 import { resolveEffectiveTheme } from './useDeviceThemeSelection'
@@ -8,10 +8,56 @@ import type { KeyboardGuardMode } from '../utils/keyboardGuardMode'
 import type { KeyBinding } from './useKeybindings'
 import type { SavedTheme } from './useDeviceThemeSelection'
 export type WorkspaceBadgeMode = 'off' | 'tab' | 'icon' | 'both'
-export type MobileInputMode = 'builtin' | 'system'
+/** 'builtin' | 'system' 为宿主键盘；其余字符串为键盘插件 id（keyboard-plugin-design.md §3.2C） */
+export type MobileInputMode = 'builtin' | 'system' | (string & {})
 export type SystemToolbarMode = 'follow_ime' | 'persistent_mobile'
 export type CloseWindowBehavior = 'ask' | 'hide_to_tray' | 'quit'
 export const SETTINGS_SCHEMA_VERSION = 13
+export const IME_KEYBOARD_OVERLAP_MIN = 0
+export const IME_KEYBOARD_OVERLAP_MAX = 300
+
+const LEGACY_DEVICE_KEYBOARD_V1 = 'dinotty.device-keyboard.v1'
+const LEGACY_DEVICE_KEYBOARD_V2 = 'dinotty.device-keyboard.v2'
+
+function normalizeImeKeyboardOverlapPx(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
+  return Math.round(Math.max(IME_KEYBOARD_OVERLAP_MIN, Math.min(IME_KEYBOARD_OVERLAP_MAX, value)))
+}
+
+function readLegacyImeKeyboardOverlapPx(): number | undefined {
+  if (typeof window === 'undefined') return undefined
+  for (const [key, version] of [
+    [LEGACY_DEVICE_KEYBOARD_V2, 2],
+    [LEGACY_DEVICE_KEYBOARD_V1, 1],
+  ] as const) {
+    let raw: string | null
+    try {
+      raw = window.localStorage.getItem(key)
+    } catch {
+      return undefined
+    }
+    if (raw === null) continue
+    try {
+      const parsed = JSON.parse(raw) as {
+        version?: unknown
+        settings?: { ime_keyboard_overlap_px?: unknown }
+      }
+      if (parsed.version !== version || typeof parsed.settings !== 'object') return undefined
+      return normalizeImeKeyboardOverlapPx(parsed.settings.ime_keyboard_overlap_px)
+    } catch {
+      return undefined
+    }
+  }
+  return undefined
+}
+
+function clearLegacyImeKeyboardOverlapPx() {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.removeItem(LEGACY_DEVICE_KEYBOARD_V1)
+    window.localStorage.removeItem(LEGACY_DEVICE_KEYBOARD_V2)
+  } catch {}
+}
 
 export interface SettingsData {
   settings_version: number
@@ -60,6 +106,7 @@ export interface SettingsData {
   show_virtual_keyboard: boolean
   mobile_input_mode: MobileInputMode | null
   keyboard_guard_mode: KeyboardGuardMode
+  ime_keyboard_overlap_px: number | null
   workspace_badge_mode: WorkspaceBadgeMode | null
   confirm_before_close_tab: boolean
   close_window_behavior: CloseWindowBehavior
@@ -76,6 +123,7 @@ export interface SettingsData {
   monitor: MonitorConfig
   notification: NotificationConfig
   open_api: OpenApiConfig
+  mcp: McpConfig
   auth_token?: string
   ip_whitelist: string[]
   auth: {
@@ -101,6 +149,11 @@ export interface OpenApiConfig {
   enabled: boolean
 }
 
+export interface McpConfig {
+  http_enabled: boolean
+  stdio_enabled: boolean
+}
+
 export interface LogConfig {
   enabled: boolean
   path: string
@@ -111,6 +164,7 @@ export interface NotificationConfig {
   enabled: boolean
   bell: { enabled: boolean; debounce_ms: number }
   osc_notify: boolean
+  osc_notify_debounce_ms: number
   idle_reminder: boolean
   command_complete: { enabled: boolean; threshold_seconds: number }
   keyword_match: { pattern: string; notification_type: string; case_sensitive: boolean }[]
@@ -201,7 +255,13 @@ export interface RecentEntry {
 
 export interface PluginPrefsConfig {
   hidden_toolbar: string[]
+  /** Overlay ids the user has turned off in the plugin tab (persistent). */
+  hidden_overlays: string[]
   show_incompatible: boolean
+  /** Per-plugin open mode for component plugins; absent key = 'tab'. */
+  open_modes?: Record<string, 'tab' | 'floating' | 'pane'>
+  /** Per-plugin floating-window opacity (0.3–1); absent key = fully opaque. */
+  float_opacity?: Record<string, number>
 }
 
 export interface ActionKey {
@@ -453,7 +513,13 @@ export const settings = reactive<SettingsData>({
   theme: { preset: 'dark', custom: null },
   custom_themes: [],
   hidden_builtins: [],
-  plugin_prefs: { hidden_toolbar: [], show_incompatible: false },
+  plugin_prefs: {
+    hidden_toolbar: [],
+    hidden_overlays: [],
+    show_incompatible: false,
+    open_modes: {},
+    float_opacity: {},
+  },
   background: { mode: 'solid', color: null, opacity: 1.0, has_image: false },
   text: {
     font_size: 14,
@@ -488,6 +554,7 @@ export const settings = reactive<SettingsData>({
   show_virtual_keyboard: false,
   mobile_input_mode: null,
   keyboard_guard_mode: 'off',
+  ime_keyboard_overlap_px: null,
   workspace_badge_mode: null,
   confirm_before_close_tab: true,
   close_window_behavior: 'ask',
@@ -513,6 +580,7 @@ export const settings = reactive<SettingsData>({
     enabled: true,
     bell: { enabled: true, debounce_ms: 300 },
     osc_notify: true,
+    osc_notify_debounce_ms: 2000,
     idle_reminder: false,
     command_complete: { enabled: false, threshold_seconds: 10 },
     keyword_match: [],
@@ -534,6 +602,10 @@ export const settings = reactive<SettingsData>({
   },
   open_api: {
     enabled: false,
+  },
+  mcp: {
+    http_enabled: true,
+    stdio_enabled: false,
   },
   ip_whitelist: ['127.0.0.1', '::1'],
   auth: {
@@ -557,6 +629,14 @@ export const settings = reactive<SettingsData>({
     max_size_mb: 50,
   },
   ssh_profiles: [],
+})
+
+export const imeKeyboardOverlapPx: WritableComputedRef<number> = computed({
+  get: () => settings.ime_keyboard_overlap_px ?? IME_KEYBOARD_OVERLAP_MIN,
+  set: (value: unknown) => {
+    const normalized = normalizeImeKeyboardOverlapPx(value)
+    if (normalized !== undefined) settings.ime_keyboard_overlap_px = normalized
+  },
 })
 
 let loaded = false
@@ -665,8 +745,27 @@ export async function loadSettings() {
           settings.system_keyboard_user_default
         )
       }
+      let shouldSeedOverlap = false
+      if (Object.prototype.hasOwnProperty.call(data, 'ime_keyboard_overlap_px')) {
+        if (settings.ime_keyboard_overlap_px == null) {
+          const legacyOverlap = readLegacyImeKeyboardOverlapPx()
+          if (legacyOverlap !== undefined) {
+            settings.ime_keyboard_overlap_px = legacyOverlap
+            shouldSeedOverlap = true
+          }
+        } else {
+          settings.ime_keyboard_overlap_px =
+            normalizeImeKeyboardOverlapPx(settings.ime_keyboard_overlap_px) ??
+            IME_KEYBOARD_OVERLAP_MIN
+          clearLegacyImeKeyboardOverlapPx()
+        }
+      }
       applyCurrentTheme()
       settingsLoadedState.value = true
+      // Keep the local value until a later successful GET observes a non-null
+      // server value. saveSettings currently logs failed PUTs without rejecting,
+      // so deleting here would risk losing the only recoverable migration source.
+      if (shouldSeedOverlap) void saveSettings()
     }
   } catch (e) {
     console.error('[settings] load failed:', e)
