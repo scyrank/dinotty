@@ -22,7 +22,11 @@
         :exit="{ scale: 0.9, opacity: 0 }"
         :transition="{ type: 'spring', damping: 25, stiffness: 300 }"
       >
-        <button class="mc-close-btn" @click="$emit('close')" :title="t('keybinding.closeTab') + ' (Esc)'">
+        <button
+          class="mc-close-btn"
+          :title="t('keybinding.closeTab') + ' (Esc)'"
+          @click="$emit('close')"
+        >
           <X :size="18" />
         </button>
         <WorkspaceList
@@ -58,7 +62,7 @@
   <CreateWorkspaceDialog
     :visible="showCreateDialog || !!renamingWorkspace"
     :workspace="renamingWorkspace"
-    @close="showCreateDialog = false; renamingWorkspace = null"
+    @close="closeCreateDialog"
     @created="onWorkspaceCreated"
   />
 </template>
@@ -98,13 +102,8 @@ const emit = defineEmits<{
   'rename-tab': [paneId: string, title: string]
 }>()
 
-const {
-  workspaces,
-  defaultWorkspace,
-  activeWorkspaceId,
-  matchWorkspace,
-  deleteWorkspace,
-} = useWorkspaces()
+const { workspaces, defaultWorkspace, activeWorkspaceId, matchWorkspace, deleteWorkspace } =
+  useWorkspaces()
 const { t } = useI18n()
 const session = useSessionStore()
 const tabPreview = useTabPreview()
@@ -116,7 +115,6 @@ const tabOverviewRef = ref<InstanceType<typeof TabOverview> | null>(null)
 const showCreateDialog = ref(false)
 const renamingWorkspace = ref<Workspace | null>(null)
 const switchDirection = ref<'left' | 'right'>('right')
-
 
 // Selected workspace derives from the global MC state. `null` selected_workspace_id
 // means the default workspace (`__default__`). Local mutation is intentionally
@@ -145,6 +143,10 @@ watch(
       closing.value = true
     }
   },
+  // immediate: the component lazy-mounts with visible already true on the
+  // first open, and a non-immediate watcher never fires for that initial
+  // value - so without this the first-open grid would stay empty.
+  { immediate: true }
 )
 
 // Update cards when tabs change while open (debounced)
@@ -155,9 +157,9 @@ watch(
     if (!props.visible) return
     clearTimeout(tabChangeTimer)
     tabChangeTimer = window.setTimeout(() => {
-          allCards.value = tabPreview.captureAll(session.tabs, props.termRefs)
+      allCards.value = tabPreview.captureAll(session.tabs, props.termRefs)
     }, 100)
-  },
+  }
 )
 
 // Build tab→workspace mapping
@@ -173,7 +175,11 @@ const tabCounts = computed(() => {
   }
   for (const tab of session.tabs) {
     if (tab.type !== 'terminal') continue
-    const ws = matchWorkspace(tab.cwd ?? '', tab.connectionId, tab.type === 'terminal' ? tab.workspaceId : undefined)
+    const ws = matchWorkspace(
+      tab.cwd ?? '',
+      tab.connectionId,
+      tab.type === 'terminal' ? tab.workspaceId : undefined
+    )
     // Unmatched terminal tabs belong to the default workspace - this is
     // the case when default_workspace_root is unset or the tab's cwd
     // doesn't fall under any configured workspace path.
@@ -188,7 +194,11 @@ const defaultCount = computed(() => tabCounts.value[DEFAULT_WORKSPACE_ID] ?? 0)
 function getCardWorkspace(card: TabCard): string | null {
   const tab = session.tabs.find((t) => t.paneId === card.paneId)
   if (!tab || tab.type !== 'terminal') return null
-  const ws = matchWorkspace(tab.cwd ?? '', tab.connectionId, tab.type === 'terminal' ? tab.workspaceId : undefined)
+  const ws = matchWorkspace(
+    tab.cwd ?? '',
+    tab.connectionId,
+    tab.type === 'terminal' ? tab.workspaceId : undefined
+  )
   return ws?.id ?? null
 }
 
@@ -208,7 +218,7 @@ const filteredCards = computed(() => {
 
 function onSelectWorkspace(id: string | null) {
   // Track direction for card slide animation - local UI concern, no sync.
-  const ids = [DEFAULT_WORKSPACE_ID, ...workspaces.value.map(w => w.id)]
+  const ids = [DEFAULT_WORKSPACE_ID, ...workspaces.value.map((w) => w.id)]
   const oldIdx = ids.indexOf(selectedWorkspaceId.value ?? DEFAULT_WORKSPACE_ID)
   const newIdx = ids.indexOf(id ?? DEFAULT_WORKSPACE_ID)
   switchDirection.value = newIdx >= oldIdx ? 'right' : 'left'
@@ -225,6 +235,11 @@ function onAddWorkspace() {
   showCreateDialog.value = true
 }
 
+function closeCreateDialog() {
+  showCreateDialog.value = false
+  renamingWorkspace.value = null
+}
+
 function onWorkspaceCreated(id: string) {
   // Jump to the newly created workspace via the backend so all clients
   // follow. Local selectedWorkspaceId is a computed from mcState and will
@@ -237,9 +252,8 @@ function onRenameTab(paneId: string, title: string) {
 }
 
 function onRenameWorkspace(id: string) {
-  const ws = id === DEFAULT_WORKSPACE_ID
-    ? defaultWorkspace.value
-    : workspaces.value.find((w) => w.id === id)
+  const ws =
+    id === DEFAULT_WORKSPACE_ID ? defaultWorkspace.value : workspaces.value.find((w) => w.id === id)
   if (!ws) return
   renamingWorkspace.value = ws
 }
@@ -275,7 +289,6 @@ function onNewTabForSelected() {
 }
 
 function onKeydown(e: KeyboardEvent) {
-
   switch (e.key) {
     case 'ArrowUp':
       // Workspace nav: previous workspace. Backend cycles through
@@ -314,7 +327,8 @@ function onKeydown(e: KeyboardEvent) {
               confirmText: t('workspace.delete'),
               cancelText: t('filePreview.cancel'),
             }).then((ok) => {
-              if (ok) deleteWorkspace(wsId).catch((e) => console.error('Failed to delete workspace:', e))
+              if (ok)
+                deleteWorkspace(wsId).catch((e) => console.error('Failed to delete workspace:', e))
             })
           }
         }

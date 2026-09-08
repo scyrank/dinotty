@@ -52,8 +52,12 @@ function mountToolbar(actionOpen = false, send = vi.fn()) {
 }
 
 describe('SystemKeyboardToolbar', () => {
-  it('docks in app flex flow without a second height or bottom-offset owner', () => {
+  it('rides the keyboard edge as a fixed bar with host-owned height and bottom offset', () => {
     const app = readFileSync(join(process.cwd(), 'src/App.vue'), 'utf8')
+    const keyboardSource = readFileSync(
+      join(process.cwd(), 'src/composables/useAppKeyboard.ts'),
+      'utf8'
+    )
     const toolbar = readFileSync(
       join(process.cwd(), 'src/components/keyboard/SystemKeyboardToolbar.vue'),
       'utf8'
@@ -65,41 +69,42 @@ describe('SystemKeyboardToolbar', () => {
     )
 
     expect(app).toMatch(/id="app-root"[^>]*system-toolbar-docked/s)
-    const dockedRule = app.match(/#app-root\.system-toolbar-docked\s*\{([^}]*)\}/s)?.[1] ?? ''
+    // The app root must stay in flow: a fixed #app-root gets pushed off the top
+    // of the screen by iOS WebKit's caret pan while the system IME is open
+    // (#260 regression: shortcut toolbar at the very top, terminal invisible).
+    expect(app).not.toMatch(/#app-root\.system-toolbar-docked\s*\{[^}]*position:\s*fixed/s)
+    expect(app).not.toMatch(/#app-root\.system-toolbar-docked\s*\{[^}]*bottom:/s)
+    expect(app).not.toContain('--system-ime-overlap')
+    // The toolbar itself is fixed against the layout viewport and lifted by the
+    // host-written keyboard-edge offset (v0.22.0 mechanism). An in-flow bar
+    // relies on the 100dvh/--sys-kb-height chain, which does not shrink on
+    // devices where dvh does not track the keyboard - the bar stays buried
+    // under the IME.
     const toolbarRule = css.match(/#system-mobile-kb\s*\{([^}]*)\}/s)?.[1] ?? ''
     const toolbarPadding = toolbarRule.match(/padding:\s*([^;]+);/s)?.[1] ?? ''
-    expect(dockedRule).toContain('bottom: var(--sys-kb-height, 0px)')
-    expect(dockedRule).toMatch(/height:\s*auto/)
+    expect(toolbarRule).toMatch(/position:\s*fixed/)
+    expect(toolbarRule).toMatch(/bottom:\s*var\(--system-toolbar-bottom,\s*0px\)/)
+    // Pin all four shorthand values. `toContain('8px')` alone is too weak: it still passes
+    // if the bottom value regresses to 0 while 8px turns up in some other position. The
+    // bottom inset is deliberately absent - the toolbar's border-box height is subtracted
+    // from the terminal viewport, so reserving it would cost terminal height in every
+    // session.
+    expect(toolbarPadding.replace(/\s+/g, ' ').trim()).toBe(
+      '5px max(5px, env(safe-area-inset-right)) 8px max(5px, env(safe-area-inset-left))'
+    )
+    expect(toolbarPadding).not.toContain('safe-area-inset-bottom')
+    expect(toolbarPadding).not.toContain('--sys-kb-height')
+    // The frozen toolbar must not own geometry: the host owns both the height
+    // band (--mkb-height via useKeyboardBand 'auto') and passes the terminal
+    // IME focus into the viewport composable that writes the bottom offset.
     expect(toolbar).not.toContain("style.setProperty('--mkb-height'")
     expect(toolbar).not.toContain('ResizeObserver')
-    expect(toolbarRule).toMatch(/position:\s*relative/)
-    expect(toolbarRule).toMatch(/flex-shrink:\s*0/)
-    expect(toolbarPadding).toContain('8px')
-    expect(toolbarPadding).not.toContain('safe-area-inset-bottom')
-    expect(css).not.toContain('--system-toolbar-bottom')
-    expect(viewport).not.toContain('toolbarBottom')
-    expect(viewport).not.toContain('--system-toolbar-bottom')
-  })
-
-  it('reclaims configured system-IME overlap without moving the shortcut toolbar', () => {
-    const app = readFileSync(join(process.cwd(), 'src/App.vue'), 'utf8')
-    const dockedRule = app.match(/#app-root\.system-toolbar-docked\s*\{([^}]*)\}/s)?.[1] ?? ''
-    const openRule =
-      app.match(/#app-root\.system-toolbar-docked\.system-ime-open\s*\{([^}]*)\}/s)?.[1] ?? ''
-    const toolbarOffsetRule =
-      app.match(
-        /#app-root\.system-toolbar-docked\.system-ime-open\s*>\s*#system-mobile-kb\s*\{([^}]*)\}/s
-      )?.[1] ?? ''
-
-    expect(dockedRule).toContain('bottom: var(--sys-kb-height, 0px)')
-    expect(dockedRule).not.toContain('--system-ime-overlap')
-    expect(openRule).toContain('--system-ime-overlap: var(--kb-overlap, 0px)')
-    expect(openRule).not.toContain('min(')
-    expect(openRule).toContain(
-      'bottom: calc(var(--sys-kb-height, 0px) - var(--system-ime-overlap))'
+    expect(viewport).toContain('toolbarBottom')
+    expect(viewport).toContain("'--system-toolbar-bottom'")
+    expect(keyboardSource).toMatch(/useViewportResize\(\{[\s\S]*?terminalImeFocused,/)
+    expect(keyboardSource).toMatch(
+      /useKeyboardBand\(\{[\s\S]*?effectiveMobileInputMode\.value === 'system'[\s\S]*?'auto' as const/
     )
-    expect(toolbarOffsetRule).toContain('top: calc(-1 * var(--system-ime-overlap))')
-    expect(toolbarOffsetRule).not.toMatch(/(?:^|;)\s*(?:bottom|margin-bottom)\s*:/)
   })
 
   it('renders the exact custom upper and lower regions without fixed functional slots', () => {

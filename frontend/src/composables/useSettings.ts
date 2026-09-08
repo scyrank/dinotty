@@ -123,6 +123,7 @@ export interface SettingsData {
   monitor: MonitorConfig
   notification: NotificationConfig
   open_api: OpenApiConfig
+  mcp: McpConfig
   auth_token?: string
   ip_whitelist: string[]
   auth: {
@@ -148,6 +149,11 @@ export interface OpenApiConfig {
   enabled: boolean
 }
 
+export interface McpConfig {
+  http_enabled: boolean
+  stdio_enabled: boolean
+}
+
 export interface LogConfig {
   enabled: boolean
   path: string
@@ -158,6 +164,7 @@ export interface NotificationConfig {
   enabled: boolean
   bell: { enabled: boolean; debounce_ms: number }
   osc_notify: boolean
+  osc_notify_debounce_ms: number
   idle_reminder: boolean
   command_complete: { enabled: boolean; threshold_seconds: number }
   keyword_match: { pattern: string; notification_type: string; case_sensitive: boolean }[]
@@ -248,7 +255,13 @@ export interface RecentEntry {
 
 export interface PluginPrefsConfig {
   hidden_toolbar: string[]
+  /** Overlay ids the user has turned off in the plugin tab (persistent). */
+  hidden_overlays: string[]
   show_incompatible: boolean
+  /** Per-plugin open mode for component plugins; absent key = 'tab'. */
+  open_modes?: Record<string, 'tab' | 'floating' | 'pane'>
+  /** Per-plugin floating-window opacity (0.3–1); absent key = fully opaque. */
+  float_opacity?: Record<string, number>
 }
 
 export interface ActionKey {
@@ -500,7 +513,13 @@ export const settings = reactive<SettingsData>({
   theme: { preset: 'dark', custom: null },
   custom_themes: [],
   hidden_builtins: [],
-  plugin_prefs: { hidden_toolbar: [], show_incompatible: false },
+  plugin_prefs: {
+    hidden_toolbar: [],
+    hidden_overlays: [],
+    show_incompatible: false,
+    open_modes: {},
+    float_opacity: {},
+  },
   background: { mode: 'solid', color: null, opacity: 1.0, has_image: false },
   text: {
     font_size: 14,
@@ -561,6 +580,7 @@ export const settings = reactive<SettingsData>({
     enabled: true,
     bell: { enabled: true, debounce_ms: 300 },
     osc_notify: true,
+    osc_notify_debounce_ms: 2000,
     idle_reminder: false,
     command_complete: { enabled: false, threshold_seconds: 10 },
     keyword_match: [],
@@ -582,6 +602,10 @@ export const settings = reactive<SettingsData>({
   },
   open_api: {
     enabled: false,
+  },
+  mcp: {
+    http_enabled: true,
+    stdio_enabled: false,
   },
   ip_whitelist: ['127.0.0.1', '::1'],
   auth: {

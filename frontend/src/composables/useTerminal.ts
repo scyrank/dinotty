@@ -28,6 +28,7 @@ import {
   applyMobileTerminalModifiers,
   emptyMobileTerminalModifiers,
   handleTerminalShortcutKeydown,
+  hasTouchHardware,
   isDuplicateOnData,
   isShiftSymbolChar,
   isTouchDevice,
@@ -39,6 +40,7 @@ import {
   type MobileTerminalModifiers,
 } from '../utils/terminalInput'
 import { createTerminalWheel, type TerminalWheel } from './useTerminalWheel'
+import { attachImeHeuristic } from '../utils/imeAnchor'
 import { setupTerminalDrop } from './useTerminalDrop'
 import { createTerminalOverlay } from './useTerminalOverlay'
 import { t } from './useI18n'
@@ -186,6 +188,9 @@ export class TerminalInstance {
   private _suppressTitleChange = false
   private _touchCleanup: (() => void) | null = null
   private _compositionCleanup: (() => void) | null = null
+  // Pins the IME textarea/composition-view to Ink's inverse caret cell while
+  // composing (Windows ConPTY cursor drift). Detached in destroy().
+  private _imeAnchorDetach: { detach(): void } | null = null
   private _resizeObserver: ResizeObserver | null = null
   private _themeUnsub: (() => void) | null = null
   private _textUnsub: (() => void) | null = null
@@ -373,12 +378,23 @@ export class TerminalInstance {
 
     this.xterm.open(wrapper)
 
+    // Anchor the IME preedit/candidate window to Ink's fake caret (a lone
+    // inverse cell) instead of the hardware cursor, which Claude Code on
+    // Windows ConPTY leaves at the right edge of the status row (#276).
+    this._imeAnchorDetach = attachImeHeuristic(this.xterm)
+
     // Ctrl+Shift+C/V: Linux-style copy/paste (macOS uses Cmd+C/V natively)
     const xt = this.xterm
     const { isAppShortcut } = useKeybindings()
     xt.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+      // maxTouchPoints, not isTouchDevice(): desktop Safari/WKWebView exposes
+      // `ontouchstart` without touch hardware, and arming the 229 snapshot
+      // machinery there eats desktop IME commits (#256 regression). The
+      // machinery stays scoped to system-mode touch input (and Tauri touch,
+      // e.g. Windows tablets); iPhone builtin mode never had it armed and
+      // arming it there breaks the builtin keyboard's own input path.
       const acceptsTextarea229 =
-        isTauri() || !isTouchDevice() || settings.mobile_input_mode === 'system'
+        hasTouchHardware() && (settings.mobile_input_mode === 'system' || isTauri())
       const isTextarea229 =
         acceptsTextarea229 &&
         !e.isComposing &&
@@ -623,7 +639,7 @@ export class TerminalInstance {
         // before xterm's input listener sees it. All unmatched events continue
         // through the existing replacement-text handling below.
         if (
-          isTouchDevice() &&
+          hasTouchHardware() &&
           !isTauri() &&
           settings.mobile_input_mode === 'system' &&
           !this._composing &&
@@ -942,11 +958,18 @@ export class TerminalInstance {
       selectionEnd: textarea.selectionEnd,
     }
     const after = normalizeTerminalTextareaSelection(before, observed, this._ime229InputData)
-    const data = terminalTextareaEdit(
+    let data = terminalTextareaEdit(
       before,
       after,
       this.xterm?.modes.applicationCursorKeysMode ?? false
     )
+    // WebKit can deliver the IME confirm keydown after compositionend, so it
+    // reads as a fresh non-composition 229 and arms this baseline while xterm
+    // has already forwarded the commit via onData (dropped while the baseline
+    // owns the diff) and cleared the textarea. The diff then reconstructs
+    // nothing; _ime229InputData still holds the authoritative committed text
+    // and is the only thing preventing the whole IME word from being lost.
+    if (!data && this._ime229InputData) data = this._ime229InputData
     if (!data && !clearEmpty) return
     if (
       after.selectionStart !== observed.selectionStart ||
@@ -1089,6 +1112,8 @@ export class TerminalInstance {
     this._wheel = null
     this._touchCleanup?.()
     this._compositionCleanup?.()
+    this._imeAnchorDetach?.detach()
+    this._imeAnchorDetach = null
     this._clearIme229()
     this._inputTextarea = null
     this._dropCleanup?.()
@@ -1517,6 +1542,16 @@ export class TerminalInstance {
 
     const processNext = () => {
       if (!this.xterm || this._writeQueue.length === 0 || processed >= SYNC_BATCH_LIMIT) {
+        // Self-heal: an un-pinned viewport that has returned to ybase (user
+        // scrolled back down, or the un-pin never actually moved the view)
+        // must resume following the tail. Without this, one un-pin event
+        // detaches the viewport for the rest of the stream (issue #268).
+        if (!this._writePinnedToBottom && this.xterm) {
+          const buf = this.xterm.buffer.active
+          if (buf.viewportY >= buf.baseY) {
+            this._writePinnedToBottom = true
+          }
+        }
         // Read _writePinnedToBottom fresh here, not at batch entry. A
         // wheel-up mid-batch flips the flag to false; using a batch-entry
         // snapshot would override the user's scroll with scrollToBottom.

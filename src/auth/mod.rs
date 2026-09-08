@@ -143,6 +143,7 @@ pub fn check_lockout(
 
 /// # Panics
 /// Panics if the response builder fails (which should not happen with valid status codes and bodies).
+#[allow(clippy::too_many_lines)]
 pub async fn auth_middleware(
     request: Request,
     next: Next,
@@ -157,6 +158,7 @@ pub async fn auth_middleware(
     if path == "/"
         || path == "/api/token-configured"
         || path == "/manifest.json"
+        || path == "/sw.js"
         || path == "/logo.png"
         || path.starts_with("/assets/")
         || path.starts_with("/icons/")
@@ -199,22 +201,44 @@ pub async fn auth_middleware(
     };
 
     // /api/auto-token exposes the raw auth token — loopback only.
-    if path == "/api/auto-token" && !real_ip.is_loopback() {
-        return Response::builder()
-            .status(StatusCode::FORBIDDEN)
-            .header(header::CONTENT_TYPE, "application/json")
-            .header(header::CACHE_CONTROL, "no-store")
-            .body(Body::from(r#"{"error":"auto-token is only available from localhost"}"#))
-            .unwrap();
+    if path == "/api/auto-token" {
+        let cross_site = is_cross_site_browser_request(request.headers());
+        if !real_ip.is_loopback() || cross_site {
+            tracing::warn!(
+                "auth: reject {path} from {real_ip} (loopback-only, cross_site_browser={cross_site})"
+            );
+            return Response::builder()
+                .status(StatusCode::FORBIDDEN)
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::CACHE_CONTROL, "no-store")
+                .body(Body::from(r#"{"error":"auto-token is only available from localhost"}"#))
+                .unwrap();
+        }
     }
 
-    // Explicit non-loopback whitelist entries retain their bypass semantics.
-    // Loopback is special: desktop defaults include it for the Tauri webview,
-    // but a local reverse proxy also connects from loopback. Only the built-in
-    // Tauri origin may use the loopback bypass; scripts and proxies must
-    // authenticate normally.
-    if can_bypass_ip_auth(request.headers(), client_ip, real_ip, &ip_whitelist) {
-        return next.run(request).await;
+    // IP whitelist (loopback bypass) check - uses real IP, not direct peer.
+    // Cross-site browser requests are rejected even from whitelisted peers
+    // (see is_cross_site_browser_request).
+    if is_ip_whitelisted(real_ip, &ip_whitelist) {
+        if is_cross_site_browser_request(request.headers()) {
+            tracing::warn!(
+                "auth: reject cross-site browser request to {path} via whitelisted {real_ip} (origin {:?})",
+                request.headers().get(header::ORIGIN).and_then(|v| v.to_str().ok())
+            );
+            return Response::builder()
+                .status(StatusCode::FORBIDDEN)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"error":"cross-site requests are not allowed"}"#))
+                .unwrap();
+        }
+        // Explicit non-loopback whitelist entries retain their bypass semantics.
+        // Loopback is special: desktop defaults include it for the Tauri webview,
+        // but a local reverse proxy also connects from loopback. Only the built-in
+        // Tauri origin may use the loopback bypass; scripts and proxies must
+        // authenticate normally.
+        if can_bypass_ip_auth(request.headers(), client_ip, real_ip, &ip_whitelist) {
+            return next.run(request).await;
+        }
     }
 
     // /api/auth is the login endpoint - exempt from IP whitelist so non-loopback
@@ -254,6 +278,14 @@ pub async fn auth_middleware(
             .unwrap();
     }
 
+    // Routes that carry their own `sessions_token_middleware`: it validates
+    // session cookies, the global token AND scoped agent tokens, while this
+    // middleware only knows cookie + global token and would reject agent
+    // tokens before they ever reach the capability checks.
+    if is_agent_managed_path(path) {
+        return next.run(request).await;
+    }
+
     // Cookie session check (browser login).
     if let Some(session_id) = extract_session_cookie(&request, port) {
         if sessions.validate(&session_id) {
@@ -288,6 +320,28 @@ pub fn has_valid_auth(request: &Request, sessions: &SessionStore, token: &str) -
         }
     }
     check_token(request, token)
+}
+
+/// Check whether a request carries a valid session cookie (no token involved).
+/// Used by `sessions_token_middleware`, whose routes are exempt from
+/// `auth_middleware` and therefore cannot delegate the cookie check.
+pub fn has_valid_session_cookie(request: &Request, sessions: &SessionStore) -> bool {
+    extract_session_cookie(request, configured_session_cookie_port())
+        .is_some_and(|sid| sessions.validate(&sid))
+}
+
+/// Paths authenticated by `sessions_token_middleware` instead of
+/// `auth_middleware` (it accepts agent tokens in addition to cookies and the
+/// global token). Must stay in sync with the routes mounted under that
+/// middleware in `main.rs`.
+fn is_agent_managed_path(path: &str) -> bool {
+    let segments: Vec<&str> = path.trim_start_matches('/').split('/').collect();
+    match segments.as_slice() {
+        ["api", "sessions", _, action] => matches!(*action, "run" | "send" | "read"),
+        ["api", "tokens", ..] => true,
+        ["mcp", action] => matches!(*action, "sse" | "message"),
+        _ => false,
+    }
 }
 
 fn extract_session_cookie(request: &Request, port: u16) -> Option<String> {
@@ -462,6 +516,74 @@ pub fn check_ws_origin(
         }
     }
 
+    false
+}
+
+/// True when the request looks like a script-readable cross-site browser call.
+///
+/// Loopback/whitelisted peers are trusted without a session, but that trust
+/// must not extend to requests scripted by a random website in the local
+/// user's browser - the browser connects from 127.0.0.1 yet is controlled by
+/// the site that opened the connection. Cross-origin fetch/XHR, WS handshakes
+/// and cross-site form POSTs always carry `Origin`, so only requests WITH an
+/// `Origin` header are examined here.
+///
+/// Requests WITHOUT `Origin` are never blocked: they are either native
+/// clients (curl, the Tauri shell) or no-cors subresource loads (`<img>`,
+/// `<script>`, `<link>`), whose response body the initiating page cannot
+/// read. Blocking those broke every `<img>` from the Tauri webview
+/// (`tauri://localhost` page -> `http://127.0.0.1:port` server), whose loads
+/// send `Sec-Fetch-Site: cross-site` but no `Origin`.
+///
+/// Decision order: local origins (localhost / 127.0.0.1 / tauri.localhost,
+/// e.g. the Tauri webview and localhost dev servers) are exempt first because
+/// their calls to the embedded server are legitimately cross-origin and are
+/// labeled `Sec-Fetch-Site: cross-site`; `Sec-Fetch-Site` then decides when
+/// present (browser-set, stays `same-origin` behind Host-rewriting reverse
+/// proxies); the Origin-vs-Host comparison is only the legacy fallback.
+#[must_use]
+pub fn is_cross_site_browser_request(headers: &HeaderMap) -> bool {
+    let origin_authority = headers.get("origin").and_then(|v| v.to_str().ok()).map(|o| {
+        o.strip_prefix("https://")
+            .or_else(|| o.strip_prefix("http://"))
+            .or_else(|| o.strip_prefix("tauri://"))
+            .or_else(|| o.strip_prefix("asset://"))
+            .unwrap_or(o)
+    });
+
+    // No Origin means not script-readable: cross-origin fetch/XHR/WS and
+    // cross-site form POSTs always send it. Everything else (native clients,
+    // no-cors subresource loads) cannot have its response read by a page.
+    let Some(authority) = &origin_authority else {
+        return false;
+    };
+
+    // 1. Local-origin exemption, checked FIRST. The Tauri webview
+    // (tauri://localhost, http://tauri.localhost) and localhost dev servers
+    // call the embedded server cross-origin by design, so they legitimately
+    // pair a local Origin with `Sec-Fetch-Site: cross-site`. A remote page
+    // cannot forge any of these origins.
+    let origin_host = authority.rsplit(':').next_back().unwrap_or(authority);
+    if origin_host.eq_ignore_ascii_case("localhost")
+        || origin_host.eq_ignore_ascii_case("127.0.0.1")
+        || origin_host.eq_ignore_ascii_case("tauri.localhost")
+    {
+        return false;
+    }
+
+    // 2. Sec-Fetch-Site is browser-set and labels scripted requests honestly:
+    // a website scripting the local browser says `cross-site`, while a
+    // same-origin call through a Host-rewriting reverse proxy still says
+    // `same-origin` and must pass.
+    if let Some(s) = headers.get("sec-fetch-site").and_then(|v| v.to_str().ok()) {
+        return s.eq_ignore_ascii_case("cross-site");
+    }
+
+    // 3. Legacy fallback without fetch metadata: an Origin authority that
+    // disagrees with Host means cross-site.
+    if let Some(host) = headers.get("host").and_then(|v| v.to_str().ok()) {
+        return !authority.eq_ignore_ascii_case(host);
+    }
     false
 }
 

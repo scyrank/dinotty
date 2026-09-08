@@ -42,7 +42,12 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   reorder: [sourcePaneId: string, targetPaneId: string, position: DropPosition]
-  'drop-on-tab': [sourceTabId: string, sourcePaneId: string, dstTabId: string, position: DropPosition]
+  'drop-on-tab': [
+    sourceTabId: string,
+    sourcePaneId: string,
+    dstTabId: string,
+    position: DropPosition,
+  ]
   'drop-extract': [sourceTabId: string, sourcePaneId: string, targetIndex: number]
 }>()
 
@@ -179,9 +184,7 @@ function scheduleHoverSwitch(tabId: string) {
   hoverTimer = window.setTimeout(() => {
     // Emit a synthetic focus event to switch the active tab.
     // TabBar listens for this via a global event or we can dispatch directly.
-    window.dispatchEvent(
-      new CustomEvent('pane-drag-hover-switch', { detail: { tabId } })
-    )
+    window.dispatchEvent(new CustomEvent('pane-drag-hover-switch', { detail: { tabId } }))
   }, HOVER_SWITCH_DELAY)
 }
 
@@ -280,10 +283,14 @@ function onPointerMove(e: MouseEvent | TouchEvent) {
     const tabId = tabLabelTarget.dataset.tabId!
     scheduleHoverSwitch(tabId)
 
-    // Determine position based on cursor X relative to tab center
+    // Determine position based on the cursor's offset along the tab strip's
+    // own axis: X for a horizontal bar, Y once the tabs are stacked.
     const rect = tabLabelTarget.getBoundingClientRect()
-    const relX = (pos.clientX - rect.left) / rect.width
-    const zone: DropPosition = relX < 0.5 ? 'left' : 'right'
+    const vertical = !!tabLabelTarget.closest('#tabs-list.is-vertical')
+    const rel = vertical
+      ? (pos.clientY - rect.top) / rect.height
+      : (pos.clientX - rect.left) / rect.width
+    const zone: DropPosition = rel < 0.5 ? 'left' : 'right'
 
     currentTargetId = tabId
     currentZone = zone
@@ -310,13 +317,7 @@ function onPointerEnd() {
       if (currentTargetKind === 'pane') {
         emit('reorder', props.paneId, currentTargetId, currentZone as DropPosition)
       } else if (currentTargetKind === 'tab-label' && currentTargetId !== 'tab-bar-blank') {
-        emit(
-          'drop-on-tab',
-          props.tabId,
-          props.paneId,
-          currentTargetId,
-          currentZone as DropPosition
-        )
+        emit('drop-on-tab', props.tabId, props.paneId, currentTargetId, currentZone as DropPosition)
       } else if (currentTargetKind === 'tab-blank') {
         // Extract: compute target index (end of tab bar for now)
         emit('drop-extract', props.tabId, props.paneId, -1)

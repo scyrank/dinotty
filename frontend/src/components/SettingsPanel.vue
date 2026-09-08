@@ -2,31 +2,78 @@
   <div class="settings-backdrop" :class="{ open }" @click.self="$emit('close')">
     <div class="settings-panel" :class="{ open }">
       <div class="settings-header">
-        <h2>{{ t('settings.title') }}</h2>
+        <h2>{{ activeHeaderTitle }}</h2>
         <button class="settings-close" @click="$emit('close')"><X :size="14" /></button>
       </div>
 
-      <div class="settings-tabs">
-        <button
-          v-for="tab in tabs"
-          :key="tab.id"
-          class="settings-tab"
-          :class="{ active: activeTab === tab.id }"
-          @click="activeTab = tab.id"
-        >
-          <span class="settings-tab-icon"><component :is="tab.icon" :size="20" /></span
-          ><span class="settings-tab-label">{{ tab.label }}</span>
-        </button>
+      <div class="settings-tabs-wrap" :class="{ 'has-overflow': tabsOverflow }">
+        <div ref="tabsRef" class="settings-tabs" role="tablist" @scroll="updateTabsOverflow">
+          <button
+            v-for="tab in tabs"
+            :id="`settings-tab-${tab.id}`"
+            :key="tab.id"
+            role="tab"
+            class="settings-tab"
+            :class="{ active: activeTab === tab.id }"
+            :aria-selected="activeTab === tab.id"
+            :aria-label="tab.label"
+            :title="tab.label"
+            :aria-controls="`settings-tabpanel-${tab.id}`"
+            :tabindex="activeTab === tab.id ? 0 : -1"
+            @click="activeTab = tab.id"
+            @keydown="onTabKeydown"
+          >
+            <span class="settings-tab-icon"><component :is="tab.icon" :size="24" /></span>
+          </button>
+        </div>
       </div>
 
       <div class="settings-body">
-        <GeneralTab v-show="activeTab === 'general'" @token-changed="emit('token-changed')" />
-        <AppearanceTab v-show="activeTab === 'appearance'" />
-        <KeyboardTab v-show="activeTab === 'keyboard'" />
-        <MonitorTab v-show="activeTab === 'monitor'" />
-        <NotificationTab v-show="activeTab === 'notification'" />
-        <PluginsTab v-show="activeTab === 'plugins'" @open-plugin="openPlugin" />
-        <AboutTab v-show="activeTab === 'about'" @open-about="openAbout" />
+        <GeneralTab
+          v-show="activeTab === 'general'"
+          id="settings-tabpanel-general"
+          role="tabpanel"
+          :aria-labelledby="`settings-tab-general`"
+          @token-changed="emit('token-changed')"
+        />
+        <AppearanceTab
+          v-show="activeTab === 'appearance'"
+          id="settings-tabpanel-appearance"
+          role="tabpanel"
+          :aria-labelledby="`settings-tab-appearance`"
+        />
+        <KeyboardTab
+          v-show="activeTab === 'keyboard'"
+          id="settings-tabpanel-keyboard"
+          role="tabpanel"
+          :aria-labelledby="`settings-tab-keyboard`"
+        />
+        <MonitorTab
+          v-show="activeTab === 'monitor'"
+          id="settings-tabpanel-monitor"
+          role="tabpanel"
+          :aria-labelledby="`settings-tab-monitor`"
+        />
+        <NotificationTab
+          v-show="activeTab === 'notification'"
+          id="settings-tabpanel-notification"
+          role="tabpanel"
+          :aria-labelledby="`settings-tab-notification`"
+        />
+        <PluginsTab
+          v-show="activeTab === 'plugins'"
+          id="settings-tabpanel-plugins"
+          role="tabpanel"
+          :aria-labelledby="`settings-tab-plugins`"
+          @open-plugin="openPlugin"
+        />
+        <AboutTab
+          v-show="activeTab === 'about'"
+          id="settings-tabpanel-about"
+          role="tabpanel"
+          :aria-labelledby="`settings-tab-about`"
+          @open-about="openAbout"
+        />
       </div>
     </div>
   </div>
@@ -42,8 +89,6 @@ import {
   onBeforeUnmount,
   defineAsyncComponent,
 } from 'vue'
-import { useSettings, notifyTextChange } from '../composables/useSettings'
-import { effectiveTheme } from '../composables/useDeviceThemeSelection'
 import { useI18n } from '../composables/useI18n'
 import { useUiStore } from '../stores/uiStore'
 import {
@@ -72,7 +117,6 @@ const emit = defineEmits<{
   'open-about': []
 }>()
 
-const { settings, saveSettings, loadSettings, applyCurrentTheme } = useSettings()
 const { t } = useI18n()
 const ui = useUiStore()
 
@@ -84,6 +128,29 @@ function openPlugin(pluginId: string) {
 const activeTab = ref<
   'general' | 'appearance' | 'keyboard' | 'monitor' | 'notification' | 'plugins' | 'about'
 >('general')
+
+const tabsRef = ref<HTMLElement | null>(null)
+const tabsOverflow = ref(false)
+
+function updateTabsOverflow() {
+  const el = tabsRef.value
+  if (!el) return
+  tabsOverflow.value =
+    el.scrollWidth > el.clientWidth && el.scrollLeft + el.clientWidth < el.scrollWidth
+}
+
+function onTabKeydown(e: KeyboardEvent) {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+  e.preventDefault()
+  const ids = tabs.value.map((tab) => tab.id)
+  const idx = ids.indexOf(activeTab.value)
+  const next = e.key === 'ArrowRight' ? (idx + 1) % ids.length : (idx - 1 + ids.length) % ids.length
+  activeTab.value = ids[next]
+  nextTick(() => {
+    document.getElementById(`settings-tab-${ids[next]}`)?.focus()
+    updateTabsOverflow()
+  })
+}
 
 function openAbout() {
   activeTab.value = 'about'
@@ -100,58 +167,73 @@ function onOpenSettingsKeyboard() {
 
 onMounted(() => {
   window.addEventListener('dinotty:open-settings-keyboard', onOpenSettingsKeyboard)
+  window.addEventListener('resize', updateTabsOverflow)
+  nextTick(updateTabsOverflow)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('dinotty:open-settings-keyboard', onOpenSettingsKeyboard)
+  window.removeEventListener('resize', updateTabsOverflow)
 })
 
-let saveTimer: ReturnType<typeof setTimeout> | null = null
-let suppressSave = false
-function scheduleSave() {
-  if (suppressSave) return
-  if (saveTimer) clearTimeout(saveTimer)
-  saveTimer = setTimeout(() => saveSettings(), 500)
-}
-
-// Only trigger DOM-heavy theme application when theme fields actually change
-watch(effectiveTheme, applyCurrentTheme)
-
-// Only notify terminal text changes when text settings change
-watch(() => ({ ...settings.text }), notifyTextChange)
-
-// Save on any setting change
-watch(settings, scheduleSave, { deep: true })
-
-// Re-fetch settings from backend when the panel opens (multi-end sync).
-// Cancel any pending debounced save and suppress the autosave that the
-// remote Object.assign would trigger, so we neither PUT back the fetched
-// value nor let a stale pending timer overwrite it.
+// Theme apply / text notify / autosave / refetch-on-open live in
+// useSettingsSync (called from App.vue) so they keep working while this
+// panel is not mounted.
 watch(
   () => props.open,
   (v) => {
     if (!v) return
-    if (saveTimer) {
-      clearTimeout(saveTimer)
-      saveTimer = null
-    }
-    suppressSave = true
-    void loadSettings().finally(() =>
-      nextTick(() => {
-        suppressSave = false
-      })
-    )
+    nextTick(updateTabsOverflow)
   }
 )
 
 const tabs = computed(() => [
-  { id: 'general' as const, label: t('settings.tab.general'), icon: SettingsIcon },
-  { id: 'appearance' as const, label: t('settings.tab.appearance'), icon: Palette },
-  { id: 'keyboard' as const, label: t('settings.tab.keyboard'), icon: Keyboard },
-  { id: 'plugins' as const, label: t('settings.tab.plugins'), icon: Puzzle },
-  { id: 'monitor' as const, label: t('settings.tab.monitor'), icon: Activity },
-  { id: 'notification' as const, label: t('settings.tab.notification'), icon: Bell },
-  { id: 'about' as const, label: t('settings.tab.about'), icon: Info },
+  {
+    id: 'general' as const,
+    label: t('settings.tab.general'),
+    header: t('settings.header.general'),
+    icon: SettingsIcon,
+  },
+  {
+    id: 'appearance' as const,
+    label: t('settings.tab.appearance'),
+    header: t('settings.header.appearance'),
+    icon: Palette,
+  },
+  {
+    id: 'keyboard' as const,
+    label: t('settings.tab.keyboard'),
+    header: t('settings.header.keyboard'),
+    icon: Keyboard,
+  },
+  {
+    id: 'plugins' as const,
+    label: t('settings.tab.plugins'),
+    header: t('settings.header.plugins'),
+    icon: Puzzle,
+  },
+  {
+    id: 'monitor' as const,
+    label: t('settings.tab.monitor'),
+    header: t('settings.header.monitor'),
+    icon: Activity,
+  },
+  {
+    id: 'notification' as const,
+    label: t('settings.tab.notification'),
+    header: t('settings.header.notification'),
+    icon: Bell,
+  },
+  {
+    id: 'about' as const,
+    label: t('settings.tab.about'),
+    header: t('settings.header.about'),
+    icon: Info,
+  },
 ])
+
+const activeHeaderTitle = computed(
+  () => tabs.value.find((tab) => tab.id === activeTab.value)?.header ?? t('settings.title')
+)
 </script>
 
 <style>
@@ -216,11 +298,29 @@ const tabs = computed(() => [
   color: var(--fg-bright);
 }
 
+.settings-tabs-wrap {
+  position: relative;
+  border-bottom: 1px solid var(--border);
+}
+.settings-tabs-wrap::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 28px;
+  background: linear-gradient(to right, transparent, var(--bg-surface));
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+.settings-tabs-wrap.has-overflow::after {
+  opacity: 1;
+}
 .settings-tabs {
   display: flex;
   gap: 0;
-  border-bottom: 1px solid var(--border);
-  padding: 0 20px;
+  padding: 0 12px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -228,7 +328,7 @@ const tabs = computed(() => [
   display: none;
 }
 .settings-tab {
-  padding: 12px 16px 10px;
+  padding: 12px 10px 10px;
   font-size: 13px;
   font-weight: 500;
   color: var(--fg-muted);
@@ -249,10 +349,6 @@ const tabs = computed(() => [
   opacity: 0.6;
   transition: opacity 0.15s;
 }
-.settings-tab-label {
-  font-size: 10px;
-  letter-spacing: 0.3px;
-}
 .settings-tab:hover .settings-tab-icon,
 .settings-tab.active .settings-tab-icon {
   opacity: 1;
@@ -261,8 +357,8 @@ const tabs = computed(() => [
   color: var(--fg);
 }
 .settings-tab.active {
-  color: var(--accent, #8a8a8a);
-  border-bottom-color: var(--accent, #8a8a8a);
+  color: var(--accent);
+  border-bottom-color: var(--accent);
 }
 
 .settings-body {
@@ -301,8 +397,6 @@ const tabs = computed(() => [
   font-size: 13px;
   font-weight: 600;
   color: var(--fg-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
   margin-bottom: 12px;
 }
 
@@ -322,11 +416,11 @@ const tabs = computed(() => [
   text-align: left;
 }
 .theme-card.active {
-  border-color: var(--accent, #8a8a8a);
-  box-shadow: 0 0 0 1px var(--accent, #8a8a8a);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 .theme-card:hover {
-  border-color: var(--accent-hover, #9e9e9e);
+  border-color: var(--accent-hover);
   transform: translateY(-1px);
 }
 .theme-preview {
@@ -389,7 +483,7 @@ const tabs = computed(() => [
   flex: 1;
   font-family: var(--font-mono);
   font-size: 13px;
-  color: var(--accent, #8a8a8a);
+  color: var(--accent);
   word-break: break-all;
 }
 .access-url-copy {
@@ -527,7 +621,7 @@ const tabs = computed(() => [
 }
 .settings-row input[type='range'] {
   flex: 1;
-  accent-color: var(--accent, #8a8a8a);
+  accent-color: var(--accent);
 }
 .settings-row input[type='file'] {
   font-size: 12px;
@@ -550,7 +644,7 @@ const tabs = computed(() => [
   min-height: 28px;
 }
 .font-dropdown-trigger:hover {
-  border-color: var(--accent, #8a8a8a);
+  border-color: var(--accent);
 }
 .font-dropdown-arrow {
   font-size: 10px;
@@ -595,8 +689,8 @@ const tabs = computed(() => [
   background: var(--bg-hover);
 }
 .font-dropdown-item.active {
-  background: rgba(77, 127, 255, 0.15);
-  color: var(--accent, #8a8a8a);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
 }
 .font-item-label {
   flex: 1;
@@ -643,7 +737,7 @@ const tabs = computed(() => [
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--accent, #8a8a8a);
+  background: var(--accent);
   cursor: pointer;
 }
 .range-val {
@@ -694,7 +788,7 @@ const tabs = computed(() => [
   transition: background 0.2s;
 }
 .toggle input:checked + .toggle-track {
-  background: var(--accent, #8a8a8a);
+  background: var(--accent);
 }
 .toggle-thumb {
   position: absolute;
@@ -738,12 +832,12 @@ const tabs = computed(() => [
   justify-content: center;
 }
 .shortcut-del:hover {
-  background: rgba(255, 100, 100, 0.2);
-  color: #ff6b6b;
+  background: color-mix(in srgb, var(--danger) 20%, transparent);
+  color: var(--danger);
 }
 .shortcut-add {
   font-size: 12px;
-  color: var(--accent, #8a8a8a);
+  color: var(--accent);
   padding: 4px 0;
 }
 
@@ -882,8 +976,8 @@ const tabs = computed(() => [
 }
 
 .ak-key-del:hover {
-  background: rgba(255, 100, 100, 0.35);
-  color: #ff6b6b;
+  background: color-mix(in srgb, var(--danger) 35%, transparent);
+  color: var(--danger);
 }
 
 .ak-key-resize {
@@ -900,7 +994,7 @@ const tabs = computed(() => [
 }
 
 .ak-key-resize:hover {
-  background: rgba(77, 127, 255, 0.4);
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 .ak-wyg-add-key {
@@ -909,7 +1003,7 @@ const tabs = computed(() => [
   min-width: 40px !important;
   font-size: 18px !important;
   font-weight: 300;
-  color: #8e8e93 !important;
+  color: var(--fg-muted) !important;
 }
 
 .ak-wyg-remove-row {
@@ -920,14 +1014,14 @@ const tabs = computed(() => [
   border-radius: 6px;
   font-size: 12px;
   color: var(--fg-muted);
-  border: 1px solid var(--border, #444);
+  border: 1px solid var(--border);
   background: var(--bg-input);
 }
 
 .ak-wyg-remove-row:hover {
-  background: rgba(255, 100, 100, 0.15);
-  color: #ff6b6b;
-  border-color: rgba(255, 100, 100, 0.4);
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
 }
 
 .ak-wyg-bottom-cluster {
@@ -964,7 +1058,7 @@ const tabs = computed(() => [
 }
 
 .ak-enter-resize:hover {
-  background: rgba(77, 127, 255, 0.4);
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 .ak-actions {
@@ -1067,14 +1161,14 @@ const tabs = computed(() => [
   padding: 4px 10px;
   border-radius: 4px;
   font-size: 11px;
-  background: #2c2c2e;
+  background: var(--bg-hover);
   color: var(--fg);
   border: 1px solid var(--border);
 }
 .ak-record-btn.recording {
-  background: #ff3b30;
+  background: var(--danger);
   color: #fff;
-  border-color: #ff3b30;
+  border-color: var(--danger);
 }
 
 .ak-modal-actions {
@@ -1098,7 +1192,7 @@ const tabs = computed(() => [
   padding: 8px;
   border-radius: 5px;
   background: none;
-  color: var(--fg-bright, #d0d0d0);
+  color: var(--fg-bright);
   font-size: 13px;
   font-weight: 500;
   border: none;

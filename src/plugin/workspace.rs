@@ -454,14 +454,27 @@ async fn watch_send_error(socket: &mut WebSocket, message: &str) {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
-    use axum::http::StatusCode;
-
     use super::{
-        require_workspace_permission, WORKSPACE_READ_PERMISSION, WORKSPACE_WRITE_PERMISSION,
+        plugin_workspace_delete, plugin_workspace_mkdir, plugin_workspace_move,
+        plugin_workspace_put_file, plugin_workspace_read_dir, plugin_workspace_read_file,
+        plugin_workspace_rename, plugin_workspace_stat, require_workspace_permission,
+        WORKSPACE_READ_PERMISSION, WORKSPACE_WRITE_PERMISSION,
     };
-    use crate::plugin::{PluginInfo, PluginManager, PluginManifest, PluginStateValue};
+    use crate::plugin::{
+        manager::PluginManager, plugin_asset, HostTarget, PluginInfo, PluginManifest,
+        PluginStateValue,
+    };
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+        routing::{delete, get, post, put},
+        Router,
+    };
+    use dashmap::DashMap;
+    use serde_json::json;
+    use std::path::Path;
+    use std::sync::Arc;
+    use tower::ServiceExt;
 
     fn plugin_info(permissions: Option<Vec<String>>) -> PluginInfo {
         PluginInfo {
@@ -512,5 +525,141 @@ mod tests {
                 .status(),
             StatusCode::NOT_FOUND
         );
+    }
+
+    fn test_manager(root: &Path) -> Arc<PluginManager> {
+        Arc::new(PluginManager {
+            plugin_dir: root.join("plugins"),
+            data_dir: root.join("plugin-data"),
+            registry: DashMap::new(),
+            processes: DashMap::new(),
+            operation_locks: DashMap::new(),
+            host_target: HostTarget::current(),
+            host_origin: "http://127.0.0.1:8999".into(),
+            host_version: env!("CARGO_PKG_VERSION").into(),
+            host_mode: "test".into(),
+        })
+    }
+
+    /// The desktop embedded router (src-tauri) originally registered only the
+    /// catch-all `GET /api/plugins/:id/*path` asset route, so plugin workspace
+    /// requests fell onto it: non-GET -> 405, GET -> asset 404. Reproduces that
+    /// broken route table shape.
+    #[tokio::test]
+    async fn desktop_router_without_workspace_routes_rejects_workspace_calls() {
+        let tmp = tempfile::tempdir().unwrap();
+        let manager = test_manager(tmp.path());
+        let ws_dir = tmp.path().join("ws");
+        std::fs::create_dir_all(&ws_dir).unwrap();
+
+        let app =
+            Router::new().route("/api/plugins/:id/*path", get(plugin_asset)).with_state(manager);
+
+        let write = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/api/plugins/p1/workspace/file")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"path": ws_dir.join("a.txt").display().to_string(), "content": "hi"})
+                            .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(write.status(), StatusCode::METHOD_NOT_ALLOWED);
+
+        let read = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/plugins/p1/workspace/readDir?path={}", ws_dir.display()))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(read.status(), StatusCode::NOT_FOUND);
+    }
+
+    /// After registering the 8 workspace routes (mirroring src/main.rs) the
+    /// same requests reach the real workspace handlers instead of the asset
+    /// catch-all.
+    #[tokio::test]
+    async fn desktop_router_with_workspace_routes_reaches_real_handlers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let manager = test_manager(tmp.path());
+        // The fork's server-side permission gate 404s unregistered plugins, so
+        // register p1 with both workspace permissions before issuing calls.
+        manager.registry.insert(
+            "p1".into(),
+            plugin_info(Some(vec![
+                WORKSPACE_READ_PERMISSION.to_string(),
+                WORKSPACE_WRITE_PERMISSION.to_string(),
+            ])),
+        );
+        let ws_dir = tmp.path().join("ws");
+        std::fs::create_dir_all(&ws_dir).unwrap();
+
+        let app = Router::new()
+            .route("/api/plugins/:id/workspace/readDir", get(plugin_workspace_read_dir))
+            .route("/api/plugins/:id/workspace/readFile", get(plugin_workspace_read_file))
+            .route("/api/plugins/:id/workspace/file", put(plugin_workspace_put_file))
+            .route("/api/plugins/:id/workspace/stat", get(plugin_workspace_stat))
+            .route("/api/plugins/:id/workspace/mkdir", post(plugin_workspace_mkdir))
+            .route("/api/plugins/:id/workspace/delete", delete(plugin_workspace_delete))
+            .route("/api/plugins/:id/workspace/rename", post(plugin_workspace_rename))
+            .route("/api/plugins/:id/workspace/move", post(plugin_workspace_move))
+            .route("/api/plugins/:id/*path", get(plugin_asset))
+            .with_state(manager);
+
+        let write = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/api/plugins/p1/workspace/file")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"path": ws_dir.join("a.txt").display().to_string(), "content": "hi"})
+                            .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(write.status(), StatusCode::OK);
+        assert!(ws_dir.join("a.txt").is_file());
+
+        let list = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/plugins/p1/workspace/readDir?path={}", ws_dir.display()))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(list.status(), StatusCode::OK);
+
+        let read = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/api/plugins/p1/workspace/readFile?path={}",
+                        ws_dir.join("a.txt").display()
+                    ))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(read.status(), StatusCode::OK);
     }
 }

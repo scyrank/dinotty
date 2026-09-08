@@ -33,9 +33,10 @@ impl McpServer {
     pub fn new(
         session_manager: Arc<crate::session::SessionManager>,
         settings: crate::settings::SettingsState,
+        shell_probe: Arc<crate::platform::shell_probe::ShellProbeService>,
     ) -> Self {
         Self {
-            tools: McpTools::new(session_manager.clone(), settings.clone()),
+            tools: McpTools::new(session_manager.clone(), settings.clone(), shell_probe),
             resources: McpResources::new(session_manager),
             server_info: ServerInfo {
                 name: "dinotty".into(),
@@ -190,6 +191,7 @@ async fn handle_tools_call(
     let required_cap = match name.as_str() {
         "terminal_execute" | "terminal_send" => "terminal:write",
         "terminal_read" | "terminal_list" => "terminal:read",
+        "tab_create" | "pane_split" => "terminal:create",
         "file_read" | "file_list" => "workspace:read",
         "file_write" => "workspace:write",
         "git_status" | "git_diff" => "workspace:read",
@@ -208,7 +210,7 @@ async fn handle_tools_call(
 
     let arguments = params.get("arguments").cloned().unwrap_or(serde_json::json!({}));
 
-    match server.tools.call_tool(&name, arguments).await {
+    match server.tools.call_tool(&name, arguments, token_info).await {
         Ok(result) => JsonRpcResponse::success(
             id,
             serde_json::json!({

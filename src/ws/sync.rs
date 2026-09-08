@@ -65,8 +65,21 @@ async fn handle_sync_socket(
 ) {
     let (ws_tx, mut ws_rx) = socket.split();
 
-    // Channel for all outbound WS messages
-    let (ws_out_tx, mut ws_out_rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
+    // Channel for all outbound WS messages. Bounded so a client that stops
+    // draining (e.g. a desktop view suspended while its screen is off) can at
+    // most buffer MAX_SYNC_OUTBOUND messages. Once full, the forwarding task
+    // signals `shutdown_tx`; the receive loop below breaks, the socket is
+    // dropped and the client reconnects to a fresh snapshot - instead of the
+    // server buffering an unbounded backlog that would be flushed in one burst
+    // on wake. Monitor samples are the steady ~0.5Hz producer, so the cap only
+    // trips for a genuinely stalled client, not in normal operation.
+    const MAX_SYNC_OUTBOUND: usize = 256;
+    let (ws_out_tx, mut ws_out_rx) = tokio::sync::mpsc::channel::<Message>(MAX_SYNC_OUTBOUND);
+
+    // Watch channel: an outbound task that finds the bounded queue full asks
+    // for an orderly disconnect (a.k.a. laggard reset). Breaking the receive
+    // loop drops the socket; the frontend auto-reconnects and re-syncs.
+    let (shutdown_tx, mut shutdown_rx) = tokio::sync::watch::channel(false);
 
     // Writer task: reads from channel, writes to WebSocket sink
     let writer_task = tokio::spawn(async move {
@@ -88,11 +101,11 @@ async fn handle_sync_socket(
         interval.tick().await; // skip first immediate tick
         loop {
             interval.tick().await;
-            if ping_tx.send(Message::Ping(vec![])).is_err() {
+            if ping_tx.try_send(Message::Ping(vec![])).is_err() {
                 break;
             }
             if pong_counter.fetch_add(1, Ordering::Relaxed) >= 2 {
-                let _ = ping_tx.send(Message::Close(None));
+                let _ = ping_tx.try_send(Message::Close(None));
                 break;
             }
         }
@@ -105,7 +118,7 @@ async fn handle_sync_socket(
     // Send client_id to the client first (for echo suppression in HTTP POST emit)
     let hello = serde_json::to_string(&SyncMsg::SyncHello { client_id: client_id.clone() })
         .expect("serialization is infallible");
-    if ws_out_tx.send(Message::Text(hello)).is_err() {
+    if ws_out_tx.try_send(Message::Text(hello)).is_err() {
         return;
     }
 
@@ -118,7 +131,7 @@ async fn handle_sync_socket(
     let (tabs, active_pane_id) = manager.tab_list();
     let tab_list = SyncMsg::TabList { tabs, active_pane_id };
     let msg = serde_json::to_string(&tab_list).expect("serialization is infallible");
-    if ws_out_tx.send(Message::Text(msg)).is_err() {
+    if ws_out_tx.try_send(Message::Text(msg)).is_err() {
         return;
     }
 
@@ -126,7 +139,7 @@ async fn handle_sync_socket(
     let items = history.query(None, 20).await;
     let suggestions_msg = SyncMsg::Suggestions { items };
     let msg = serde_json::to_string(&suggestions_msg).expect("serialization is infallible");
-    if ws_out_tx.send(Message::Text(msg)).is_err() {
+    if ws_out_tx.try_send(Message::Text(msg)).is_err() {
         return;
     }
 
@@ -135,7 +148,7 @@ async fn handle_sync_socket(
     if !history_data.is_empty() {
         let monitor_msg = SyncMsg::MonitorHistory { data: history_data };
         let msg = serde_json::to_string(&monitor_msg).expect("serialization is infallible");
-        if ws_out_tx.send(Message::Text(msg)).is_err() {
+        if ws_out_tx.try_send(Message::Text(msg)).is_err() {
             return;
         }
     }
@@ -146,7 +159,7 @@ async fn handle_sync_socket(
         let active_workspace_id = settings.read().await.active_workspace_id.clone();
         let workspace_list = SyncMsg::WorkspaceList { workspaces: ws.clone(), active_workspace_id };
         let msg = serde_json::to_string(&workspace_list).expect("serialization is infallible");
-        let _ = ws_out_tx.send(Message::Text(msg));
+        let _ = ws_out_tx.try_send(Message::Text(msg));
     }
 
     // Send current Mission Control snapshot. Sent after tab_list/workspace_list
@@ -160,7 +173,7 @@ async fn handle_sync_socket(
             selected_tab_id: mc_snap.selected_tab_id,
         };
         let msg = serde_json::to_string(&snapshot_msg).expect("serialization is infallible");
-        let _ = ws_out_tx.send(Message::Text(msg));
+        let _ = ws_out_tx.try_send(Message::Text(msg));
     }
 
     // Use mpsc channel to bridge broadcast messages and direct responses to the WebSocket
@@ -176,20 +189,32 @@ async fn handle_sync_socket(
         }
     });
 
-    // Forward all messages from the shared channel to the WebSocket
+    // Forward all messages from the shared channel to the WebSocket. When the
+    // bounded outbound queue fills (this client stalled, e.g. a suspended
+    // desktop view), signal `shutdown_tx` for an orderly disconnect instead of
+    // letting the writer block forever on an undrained socket.
     let fwd_ws_out_tx = ws_out_tx.clone();
+    let fwd_shutdown_tx = shutdown_tx.clone();
     let fwd = tokio::spawn(async move {
         while let Some(data) = msg_rx.recv().await {
-            if fwd_ws_out_tx.send(Message::Text(data)).is_err() {
-                break;
+            match fwd_ws_out_tx.try_send(Message::Text(data)) {
+                Ok(()) => {}
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                    let _ = fwd_shutdown_tx.send(true);
+                    break;
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => break,
             }
         }
     });
 
-    // Monitor SSH keyboard-interactive auth prompts and forward to frontend
+    // Monitor SSH keyboard-interactive auth prompts and forward to frontend.
+    // The outer loop has no exit condition of its own - it MUST be aborted when
+    // the socket closes (see cleanup below), or it leaks a 100ms poller per
+    // connection (and per reconnect).
     let auth_mgr = Arc::clone(&manager);
     let auth_ws_out = ws_out_tx.clone();
-    tokio::spawn(async move {
+    let ssh_auth_monitor = tokio::spawn(async move {
         let mut known_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
         loop {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -226,7 +251,7 @@ async fn handle_sync_socket(
                                     "pane_id": pane_id,
                                     "prompts": prompts,
                                 });
-                                if ws_out.send(Message::Text(msg.to_string())).is_err() {
+                                if ws_out.try_send(Message::Text(msg.to_string())).is_err() {
                                     break;
                                 }
                             }
@@ -238,24 +263,34 @@ async fn handle_sync_socket(
         }
     });
 
-    // Process incoming sync messages from this client
-    while let Some(Ok(msg)) = ws_rx.next().await {
+    // Process incoming sync messages from this client. The loop doubles as the
+    // disconnect point for a laggard reset: when the fwd task fills the bounded
+    // outbound queue it sets `shutdown_tx`, and this select breaks so the socket
+    // drops and the client reconnects to a fresh snapshot instead of draining an
+    // unbounded backlog on wake.
+    loop {
+        let msg = tokio::select! {
+            _ = shutdown_rx.changed() => break,
+            incoming = ws_rx.next() => match incoming {
+                Some(Ok(msg)) => msg,
+                _ => break,
+            },
+        };
         match msg {
             Message::Text(text) => {
                 if let Ok(sync_msg) = serde_json::from_str::<SyncClientMsg>(&text) {
                     match sync_msg {
                         SyncClientMsg::ActivateTab { pane_id } => {
-                            // Resolve leaf pane ID: pane_id may be a tab ID;
-                            // look up the tab's stored active_pane_id for the actual leaf.
-                            let leaf_id = manager
-                                .tab_layouts
-                                .get(&pane_id)
-                                .and_then(|v| {
-                                    v.get("active_pane_id")
-                                        .and_then(|a| a.as_str())
-                                        .map(String::from)
-                                })
-                                .unwrap_or(pane_id.clone());
+                            // pane_id may be a tab ID or a leaf pane ID. Resolve
+                            // to a real leaf and reject unknown panes instead of
+                            // letting a sync client set an arbitrary
+                            // active_pane_id on the server.
+                            let Some(leaf_id) = resolve_activate_leaf(&manager, &pane_id) else {
+                                tracing::warn!(
+                                    "sync: reject activate_tab for unknown pane {pane_id}"
+                                );
+                                continue;
+                            };
                             manager.set_active_pane_id(Some(leaf_id));
                             manager.broadcast_sync_others(
                                 &SyncMsg::TabActivated { pane_id },
@@ -373,6 +408,14 @@ async fn handle_sync_socket(
                                 );
                             }
                         }
+                        SyncClientMsg::TabReordered { tab_ids } => {
+                            if let Some(order) = manager.reorder_tabs(&tab_ids) {
+                                manager.broadcast_sync_others(
+                                    &SyncMsg::TabReordered { tab_ids: order },
+                                    &client_id,
+                                );
+                            }
+                        }
                         SyncClientMsg::MissionControlOp { op } => {
                             handle_mission_control_op(op, &manager, &workspaces, &mc).await;
                         }
@@ -400,10 +443,16 @@ async fn handle_sync_socket(
                             });
                         }
                     }
+                } else {
+                    tracing::warn!(
+                        "Ignoring malformed sync message (len={}): {:.80}",
+                        text.len(),
+                        text
+                    );
                 }
             }
             Message::Ping(data) => {
-                let _ = ws_out_tx.send(Message::Pong(data));
+                let _ = ws_out_tx.try_send(Message::Pong(data));
             }
             Message::Pong(_) => {
                 missed_pongs.store(0, Ordering::Relaxed);
@@ -415,6 +464,7 @@ async fn handle_sync_socket(
     fwd.abort();
     writer_task.abort();
     ping_task.abort();
+    ssh_auth_monitor.abort();
     notifier.unregister_client(&client_id);
 }
 
@@ -436,6 +486,17 @@ fn tab_leaf_for(manager: &SessionManager, tab_id: &str) -> Option<String> {
             .map(String::from)
             .or_else(|| v.get("layout").and_then(crate::session::first_leaf_id))
     })
+}
+
+/// Resolve the pane an `ActivateTab` message should focus and verify it exists
+/// in a registered tab layout. `pane_id` may be a tab ID (resolved to the tab's
+/// active leaf) or a leaf pane ID directly. Returns `None` when the pane - or a
+/// tab's stored active pane, which can go stale after a pane is closed - is
+/// unknown; the caller must reject instead of setting an arbitrary
+/// `active_pane_id` on the server.
+fn resolve_activate_leaf(manager: &SessionManager, pane_id: &str) -> Option<String> {
+    let leaf_id = tab_leaf_for(manager, pane_id).unwrap_or_else(|| pane_id.to_string());
+    manager.is_pane_in_any_tab(&leaf_id).then_some(leaf_id)
 }
 
 /// Pure tab navigation within a workspace. Filters `tabs` to those belonging
@@ -517,7 +578,7 @@ async fn handle_mission_control_op(
             snap.open = !snap.open;
             // On open, seed selection from the current active tab so the
             // highlight lands where the user expects. On close, leave
-            // selected_* intact so re-opening restores the last position.
+            // selected_* intact.
             if snap.open {
                 let active = manager
                     .active_pane_id
@@ -540,8 +601,23 @@ async fn handle_mission_control_op(
                             break;
                         }
                     }
-                    snap.selected_tab_id = found_tab;
-                    // selected_workspace_id left untouched on toggle-open.
+                    // Seed both the tab and its workspace so the seeded tab is
+                    // visible in the overview's filtered grid (frontend
+                    // `filteredCards` shows only the selected workspace). Same
+                    // attribution as `matchWorkspace` on the frontend.
+                    snap.selected_tab_id.clone_from(&found_tab);
+                    if let Some(tab_id) = &found_tab {
+                        let (tabs, _) = manager.tab_list();
+                        let ws_snapshot = workspaces.read().await.clone();
+                        snap.selected_workspace_id =
+                            tabs.iter().find(|t| &t.tab_id == tab_id).and_then(|t| {
+                                tab_workspace_id(
+                                    &ws_snapshot,
+                                    t.cwd.as_deref(),
+                                    t.connection_id.as_deref(),
+                                )
+                            });
+                    }
                 }
             }
             let open = snap.open;
@@ -871,5 +947,61 @@ mod tests {
             NavDir::Right,
         );
         assert_eq!(new_id.as_deref(), Some("tab1"));
+    }
+
+    /// `activate_tab` must not let a sync client set an arbitrary
+    /// `active_pane_id`: an unknown pane is rejected, a registered leaf and a
+    /// tab id both resolve to a real leaf.
+    #[test]
+    fn resolve_activate_leaf_resolves_known_panes_and_rejects_unknown() {
+        let manager = SessionManager::new();
+        manager.update_layout(
+            "tab-1".to_string(),
+            serde_json::json!({
+                "layout": { "type": "leaf", "paneId": "pane-a" },
+                "active_pane_id": "pane-a",
+            }),
+            Some("pane-a".to_string()),
+        );
+        assert_eq!(resolve_activate_leaf(&manager, "nope"), None);
+        assert_eq!(resolve_activate_leaf(&manager, "pane-a").as_deref(), Some("pane-a"));
+        assert_eq!(resolve_activate_leaf(&manager, "tab-1").as_deref(), Some("pane-a"));
+    }
+
+    /// A tab whose stored `active_pane_id` points at a pane that was closed
+    /// (stale) must be rejected rather than focused.
+    #[test]
+    fn resolve_activate_leaf_rejects_stale_active_pane() {
+        let manager = SessionManager::new();
+        manager.update_layout(
+            "tab-1".to_string(),
+            serde_json::json!({
+                "layout": { "type": "leaf", "paneId": "pane-a" },
+                "active_pane_id": "pane-gone",
+            }),
+            Some("pane-gone".to_string()),
+        );
+        assert_eq!(resolve_activate_leaf(&manager, "tab-1"), None);
+        assert_eq!(resolve_activate_leaf(&manager, "pane-gone"), None);
+    }
+
+    /// A tab id with no stored active pane falls back to its first layout leaf.
+    #[test]
+    fn resolve_activate_leaf_falls_back_to_first_leaf() {
+        let manager = SessionManager::new();
+        manager.update_layout(
+            "tab-1".to_string(),
+            serde_json::json!({
+                "layout": {
+                    "type": "split",
+                    "children": [
+                        { "type": "leaf", "paneId": "pane-a" },
+                        { "type": "leaf", "paneId": "pane-b" },
+                    ],
+                },
+            }),
+            None,
+        );
+        assert_eq!(resolve_activate_leaf(&manager, "tab-1").as_deref(), Some("pane-a"));
     }
 }

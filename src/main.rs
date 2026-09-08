@@ -17,6 +17,7 @@ use axum::{
 };
 use rust_embed::Embed;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use tower_http::compression::CompressionLayer;
 
 use std::sync::Arc;
 
@@ -125,11 +126,34 @@ async fn static_handler(Path(path): Path<String>) -> impl IntoResponse {
     match StaticFiles::get(&lookup) {
         Some(content) => {
             let mime = mime_guess::from_path(&lookup).first_or_octet_stream();
+            // Vite emits every asset under assets/ with a content hash in its
+            // filename, so a given URL's bytes never change: cache forever.
+            // A new build produces new filenames, which index.html (no-store)
+            // points at, so users still pick up updates immediately.
             Response::builder()
                 .header(header::CONTENT_TYPE, mime.as_ref())
+                .header(header::CACHE_CONTROL, "public, max-age=31536000, immutable")
                 .body(Body::from(content.data.into_owned()))
                 .unwrap()
         }
+        None => {
+            Response::builder().status(StatusCode::NOT_FOUND).body(Body::from("not found")).unwrap()
+        }
+    }
+}
+
+/// Serves the service worker. Must be reachable without auth (the browser
+/// fetches it before any session exists) and must never be cached: the SW
+/// script itself is how updates are discovered, so a stale copy would pin
+/// users to an old cache strategy indefinitely.
+async fn sw_handler() -> impl IntoResponse {
+    match StaticFiles::get("sw.js") {
+        Some(content) => Response::builder()
+            .header(header::CONTENT_TYPE, "text/javascript; charset=utf-8")
+            .header(header::CACHE_CONTROL, "no-cache")
+            .header("Service-Worker-Allowed", "/")
+            .body(Body::from(content.data.into_owned()))
+            .unwrap(),
         None => {
             Response::builder().status(StatusCode::NOT_FOUND).body(Body::from("not found")).unwrap()
         }
@@ -235,7 +259,25 @@ async fn server_info(State(state): State<AppState>) -> Json<serde_json::Value> {
 
 #[tokio::main]
 async fn main() {
-    let _guard = settings::init_logging();
+    let mcp_stdio = std::env::args().any(|a| a == "--mcp-stdio");
+
+    // In stdio proxy mode, stdout is the JSON-RPC channel — logging must stay
+    // on stderr (init_logging's file-disabled fallback writes to stdout).
+    let _guard = if mcp_stdio { settings::init_stderr_logging() } else { settings::init_logging() };
+
+    if mcp_stdio {
+        let port = parse_port();
+        let settings_state = settings::create_settings_state();
+        if !settings_state.read().await.mcp.stdio_enabled {
+            eprintln!("MCP stdio disabled in settings");
+            std::process::exit(1);
+        }
+        let token = settings::load_token()
+            .or_else(|| std::env::var("DINOTTY_TOKEN").ok())
+            .unwrap_or_default();
+        mcp::transport::run_stdio(&format!("http://127.0.0.1:{port}"), &token).await;
+        return;
+    }
 
     // Authentication must be ready before the socket starts accepting
     // connections. A persistence failure is fatal rather than a fail-open
@@ -350,7 +392,14 @@ async fn main() {
     let webhooks = Arc::new(webhook::WebhookDispatcher::new(webhook_configs));
     webhooks.start(&manager.event_bus);
 
-    let mcp_server = Arc::new(mcp::server::McpServer::new(manager.clone(), settings_state.clone()));
+    // Shared single instance: the in-flight WSL probe dedup relies on it.
+    let shell_probe_service =
+        Arc::new(dinotty_server::platform::shell_probe::ShellProbeService::new());
+    let mcp_server = Arc::new(mcp::server::McpServer::new(
+        manager.clone(),
+        settings_state.clone(),
+        Arc::clone(&shell_probe_service),
+    ));
     let mcp_sse = Arc::new(mcp::transport::SseState::new());
     let workspaces_state = workspace_mgmt::create_workspaces_state();
     let mc_state = mission_control::create_mission_control_state();
@@ -376,7 +425,7 @@ async fn main() {
     let state = AppState {
         manager: Arc::clone(&manager),
         settings: settings_state,
-        shell_probe: Arc::new(dinotty_server::platform::shell_probe::ShellProbeService::new()),
+        shell_probe: shell_probe_service,
         file_watcher: Arc::new(FileWatcherState::new(file_watcher_event_bus)),
         monitor: monitor_state,
         notifier,
@@ -577,6 +626,7 @@ async fn main() {
                         token::SessionsAuthState {
                             global_token: auth_token.clone(),
                             tokens: state.tokens.clone(),
+                            sessions: state.sessions.clone(),
                         },
                         token::sessions_token_middleware,
                     )),
@@ -587,6 +637,7 @@ async fn main() {
             .route("/assets/*path", get(static_handler))
             .route("/icons/*path", get(icon_handler))
             .route("/manifest.json", get(manifest_handler))
+            .route("/sw.js", get(sw_handler))
             .route(
                 "/logo.png",
                 get(|| async {
@@ -624,6 +675,10 @@ async fn main() {
                 },
             ))
             .layer(middleware::from_fn_with_state(state.clone(), dynamic_cors_middleware))
+            // gzip/brotli for text payloads. DefaultPredicate already skips
+            // SSE (text/event-stream), gRPC, images and bodies under 32 bytes,
+            // so terminal streaming and already-compressed assets are untouched.
+            .layer(CompressionLayer::new().gzip(true).br(true))
             .with_state(state);
 
     tracing::info!("Listening on http://{}:{}", bind_ip, port);

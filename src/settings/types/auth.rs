@@ -96,5 +96,15 @@ pub struct PluginPrefsConfig {
     #[serde(default)]
     pub hidden_toolbar: Vec<String>,
     #[serde(default)]
+    pub hidden_overlays: Vec<String>,
+    #[serde(default)]
     pub show_incompatible: bool,
+    /// Per-plugin open mode for component plugins: "tab" (default) or "floating".
+    /// Absent key = "tab". Plain string values tolerate junk instead of failing
+    /// the settings PUT; the frontend normalizes on read.
+    #[serde(default)]
+    pub open_modes: std::collections::HashMap<String, String>,
+    /// Per-plugin floating-window opacity (0.3–1.0). Absent key = fully opaque.
+    #[serde(default)]
+    pub float_opacity: std::collections::HashMap<String, f64>,
 }

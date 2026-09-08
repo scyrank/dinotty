@@ -21,6 +21,7 @@ pub struct NotificationBroadcast {
     ledger: Mutex<AttentionLedger>,
     sync_clients: std::sync::Arc<Mutex<Vec<SyncClient>>>,
     bell_debounce: Mutex<HashMap<String, Instant>>,
+    osc_debounce: Mutex<HashMap<(String, u64), Instant>>,
     settings: Mutex<Option<SettingsState>>,
     event_bus: EventBus,
 }
@@ -32,6 +33,7 @@ impl NotificationBroadcast {
             ledger: Mutex::new(AttentionLedger::new()),
             sync_clients,
             bell_debounce: Mutex::new(HashMap::new()),
+            osc_debounce: Mutex::new(HashMap::new()),
             settings: Mutex::new(None),
             event_bus,
         }
@@ -55,6 +57,23 @@ impl NotificationBroadcast {
     /// `sync_clients` by the WS handler on disconnect. Kept for API symmetry with
     /// `register_client` and future per-client bookkeeping.
     pub fn unregister_client(&self, _sync_client_id: &str) {}
+
+    /// Entry point for BELs detected in PTY/SSH output. Applies the content-
+    /// aware OSC debounce window (keyed by pane only - bells carry no payload)
+    /// before delegating to `send_bell`, so sustained 0x07 output (e.g. binary
+    /// files) is capped at one bell per window instead of ~3/s through the
+    /// 300ms bell debounce alone.
+    pub fn send_detected_bell(&self, pane_id: &str) {
+        let cfg = self.notification_config();
+        let duplicate = self.check_osc_debounce(
+            &(pane_id.to_string(), payload_hash(&"bell")),
+            u128::from(cfg.osc_notify_debounce_ms),
+        );
+        if duplicate {
+            return;
+        }
+        self.send_bell(pane_id);
+    }
 
     pub fn send_bell(&self, pane_id: &str) {
         let cfg = self.notification_config();
@@ -115,30 +134,39 @@ impl NotificationBroadcast {
         notification_type: &str,
     ) {
         let cfg = self.notification_config();
+        let debounce_duplicate = self.check_osc_debounce(
+            &(pane_id.to_string(), payload_hash(&(title, body))),
+            u128::from(cfg.osc_notify_debounce_ms),
+        );
         if !matches!(
-            evaluate_ingest_gate(&cfg, IngestSource::OscNotify),
+            evaluate_ingest_gate(&cfg, IngestSource::OscNotify { debounce_duplicate }),
             IngestGateResult::Accepted
         ) {
             return;
         }
         let severity = severity_from_type(notification_type).unwrap_or(Severity::Info);
         let occurred_at = now_ms();
+        // OSC 9/777 are explicit "notify the user" requests: record them on the
+        // pane-decoupled notif path (like POST /api/notify) so presentation is
+        // never suppressed by the client's focused-pane rules. pane_id stays
+        // attached to the debounce key, event bus and hooks for pane context.
+        let notif_id = Uuid::new_v4().to_string();
         let (event_seq, delta) = self
             .ledger
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .record_pane_event(pane_id, occurred_at, severity, occurred_at);
+            .record_notif_event(&notif_id, occurred_at, severity, occurred_at);
         self.broadcast(&SyncMsg::StateDelta { delta });
         self.broadcast(&SyncMsg::Notify {
             v: MIN_PROTOCOL_VERSION,
-            pane_id: pane_id.to_string(),
+            pane_id: String::new(),
             title: title.map(String::from),
             body: body.to_string(),
             notification_type: notification_type.to_string(),
             event_seq: event_seq.to_string(),
             occurred_at,
             severity,
-            notif_id: None,
+            notif_id: Some(notif_id),
         });
         self.event_bus.publish(BusEvent::Notify {
             pane_id: pane_id.to_string(),
@@ -244,6 +272,21 @@ impl NotificationBroadcast {
             .as_ref()
             .and_then(|state| state.try_read().ok().map(|settings| settings.notification.clone()))
             .unwrap_or_default()
+    }
+
+    /// Check (and refresh) the content-aware OSC debounce map. Returns true when
+    /// the same key was seen within `debounce_ms`. Mirrors `bell_debounce`
+    /// semantics, including the 60s retain sweep that bounds the key set.
+    fn check_osc_debounce(&self, key: &(String, u64), debounce_ms: u128) -> bool {
+        let mut map = self.osc_debounce.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let now = Instant::now();
+        let duplicate =
+            map.get(key).is_some_and(|last| now.duration_since(*last).as_millis() < debounce_ms);
+        map.retain(|_, last| now.duration_since(*last).as_secs() < 60);
+        if !duplicate {
+            map.insert(key.clone(), now);
+        }
+        duplicate
     }
 
     pub(crate) fn process_notify<F>(

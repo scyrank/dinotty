@@ -6,11 +6,43 @@
       <h3 class="settings-group-title">{{ t('settings.text') }}</h3>
 
       <div class="settings-row">
+        <label>{{ t('settings.tabPlacement') }}</label>
+        <div class="range-wrap">
+          <select
+            v-model="tabPlacementMode"
+            class="shortcut-input tab-placement-select"
+            :aria-label="t('settings.tabPlacement')"
+            style="flex: 1"
+          >
+            <option v-for="option in TAB_PLACEMENT_MODES" :key="option" :value="option">
+              {{ t(`settings.tabPlacement.${option}`) }}
+            </option>
+          </select>
+          <button
+            v-if="hasPlacementOverride()"
+            type="button"
+            class="setting-reset"
+            title="reset to default"
+            aria-label="reset to default"
+            @click="resetPlacement()"
+          >
+            <RotateCcw :size="14" />
+          </button>
+        </div>
+      </div>
+      <p class="settings-hint">
+        {{ t('settings.tabPlacement.deviceHint') }}
+        <template v-if="isVerticalPlacementMode">
+          {{ t('settings.tabPlacement.resizeHint') }}
+        </template>
+      </p>
+
+      <div class="settings-row">
         <label>{{ t('settings.text.fontSize') }}</label>
         <div class="range-wrap">
           <input
-            type="range"
             v-model.number="fontSize"
+            type="range"
             :min="FONT_SIZE_MIN"
             :max="FONT_SIZE_MAX"
             step="1"
@@ -41,7 +73,12 @@
             <span>{{ currentFontLabel }}</span>
             <span class="font-dropdown-arrow">▾</span>
           </div>
-          <div v-if="fontDropdownOpen" class="font-dropdown-backdrop" @click="closeFontDropdown" @wheel.prevent></div>
+          <div
+            v-if="fontDropdownOpen"
+            class="font-dropdown-backdrop"
+            @click="closeFontDropdown"
+            @wheel.prevent
+          ></div>
           <div
             v-if="fontDropdownOpen"
             class="font-dropdown-menu"
@@ -61,20 +98,25 @@
                 v-if="item.available"
                 class="font-item-sample"
                 :style="{ fontFamily: item.previewStack }"
-              >Aa 01</span>
+                >Aa 01</span
+              >
               <span v-else class="font-item-badge">{{ t('settings.text.fontNotInstalled') }}</span>
               <button
                 v-if="item.removable"
                 class="font-item-remove"
                 :title="t('settings.text.fontRemove')"
                 @click.stop="removeFontItem(item)"
-              >×</button>
+              >
+                ×
+              </button>
               <button
                 v-else-if="item.kind === 'orphan'"
                 class="font-item-remove"
                 :title="t('settings.text.fontAdd')"
                 @click.stop="addOrphanToList(item)"
-              >+</button>
+              >
+                +
+              </button>
             </div>
             <div class="font-dropdown-divider"></div>
             <div class="font-custom-input-wrap" @click.stop>
@@ -85,7 +127,9 @@
                 :placeholder="t('settings.text.fontAddPlaceholder')"
                 @keydown.enter="addFontFromInput"
               />
-              <button class="shortcut-add" @click="addFontFromInput">{{ t('settings.text.fontAdd') }}</button>
+              <button class="shortcut-add" @click="addFontFromInput">
+                {{ t('settings.text.fontAdd') }}
+              </button>
             </div>
             <div v-if="addFontError" class="font-add-error">{{ addFontError }}</div>
           </div>
@@ -105,13 +149,7 @@
       <div class="settings-row">
         <label>{{ t('settings.text.lineHeight') }}</label>
         <div class="range-wrap">
-          <input
-            type="range"
-            v-model.number="lineHeight"
-            min="0.8"
-            max="2.0"
-            step="0.1"
-          />
+          <input v-model.number="lineHeight" type="range" min="0.8" max="2.0" step="0.1" />
           <span class="range-val">{{ lineHeight.toFixed(1) }}</span>
           <button
             v-if="hasOverride('line_height')"
@@ -129,13 +167,7 @@
       <div class="settings-row">
         <label>{{ t('settings.text.letterSpacing') }}</label>
         <div class="range-wrap">
-          <input
-            type="range"
-            v-model.number="letterSpacing"
-            min="0"
-            max="4"
-            step="0.5"
-          />
+          <input v-model.number="letterSpacing" type="range" min="0" max="4" step="0.5" />
           <span class="range-val">{{ letterSpacing }}px</span>
           <button
             v-if="hasOverride('letter_spacing')"
@@ -151,96 +183,93 @@
       </div>
 
       <CollapsibleSection :title="t('settings.advancedText')" level="section">
-
-      <div class="settings-row">
-        <label>{{ t('settings.text.cursorStyle') }}</label>
-        <select
-          v-model="settings.text.cursor_style"
-          class="shortcut-input"
-          style="flex: 1"
-          @change="onTextSettingChange"
-        >
-          <option value="block">{{ t('settings.text.cursor.block') }}</option>
-          <option value="underline">{{ t('settings.text.cursor.underline') }}</option>
-          <option value="bar">{{ t('settings.text.cursor.bar') }}</option>
-        </select>
-      </div>
-
-      <div class="settings-row">
-        <label>{{ t('settings.text.cursorBlink') }}</label>
-        <label class="toggle">
-          <input
-            type="checkbox"
-            v-model="settings.text.cursor_blink"
+        <div class="settings-row">
+          <label>{{ t('settings.text.cursorStyle') }}</label>
+          <select
+            v-model="settings.text.cursor_style"
+            class="shortcut-input"
+            style="flex: 1"
             @change="onTextSettingChange"
-          />
-          <span class="toggle-track"><span class="toggle-thumb"></span></span>
-        </label>
-      </div>
-
-      <div class="settings-row">
-        <label>{{ t('settings.text.scrollback') }}</label>
-        <div class="range-wrap">
-          <input
-            type="range"
-            v-model.number="settings.text.scrollback"
-            min="1000"
-            max="100000"
-            step="1000"
-            @input="onTextSettingChange"
-          />
-          <span class="range-val">{{ settings.text.scrollback.toLocaleString() }}</span>
+          >
+            <option value="block">{{ t('settings.text.cursor.block') }}</option>
+            <option value="underline">{{ t('settings.text.cursor.underline') }}</option>
+            <option value="bar">{{ t('settings.text.cursor.bar') }}</option>
+          </select>
         </div>
-      </div>
 
-      <div class="settings-row">
-        <label>{{ t('settings.text.scrollSensitivity') }}</label>
-        <div class="range-wrap">
-          <input
-            type="range"
-            v-model.number="settings.text.scroll_sensitivity"
-            min="0.1"
-            max="2"
-            step="0.1"
-            @input="onTextSettingChange"
-          />
-          <span class="range-val">{{ settings.text.scroll_sensitivity.toFixed(1) }}</span>
+        <div class="settings-row">
+          <label>{{ t('settings.text.cursorBlink') }}</label>
+          <label class="toggle">
+            <input
+              v-model="settings.text.cursor_blink"
+              type="checkbox"
+              @change="onTextSettingChange"
+            />
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </label>
         </div>
-      </div>
 
-      <div class="settings-row">
-        <label>{{ t('settings.text.scrollAcceleration') }}</label>
-        <div class="range-wrap">
-          <input
-            type="range"
-            v-model.number="settings.text.scroll_acceleration"
-            min="0"
-            max="5"
-            step="1"
-            @input="onTextSettingChange"
-          />
-          <span class="range-val">{{ settings.text.scroll_acceleration.toFixed(0) }}</span>
+        <div class="settings-row">
+          <label>{{ t('settings.text.scrollback') }}</label>
+          <div class="range-wrap">
+            <input
+              v-model.number="settings.text.scrollback"
+              type="range"
+              min="1000"
+              max="100000"
+              step="1000"
+              @input="onTextSettingChange"
+            />
+            <span class="range-val">{{ settings.text.scrollback.toLocaleString() }}</span>
+          </div>
         </div>
-      </div>
 
-      <div class="settings-row">
-        <label>{{ t('settings.text.scrollbarWidth') }}</label>
-        <div class="range-wrap">
-          <input
-            type="range"
-            v-model.number="settings.text.scrollbar_width"
-            min="4"
-            max="16"
-            step="1"
-            @input="onTextSettingChange"
-          />
-          <span class="range-val">{{ settings.text.scrollbar_width }}</span>
+        <div class="settings-row">
+          <label>{{ t('settings.text.scrollSensitivity') }}</label>
+          <div class="range-wrap">
+            <input
+              v-model.number="settings.text.scroll_sensitivity"
+              type="range"
+              min="0.1"
+              max="2"
+              step="0.1"
+              @input="onTextSettingChange"
+            />
+            <span class="range-val">{{ settings.text.scroll_sensitivity.toFixed(1) }}</span>
+          </div>
         </div>
-      </div>
 
+        <div class="settings-row">
+          <label>{{ t('settings.text.scrollAcceleration') }}</label>
+          <div class="range-wrap">
+            <input
+              v-model.number="settings.text.scroll_acceleration"
+              type="range"
+              min="0"
+              max="5"
+              step="1"
+              @input="onTextSettingChange"
+            />
+            <span class="range-val">{{ settings.text.scroll_acceleration.toFixed(0) }}</span>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <label>{{ t('settings.text.scrollbarWidth') }}</label>
+          <div class="range-wrap">
+            <input
+              v-model.number="settings.text.scrollbar_width"
+              type="range"
+              min="4"
+              max="16"
+              step="1"
+              @input="onTextSettingChange"
+            />
+            <span class="range-val">{{ settings.text.scrollbar_width }}</span>
+          </div>
+        </div>
       </CollapsibleSection>
     </div>
-
   </div>
 </template>
 
@@ -266,17 +295,22 @@ import {
   FONT_SIZE_MIN,
   useDeviceTextSettings,
 } from '../../composables/useDeviceTextSettings'
+import { TAB_PLACEMENT_MODES, useTabPlacement } from '../../composables/useTabPlacement'
 
 const { settings, saveSettings } = useSettings()
-const {
-  fontSize,
-  fontFamily,
-  lineHeight,
-  letterSpacing,
-  hasOverride,
-  resetOverride,
-} = useDeviceTextSettings()
+const { fontSize, fontFamily, lineHeight, letterSpacing, hasOverride, resetOverride } =
+  useDeviceTextSettings()
 const { t } = useI18n()
+
+// ── Tab bar placement ──
+// Device-scoped like the font settings above: writing it must never trigger a
+// settings PUT, so this deliberately does not call saveSettings().
+const {
+  mode: tabPlacementMode,
+  isVertical: isVerticalPlacementMode,
+  hasPlacementOverride,
+  resetPlacement,
+} = useTabPlacement()
 
 // ── Text / Font ──
 
@@ -294,7 +328,9 @@ const addFontInput = ref<HTMLInputElement | null>(null)
 
 const customFonts = computed<string[]>(() => settings.text.custom_fonts ?? [])
 
-interface DecoratedItem extends FontItem { available: boolean }
+interface DecoratedItem extends FontItem {
+  available: boolean
+}
 
 const fontList = computed<DecoratedItem[]>(() =>
   buildFontList(fontFamily.value || '', customFonts.value).map((it) => {
@@ -304,11 +340,11 @@ const fontList = computed<DecoratedItem[]>(() =>
       available = id === 'monospace' ? true : (availability[id] ?? true)
     }
     return { ...it, available }
-  }),
+  })
 )
 
 const currentFontLabel = computed(() =>
-  fontFamily.value ? primaryFamily(fontFamily.value) : t('settings.text.fontFamilyDefault'),
+  fontFamily.value ? primaryFamily(fontFamily.value) : t('settings.text.fontFamilyDefault')
 )
 
 function fontItemLabel(item: FontItem): string {
@@ -325,7 +361,9 @@ async function runProbes() {
   try {
     const fonts = (document as unknown as { fonts?: { ready?: Promise<unknown> } }).fonts
     if (fonts?.ready) await fonts.ready
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   clearNegativeFontCache()
   for (const key of Object.keys(availability)) delete availability[key]
   for (const it of buildFontList(fontFamily.value || '', customFonts.value)) {
@@ -341,13 +379,19 @@ function onFontMenuWheel(e: WheelEvent) {
 }
 
 function toggleFontDropdown() {
-  if (fontDropdownOpen.value) { closeFontDropdown(); return }
+  if (fontDropdownOpen.value) {
+    closeFontDropdown()
+    return
+  }
   const el = fontTriggerEl.value
   const placement = el
     ? computeDropdownPlacement(
         el.getBoundingClientRect(),
-        el.closest('.settings-body')?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight },
-        PREFERRED_FONT_MENU_HEIGHT,
+        el.closest('.settings-body')?.getBoundingClientRect() ?? {
+          top: 0,
+          bottom: window.innerHeight,
+        },
+        PREFERRED_FONT_MENU_HEIGHT
       )
     : { dropUp: false, maxHeight: PREFERRED_FONT_MENU_HEIGHT }
   fontMenuDropUp.value = placement.dropUp
@@ -378,7 +422,10 @@ const ADD_ERR_KEY: Record<Exclude<AddFontError, ''>, string> = {
 function addFontValue(rawName: string) {
   const name = primaryFamily(rawName)
   const err = validateFontName(name, customFonts.value)
-  if (err) { addFontError.value = t(ADD_ERR_KEY[err]); return }
+  if (err) {
+    addFontError.value = t(ADD_ERR_KEY[err])
+    return
+  }
   settings.text.custom_fonts = normalizeCustomFonts([...customFonts.value, name])
   addFontName.value = ''
   addFontError.value = ''
@@ -386,14 +433,20 @@ function addFontValue(rawName: string) {
   onTextSettingChange()
 }
 
-function addFontFromInput() { addFontValue(addFontName.value) }
+function addFontFromInput() {
+  addFontValue(addFontName.value)
+}
 
-function addOrphanToList(item: FontItem) { addFontValue(item.family) }
+function addOrphanToList(item: FontItem) {
+  addFontValue(item.family)
+}
 
 function removeFontItem(item: FontItem) {
   if (!item.removable) return
   const id = fontIdentity(item.family)
-  settings.text.custom_fonts = normalizeCustomFonts(customFonts.value.filter((c) => fontIdentity(c) !== id))
+  settings.text.custom_fonts = normalizeCustomFonts(
+    customFonts.value.filter((c) => fontIdentity(c) !== id)
+  )
   if (fontIdentity(fontFamily.value || '') === id) {
     fontFamily.value = 'monospace'
   }

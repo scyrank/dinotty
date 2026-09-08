@@ -2,6 +2,7 @@ import type { Component } from 'vue'
 import { reactive, ref, computed, watch, onMounted, onUnmounted, h } from 'vue'
 import { authFetch, apiUrl, wsUrlWithToken, getApiBase } from './apiBase'
 import { usePluginMonitorStore } from '../stores/pluginMonitor'
+import { usePluginOverlaysStore } from '../stores/pluginOverlays'
 import type { MonitorSeries } from '../stores/pluginMonitor'
 import { subscribe as eventSubscribe, emit as eventEmit } from './useEventBridge'
 import type { SyncEvent } from '../types/protocol'
@@ -9,7 +10,7 @@ import { useI18n, type Locale } from './useI18n'
 import { describeHttpError } from '../utils/httpError'
 import { KEYBOARD_API_VERSION } from '../keyboard/createKeyboardContext'
 import { useKeyboardProviders } from './useKeyboardProviders'
-import type { KeyboardContribution } from '../../../plugin-api/index'
+import type { KeyboardContribution, OverlayContribution } from '../../../plugin-api/index'
 
 function pluginWebSocketUrl(path: string): string {
   const resolved = apiUrl(path)
@@ -265,6 +266,8 @@ export interface PluginExports {
   monitor?: { series: MonitorSeries[] }
   /** 键盘 provider 贡献点（渲染进宿主预留 band） */
   keyboard?: KeyboardContribution
+  /** 全局浮层贡献点（渲染进宿主 fixed overlay layer，#app-root 之外） */
+  overlay?: OverlayContribution[]
 }
 
 export interface PluginModule {
@@ -319,7 +322,7 @@ declare global {
     __dinotty_terminal_api?: PluginContext['terminal']
     __dinotty_ui_notify?: PluginContext['ui']['notify']
     __dinotty_ui_confirm?: PluginContext['ui']['confirm']
-    __dinotty_open_plugin?: (pluginId: string) => void
+    __dinotty_open_plugin?: (pluginId: string, mode?: 'tab' | 'floating' | 'pane') => void
     __dinotty_settings_listener?: PluginContext['settings']['onDidChange']
     // Test hooks for P3 verification (focusActive + isComposing guard).
     __dinotty_test_focus_active?: () => void
@@ -774,6 +777,12 @@ async function loadPlugin(id: string): Promise<LoadedPlugin> {
     usePluginMonitorStore().register(id, exports.monitor.series)
   }
 
+  // 5a. Register overlay contributions into the host floating layer. Overlay ids
+  // are recommended-not-enforced (band stacking = registration order).
+  if (exports?.overlay?.length) {
+    usePluginOverlaysStore().register(id, exports.overlay)
+  }
+
   // 5b. Register keyboard provider contributions into the host registry.
   // The contribution id must be the plugin's own id (resolveKeyboardContributionId
   // throws otherwise), so a third-party plugin can never displace the bundled
@@ -816,6 +825,9 @@ async function unloadPlugin(id: string, options: { stopUiProcesses?: boolean } =
 
   // Unregister monitor series first so sampling stops touching plugin state
   usePluginMonitorStore().unregister(id)
+
+  // Drop the plugin's overlays from the host layer.
+  usePluginOverlaysStore().unregister(id)
 
   // Detach any keyboard provider component; host-registered providers keep
   // their entry so the in-core fallback resumes.

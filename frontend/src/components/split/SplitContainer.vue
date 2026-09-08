@@ -24,7 +24,9 @@
       :allow-close="allowClose"
       @close="emit('close', leaf.paneId)"
       @reorder="(src, tgt, pos) => emit('reorder', src, tgt, pos)"
-      @drop-on-tab="(srcTab, srcPane, dstTab, pos) => emit('dropOnTab', srcTab, srcPane, dstTab, pos)"
+      @drop-on-tab="
+        (srcTab, srcPane, dstTab, pos) => emit('dropOnTab', srcTab, srcPane, dstTab, pos)
+      "
       @drop-extract="(srcTab, srcPane, idx) => emit('dropExtract', srcTab, srcPane, idx)"
     />
     <template v-if="broadcastActive">
@@ -69,6 +71,7 @@
       :leaf="leaf"
       :is-visible="isVisible"
       :is-focused="leaf.paneId === activePaneId"
+      :workspace-id="workspaceId"
       @register="(id: string, el: any) => emit('register', id, el)"
       @title-change="(id: string, title: string) => emit('titleChange', id, title)"
       @shell-info="(id: string, shell: string) => emit('shellInfo', id, shell)"
@@ -100,6 +103,7 @@
         :allow-close="allowClose"
         :parent-direction="split!.direction"
         :tab-id="tabId"
+        :workspace-id="workspaceId"
         :is-visible="isChildVisible(child)"
         :style="getChildStyle(idx)"
         @register="(id: string, el: any) => emit('register', id, el)"
@@ -112,8 +116,14 @@
         @preview-link="(id: string, url: string) => emit('previewLink', id, url)"
         @link-activate="emit('linkActivate')"
         @reorder="(src: string, tgt: string, pos: DropPosition) => emit('reorder', src, tgt, pos)"
-        @drop-on-tab="(srcTab: string, srcPane: string, dstTab: string, pos: DropPosition) => emit('dropOnTab', srcTab, srcPane, dstTab, pos)"
-        @drop-extract="(srcTab: string, srcPane: string, idx: number) => emit('dropExtract', srcTab, srcPane, idx)"
+        @drop-on-tab="
+          (srcTab: string, srcPane: string, dstTab: string, pos: DropPosition) =>
+            emit('dropOnTab', srcTab, srcPane, dstTab, pos)
+        "
+        @drop-extract="
+          (srcTab: string, srcPane: string, idx: number) =>
+            emit('dropExtract', srcTab, srcPane, idx)
+        "
         @split-horizontal="emit('splitHorizontal')"
         @split-vertical="emit('splitVertical')"
         @toggle-broadcast="emit('toggleBroadcast')"
@@ -152,6 +162,9 @@ const props = withDefaults(
     allowClose?: boolean
     parentDirection?: 'horizontal' | 'vertical'
     tabId: string
+    /** Workspace owning this tab, threaded down so split plugin panes can
+     *  resolve their workspace without an encoded workspace id. */
+    workspaceId?: string
     isVisible?: boolean
   }>(),
   {

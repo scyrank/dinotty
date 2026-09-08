@@ -266,8 +266,23 @@
             <span class="plugin-permissions-label">{{ t('settings.plugins.permissions') }}</span>
             <code v-for="permission in p.permissions" :key="permission">{{ permission }}</code>
           </div>
+          <div v-if="p.overlays.length" class="plugin-permissions">
+            <span class="plugin-permissions-label">{{ t('settings.plugins.overlays') }}</span>
+            <label v-for="oid in p.overlays" :key="oid" class="plugin-toggle-inline" :title="oid">
+              <input
+                type="checkbox"
+                :checked="!hiddenOverlayIncludes(oid)"
+                @change="onToggleOverlay(oid, ($event.target as HTMLInputElement).checked)"
+              />
+              <span>{{ overlayName(oid) }}</span>
+            </label>
+          </div>
           <div class="plugin-card-actions">
-            <label class="plugin-toggle-inline" :title="t('plugin.showInToolbar')">
+            <label
+              v-if="!p.crowded"
+              class="plugin-toggle-inline"
+              :title="t('plugin.showInToolbar')"
+            >
               <input
                 type="checkbox"
                 :checked="!hiddenToolbarIncludes(p.id)"
@@ -282,6 +297,15 @@
               @click="emit('open-plugin', p.id)"
             >
               {{ t('settings.plugins.openManagement') }}
+            </button>
+            <button
+              v-if="p.crowded"
+              class="plugin-action-btn plugin-settings-btn"
+              :class="{ active: prefsOpen[p.id] }"
+              :aria-expanded="!!prefsOpen[p.id]"
+              @click="togglePrefs(p.id)"
+            >
+              {{ t('plugin.preferences') }}
             </button>
             <button
               v-if="p.marketEntry"
@@ -311,6 +335,42 @@
               {{ t('settings.plugins.uninstall') }}
             </button>
           </div>
+          <div v-if="p.crowded && prefsOpen[p.id]" class="plugin-prefs-panel">
+            <label class="plugin-toggle-inline" :title="t('plugin.showInToolbar')">
+              <input
+                type="checkbox"
+                :checked="!hiddenToolbarIncludes(p.id)"
+                @change="toggleToolbarVisible(p.id, ($event.target as HTMLInputElement).checked)"
+              />
+              <span>{{ t('plugin.showInToolbar') }}</span>
+            </label>
+            <label class="plugin-toggle-inline plugin-open-mode">
+              <span>{{ t('plugin.openMode') }}</span>
+              <select
+                class="plugin-open-mode-select"
+                :value="openModeOf(p.id)"
+                @change="onOpenModeChange(p.id, ($event.target as HTMLSelectElement).value)"
+              >
+                <option value="tab">{{ t('plugin.openMode.tab') }}</option>
+                <option value="floating">{{ t('plugin.openMode.floating') }}</option>
+                <option value="pane">{{ t('plugin.openMode.pane') }}</option>
+              </select>
+            </label>
+            <div v-if="openModeOf(p.id) === 'floating'" class="plugin-float-opacity-row">
+              <span class="plugin-float-opacity-label">{{ t('plugin.floatOpacity') }}</span>
+              <input
+                type="range"
+                min="0.3"
+                max="1"
+                step="0.05"
+                class="plugin-float-opacity-range"
+                :value="floatOpacityOf(p.id)"
+                @input="onFloatOpacityInput(p.id, ($event.target as HTMLInputElement).value)"
+                @change="onFloatOpacityCommit"
+              />
+              <span class="plugin-float-opacity-val">{{ floatOpacityPercent(p.id) }}%</span>
+            </div>
+          </div>
         </div>
       </template>
     </div>
@@ -328,7 +388,6 @@
       :visible="!!confirmUninstall"
       :title="t('settings.plugins.uninstall')"
       :message="t('settings.plugins.confirmUninstall')"
-      :target="confirmUninstall || undefined"
       :confirm-text="t('settings.plugins.uninstall')"
       :cancel-text="t('terminal.cancel')"
       @confirm="doUninstall"
@@ -342,6 +401,7 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from '../../composables/useI18n'
 import { authFetch, apiUrl } from '../../composables/apiBase'
 import { usePluginLoader } from '../../composables/usePluginLoader'
+import { usePluginOverlaysStore } from '../../stores/pluginOverlays'
 import { useMarketplace, type MarketPlugin } from '../../composables/useMarketplace'
 import { hasHostPluginView } from '../../utils/hostPluginViews'
 import { describeHttpError, describeRequestError } from '../../utils/httpError'
@@ -355,6 +415,7 @@ const emit = defineEmits<{ 'open-plugin': [pluginId: string] }>()
 
 const { t, locale } = useI18n()
 const { loadedPlugins, loadAll, unloadPlugin } = usePluginLoader()
+const overlayStore = usePluginOverlaysStore()
 const {
   plugins: marketPlugins,
   loading: marketLoading,
@@ -375,6 +436,13 @@ const busyOps = ref<Set<string>>(new Set())
 const confirmUninstall = ref<string | null>(null)
 const showPicker = ref(false)
 
+// Per-card collapse state for the prefs (toolbar / open mode) behind the header gear.
+const prefsOpen = ref<Record<string, boolean>>({})
+
+function togglePrefs(pluginId: string) {
+  prefsOpen.value = { ...prefsOpen.value, [pluginId]: !prefsOpen.value[pluginId] }
+}
+
 // Detail view state
 const detailPlugin = ref<MarketPlugin | null>(null)
 const readmeCache = ref<Map<string, string | null>>(new Map())
@@ -388,19 +456,28 @@ const readmeHtmlContent = computed(() => {
 
 const settingsPlugins = computed(() =>
   Array.from(loadedPlugins.values())
-    .map((p) => ({
-      id: p.id,
-      name: p.manifest.name,
-      version: p.manifest.version,
-      description: p.manifest.description,
-      state: p.state,
-      error: p.error,
-      hasComponent: !!p.exports?.component || hasHostPluginView(p.id),
-      permissions: p.manifest.permissions ?? [],
-      isDevLink: p.isDevLink,
-      category: p.manifest.category,
-      marketEntry: marketPlugins.value.find((mp) => mp.id === p.id),
-    }))
+    .map((p) => {
+      const hasComponent = !!p.exports?.component || hasHostPluginView(p.id)
+      return {
+        id: p.id,
+        name: p.manifest.name,
+        version: p.manifest.version,
+        description: p.manifest.description,
+        state: p.state,
+        error: p.error,
+        hasComponent,
+        // Component plugins keep the toolbar/open-mode prefs behind the header gear
+        // (they also carry the open-mode select, which made the actions row crowded).
+        crowded: p.state === 'active' && hasComponent,
+        permissions: p.manifest.permissions ?? [],
+        isDevLink: p.isDevLink,
+        category: p.manifest.category,
+        marketEntry: marketPlugins.value.find((mp) => mp.id === p.id),
+        overlays: overlayStore.overlays
+          .filter((o) => o.pluginId === p.id && !o.defaultHidden)
+          .map((o) => o.id),
+      }
+    })
     .sort((a, b) => a.name.localeCompare(b.name))
 )
 
@@ -420,7 +497,11 @@ const showIncompatibleModel = computed({
   get: () => settings.plugin_prefs?.show_incompatible ?? false,
   set: (v: boolean) => {
     settings.plugin_prefs = {
-      ...(settings.plugin_prefs ?? { hidden_toolbar: [], show_incompatible: false }),
+      ...(settings.plugin_prefs ?? {
+        hidden_toolbar: [],
+        hidden_overlays: [],
+        show_incompatible: false,
+      }),
       show_incompatible: v,
     }
     void saveSettings()
@@ -455,10 +536,84 @@ async function toggleToolbarVisible(id: string, visible: boolean) {
   const current = settings.plugin_prefs?.hidden_toolbar ?? []
   const next = visible ? current.filter((x) => x !== id) : [...current, id]
   settings.plugin_prefs = {
-    ...(settings.plugin_prefs ?? { hidden_toolbar: [], show_incompatible: false }),
+    ...(settings.plugin_prefs ?? {
+      hidden_toolbar: [],
+      hidden_overlays: [],
+      show_incompatible: false,
+    }),
     hidden_toolbar: next,
   }
   await saveSettings()
+}
+
+function openModeOf(pluginId: string): 'tab' | 'floating' | 'pane' {
+  const stored = settings.plugin_prefs?.open_modes?.[pluginId]
+  return stored === 'floating' || stored === 'pane' ? stored : 'tab'
+}
+
+function onOpenModeChange(pluginId: string, value: string): void {
+  const mode: 'tab' | 'floating' | 'pane' = value === 'floating' || value === 'pane' ? value : 'tab'
+  settings.plugin_prefs = {
+    ...(settings.plugin_prefs ?? {
+      hidden_toolbar: [],
+      hidden_overlays: [],
+      show_incompatible: false,
+    }),
+    open_modes: { ...settings.plugin_prefs?.open_modes, [pluginId]: mode },
+  }
+  void saveSettings()
+}
+
+const FLOAT_OPACITY_MIN = 0.3
+const FLOAT_OPACITY_MAX = 1
+
+function floatOpacityOf(pluginId: string): number {
+  const raw = settings.plugin_prefs?.float_opacity?.[pluginId]
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return FLOAT_OPACITY_MAX
+  return Math.min(FLOAT_OPACITY_MAX, Math.max(FLOAT_OPACITY_MIN, raw))
+}
+
+function floatOpacityPercent(pluginId: string): number {
+  return Math.round(floatOpacityOf(pluginId) * 100)
+}
+
+/** Apply live while dragging; the value is persisted on the range `change` event. */
+function onFloatOpacityInput(pluginId: string, raw: string): void {
+  const value = Number(raw)
+  if (!Number.isFinite(value)) return
+  const prefs = settings.plugin_prefs ?? {
+    hidden_toolbar: [],
+    hidden_overlays: [],
+    show_incompatible: false,
+    open_modes: {},
+    float_opacity: {},
+  }
+  settings.plugin_prefs = {
+    ...prefs,
+    float_opacity: {
+      ...(prefs.float_opacity ?? {}),
+      [pluginId]: Math.min(FLOAT_OPACITY_MAX, Math.max(FLOAT_OPACITY_MIN, value)),
+    },
+  }
+}
+
+function onFloatOpacityCommit(): void {
+  void saveSettings()
+}
+
+function hiddenOverlayIncludes(id: string): boolean {
+  return (settings.plugin_prefs?.hidden_overlays ?? []).includes(id)
+}
+
+/** 'overlay-demo:fab' -> 'Fab' */
+function overlayName(id: string): string {
+  const short = id.split(':').pop() ?? id
+  return short.charAt(0).toUpperCase() + short.slice(1)
+}
+
+function onToggleOverlay(id: string, visible: boolean) {
+  overlayStore.setUserVisible(id, visible)
+  void saveSettings()
 }
 
 function setStatus(msg: string, ok: boolean) {
@@ -720,7 +875,7 @@ async function onRefresh() {
   padding: 8px 16px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-muted, #888);
+  color: var(--text-muted);
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -730,11 +885,11 @@ async function onRefresh() {
     border-color 0.15s;
 }
 .plugin-tab:hover {
-  color: var(--text-primary, #ddd);
+  color: var(--text-primary);
 }
 .plugin-tab.active {
-  color: var(--fg-bright, #d0d0d0);
-  border-bottom-color: var(--accent, #8a8a8a);
+  color: var(--fg-bright);
+  border-bottom-color: var(--accent);
 }
 .plugin-toolbar {
   display: flex;
@@ -754,15 +909,15 @@ async function onRefresh() {
   min-width: 160px;
   padding: 6px 10px;
   font-size: 13px;
-  color: var(--fg, #ccc);
+  color: var(--fg);
   background: var(--bg-input);
-  border: 1px solid var(--border, #444);
+  border: 1px solid var(--border);
   border-radius: 5px;
   outline: none;
   transition: border-color 0.15s;
 }
 .plugin-search-input:focus {
-  border-color: var(--fg-muted, #858585);
+  border-color: var(--fg-muted);
 }
 .plugin-category-chips {
   display: flex;
@@ -772,9 +927,9 @@ async function onRefresh() {
 .plugin-category-chip {
   padding: 3px 10px;
   font-size: 11px;
-  color: var(--fg-muted, #858585);
+  color: var(--fg-muted);
   background: none;
-  border: 1px solid var(--border, #444);
+  border: 1px solid var(--border);
   border-radius: 12px;
   cursor: pointer;
   transition:
@@ -783,34 +938,64 @@ async function onRefresh() {
     background 0.15s;
 }
 .plugin-category-chip:hover {
-  color: var(--fg, #ccc);
-  border-color: var(--fg-muted, #858585);
+  color: var(--fg);
+  border-color: var(--fg-muted);
 }
 .plugin-category-chip.active {
-  color: var(--bg, #1e1e1e);
-  background: var(--fg-muted, #858585);
-  border-color: var(--fg-muted, #858585);
+  color: var(--bg);
+  background: var(--fg-muted);
+  border-color: var(--fg-muted);
 }
 .plugin-toggle-inline {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   font-size: 11px;
-  color: var(--fg-muted, #858585);
+  color: var(--fg-muted);
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
 }
 .plugin-toggle-inline input[type='checkbox'] {
-  accent-color: var(--accent, #8a8a8a);
+  accent-color: var(--accent);
+}
+.plugin-open-mode-select {
+  font-size: 12px;
+  color: var(--text-color);
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1px 2px;
+  max-width: 110px;
+}
+.plugin-float-opacity-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.plugin-float-opacity-label {
+  font-size: 11px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+.plugin-float-opacity-range {
+  width: 110px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.plugin-float-opacity-val {
+  min-width: 36px;
+  font-size: 11px;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
 }
 .plugin-badge.category {
-  color: var(--fg-muted, #858585);
+  color: var(--fg-muted);
   background: var(--bg-hover);
 }
 .plugin-badge.incompatible {
-  color: var(--color-red, #ef4444);
-  background: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
 }
 .plugin-card-incompatible {
   opacity: 0.7;
@@ -832,9 +1017,9 @@ async function onRefresh() {
   min-width: 0;
   padding: 5px 10px;
   font-size: 12px;
-  color: var(--fg-muted, #858585);
+  color: var(--fg-muted);
   background: var(--bg-input);
-  border: 1px solid var(--border, #444);
+  border: 1px solid var(--border);
   border-radius: 5px;
   cursor: pointer;
   text-align: left;
@@ -846,21 +1031,21 @@ async function onRefresh() {
     border-color 0.15s;
 }
 .plugin-browse-btn:hover {
-  color: var(--fg, #cccccc);
-  border-color: var(--fg-muted, #858585);
+  color: var(--fg);
+  border-color: var(--fg-muted);
 }
 .plugin-dev-toggle {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   font-size: 12px;
-  color: var(--text-muted, #888);
+  color: var(--text-muted);
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
 }
 .plugin-dev-toggle input[type='checkbox'] {
-  accent-color: var(--accent, #8a8a8a);
+  accent-color: var(--accent);
 }
 .plugin-install-btn {
   display: inline-flex;
@@ -868,18 +1053,18 @@ async function onRefresh() {
   padding: 5px 12px;
   border-radius: 5px;
   background: var(--bg-input);
-  color: var(--fg-bright, #d0d0d0);
+  color: var(--fg-bright);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  border: 1px solid var(--border, #444);
+  border: 1px solid var(--border);
   transition:
     background 0.15s,
     border-color 0.15s;
 }
 .plugin-install-btn:hover {
   background: var(--bg-hover);
-  border-color: var(--fg-muted, #858585);
+  border-color: var(--fg-muted);
 }
 .plugin-action-btn {
   display: inline-flex;
@@ -887,7 +1072,7 @@ async function onRefresh() {
   padding: 5px 12px;
   border-radius: 5px;
   background: none;
-  color: var(--fg-muted, #858585);
+  color: var(--fg-muted);
   font-size: 12px;
   cursor: pointer;
   border: none;
@@ -897,27 +1082,27 @@ async function onRefresh() {
 }
 .plugin-action-btn:hover {
   background: var(--bg-hover);
-  color: var(--fg, #cccccc);
+  color: var(--fg);
 }
 .plugin-danger {
-  color: var(--fg-muted, #858585);
+  color: var(--fg-muted);
 }
 .plugin-danger:hover {
-  color: var(--color-red, #ef4444);
-  background: rgba(239, 68, 68, 0.08);
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
 }
 .plugin-error-msg {
   margin: 8px 0;
-  color: var(--color-red, #ef4444);
+  color: var(--danger);
   font-size: 13px;
 }
 .plugin-retry-btn {
   margin-left: 8px;
   padding: 3px 10px;
   font-size: 12px;
-  color: var(--fg-muted, #858585);
+  color: var(--fg-muted);
   background: none;
-  border: 1px solid var(--border, #444);
+  border: 1px solid var(--border);
   border-radius: 4px;
   cursor: pointer;
   transition:
@@ -925,17 +1110,17 @@ async function onRefresh() {
     border-color 0.15s;
 }
 .plugin-retry-btn:hover {
-  color: var(--fg-bright, #d0d0d0);
-  border-color: var(--fg-muted, #858585);
+  color: var(--fg-bright);
+  border-color: var(--fg-muted);
 }
 .plugin-success-msg {
   margin: 8px 0;
-  color: var(--color-green, #34d399);
+  color: var(--success);
   font-size: 13px;
 }
 .plugin-empty {
   padding: 12px 0;
-  color: var(--text-muted, #888);
+  color: var(--text-muted);
   font-size: 13px;
 }
 .plugin-card {
@@ -943,7 +1128,7 @@ async function onRefresh() {
   margin-bottom: 10px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: var(--bg-elevated, #222);
+  background: var(--bg-elevated);
 }
 .plugin-card-clickable {
   cursor: pointer;
@@ -952,8 +1137,8 @@ async function onRefresh() {
     background 0.15s;
 }
 .plugin-card-clickable:hover {
-  border-color: var(--fg-muted, #858585);
-  background: var(--bg-surface-hover, #2a2a2a);
+  border-color: var(--fg-muted);
+  background: var(--bg-surface-hover);
 }
 .plugin-card-header {
   display: flex;
@@ -968,7 +1153,7 @@ async function onRefresh() {
 }
 .plugin-card-version {
   font-size: 12px;
-  color: var(--text-muted, #888);
+  color: var(--text-muted);
   line-height: 1.4;
 }
 .plugin-badge {
@@ -979,31 +1164,31 @@ async function onRefresh() {
   line-height: 1.4;
 }
 .plugin-badge.installed {
-  color: var(--color-green, #34d399);
-  background: rgba(52, 211, 153, 0.15);
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 15%, transparent);
 }
 .plugin-badge.update {
-  color: var(--fg-muted, #858585);
+  color: var(--fg-muted);
   background: var(--bg-hover);
 }
 .plugin-badge.error {
-  color: var(--color-red, #ef4444);
-  background: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
 }
 .plugin-badge.dev {
-  color: var(--color-orange, #f59e0b);
-  background: rgba(245, 158, 11, 0.15);
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 15%, transparent);
 }
 .plugin-card-desc {
   margin: 6px 0 10px;
   font-size: 12px;
-  color: var(--text-secondary, #aaa);
+  color: var(--text-secondary);
   line-height: 1.5;
 }
 .plugin-card-error {
   margin: 6px 0 10px;
   font-size: 12px;
-  color: var(--color-red, #ef4444);
+  color: var(--danger);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -1014,7 +1199,7 @@ async function onRefresh() {
   gap: 6px;
   margin: 6px 0 10px;
   font-size: 11px;
-  color: var(--fg-muted, #858585);
+  color: var(--fg-muted);
 }
 .plugin-permissions code {
   padding: 2px 6px;
@@ -1030,20 +1215,34 @@ async function onRefresh() {
   margin-top: 4px;
   align-items: center;
 }
+.plugin-settings-btn.active {
+  color: var(--accent);
+}
+.plugin-prefs-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  margin: 8px 0 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-hover);
+}
 .plugin-link {
   font-size: 12px;
-  color: var(--fg-muted, #858585);
+  color: var(--fg-muted);
   text-decoration: none;
   transition: color 0.15s;
 }
 .plugin-link:hover {
-  color: var(--fg-bright, #d0d0d0);
+  color: var(--fg-bright);
 }
 .plugin-spinner {
   display: inline-block;
   width: 12px;
   height: 12px;
-  border: 2px solid var(--text-muted, #888);
+  border: 2px solid var(--text-muted);
   border-top-color: transparent;
   border-radius: 50%;
   animation: plugin-spin 0.6s linear infinite;
@@ -1051,7 +1250,7 @@ async function onRefresh() {
   vertical-align: middle;
 }
 .plugin-install-btn .plugin-spinner {
-  border-color: var(--fg-muted, #858585);
+  border-color: var(--fg-muted);
   border-top-color: transparent;
 }
 @keyframes plugin-spin {
@@ -1074,14 +1273,14 @@ async function onRefresh() {
   gap: 6px;
   padding: 4px 0;
   font-size: 13px;
-  color: var(--fg-muted, #858585);
+  color: var(--fg-muted);
   background: none;
   border: none;
   cursor: pointer;
   transition: color 0.15s;
 }
 .plugin-back-btn:hover {
-  color: var(--fg-bright, #d0d0d0);
+  color: var(--fg-bright);
 }
 .plugin-back-arrow {
   font-size: 16px;
@@ -1091,7 +1290,7 @@ async function onRefresh() {
   padding: 14px 16px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: var(--bg-elevated, #222);
+  background: var(--bg-elevated);
   margin-bottom: 12px;
 }
 .plugin-detail-title-row {
@@ -1108,12 +1307,12 @@ async function onRefresh() {
 .plugin-detail-author {
   margin: 4px 0 0;
   font-size: 12px;
-  color: var(--text-muted, #888);
+  color: var(--text-muted);
 }
 .plugin-detail-desc {
   margin: 8px 0 12px;
   font-size: 13px;
-  color: var(--text-secondary, #aaa);
+  color: var(--text-secondary);
   line-height: 1.5;
 }
 .plugin-detail-actions {
@@ -1125,24 +1324,24 @@ async function onRefresh() {
   padding: 14px 16px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: var(--bg-elevated, #222);
+  background: var(--bg-elevated);
 }
 .plugin-readme-loading {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: var(--text-muted, #888);
+  color: var(--text-muted);
   padding: 8px 0;
 }
 .plugin-readme-empty {
   font-size: 12px;
-  color: var(--text-muted, #888);
+  color: var(--text-muted);
   padding: 8px 0;
 }
 .plugin-readme-body {
   font-size: 13px;
-  color: var(--text-primary, #ddd);
+  color: var(--text-primary);
   line-height: 1.6;
   max-height: 500px;
   overflow-y: auto;
@@ -1150,7 +1349,7 @@ async function onRefresh() {
 .plugin-readme-body :deep(h1),
 .plugin-readme-body :deep(h2),
 .plugin-readme-body :deep(h3) {
-  color: var(--text-primary, #ddd);
+  color: var(--text-primary);
   margin: 16px 0 8px;
   font-weight: 600;
 }
@@ -1195,7 +1394,7 @@ async function onRefresh() {
   margin: 8px 0;
 }
 .plugin-readme-body :deep(a) {
-  color: var(--accent, #8a8a8a);
+  color: var(--accent);
   text-decoration: none;
 }
 .plugin-readme-body :deep(a:hover) {
@@ -1205,7 +1404,7 @@ async function onRefresh() {
   border-left: 3px solid var(--border);
   padding-left: 12px;
   margin: 8px 0;
-  color: var(--text-muted, #888);
+  color: var(--text-muted);
 }
 .plugin-readme-body :deep(table) {
   border-collapse: collapse;

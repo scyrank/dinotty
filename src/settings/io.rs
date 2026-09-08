@@ -2,8 +2,8 @@ use std::path::PathBuf;
 use tracing::error;
 
 use super::normalize::{
-    clamp_ime_keyboard_overlap_px, clamp_quick_send_threshold, clamp_text_on_load,
-    normalize_action_keyboards,
+    clamp_ime_keyboard_overlap_px, clamp_quick_send_threshold, clamp_text_config,
+    clamp_text_on_load, normalize_action_keyboards,
 };
 use super::types::{
     default_upload_dir, ActionKey, KeyboardGuardMode, Settings, SystemKeyboardConfig,
@@ -59,51 +59,63 @@ pub fn save_token(token: &str) -> Result<(), String> {
 
 pub fn load_settings() -> Settings {
     let path = settings_path();
-    let (mut settings, rewrite_unprotected) = if path.exists() {
+    let mut settings = if path.exists() {
         match std::fs::read(&path) {
             Ok(persisted) => match crate::platform::secret::decode_persisted(&persisted) {
                 Ok((decoded, protected)) => match String::from_utf8(decoded) {
                     Ok(data) => match serde_json::from_str::<Settings>(&data) {
-                        Ok(settings) => (settings, !protected),
+                        Ok(mut settings) => {
+                            let mut migrated = migrate_settings(&mut settings);
+                            migrated |= !protected;
+                            if settings.upload_dir.trim().is_empty() {
+                                settings.upload_dir = default_upload_dir();
+                                migrated = true;
+                            }
+                            let text_changed = clamp_text_config(&mut settings.text);
+                            let threshold_changed = clamp_quick_send_threshold(&mut settings);
+                            let overlap_changed = clamp_ime_keyboard_overlap_px(&mut settings);
+                            let action_keyboard_changed = normalize_action_keyboards(&mut settings);
+                            if migrated
+                                || text_changed
+                                || threshold_changed
+                                || overlap_changed
+                                || action_keyboard_changed
+                            {
+                                if let Err(e) = save_settings(&settings) {
+                                    error!("persist settings on load: {}", e);
+                                }
+                            }
+                            return settings;
+                        }
                         Err(e) => {
                             error!("parse settings: {}", e);
-                            (Settings::default(), false)
+                            Settings::default()
                         }
                     },
                     Err(e) => {
                         error!("settings are not valid UTF-8: {}", e);
-                        (Settings::default(), false)
+                        Settings::default()
                     }
                 },
                 Err(e) => {
                     error!("decrypt settings: {}", e);
-                    (Settings::default(), false)
+                    Settings::default()
                 }
             },
             Err(e) => {
                 error!("read settings: {}", e);
-                (Settings::default(), false)
+                Settings::default()
             }
         }
     } else {
-        (Settings::default(), false)
+        Settings::default()
     };
-    let mut migrated = migrate_settings(&mut settings);
-    if settings.upload_dir.trim().is_empty() {
-        settings.upload_dir = default_upload_dir();
-        migrated = true;
-    }
+    let migrated = migrate_settings(&mut settings);
     let text_changed = clamp_text_on_load(&mut settings.text);
     let threshold_changed = clamp_quick_send_threshold(&mut settings);
     let overlap_changed = clamp_ime_keyboard_overlap_px(&mut settings);
     let action_keyboard_changed = normalize_action_keyboards(&mut settings);
-    if rewrite_unprotected
-        || migrated
-        || text_changed
-        || threshold_changed
-        || overlap_changed
-        || action_keyboard_changed
-    {
+    if migrated || text_changed || threshold_changed || overlap_changed || action_keyboard_changed {
         if let Err(e) = save_settings(&settings) {
             error!("persist settings on load: {}", e);
         }
@@ -192,10 +204,10 @@ pub(crate) fn migrate_settings(settings: &mut Settings) -> bool {
     // The optional field uses its serde default, so existing layouts need no data transform.
     // v12 adds an independent lower pinned prefix and expands both pinned limits to five.
     // Serde defaults legacy lower counts to zero while existing upper counts remain intact.
-    // Two independently-developed v13 variants added the remembered desktop window-close
-    // behavior and synchronized IME keyboard overlap. The combined schema is v14 so either
-    // v13 shape upgrades safely. Missing close behavior defaults to Ask; a missing overlap
-    // deliberately remains uninitialized so a capable client can seed its device-local value.
+    // v13 synchronizes the optional IME keyboard overlap. `None` deliberately remains
+    // uninitialized so the first capable client can seed its previous device-local value.
+    // v13 also adds the remembered desktop window-close behavior. Missing or invalid legacy
+    // values safely default to asking every time, so no explicit data transform is needed.
     settings.settings_version = CURRENT_SETTINGS_VERSION;
     true
 }
