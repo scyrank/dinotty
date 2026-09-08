@@ -6,7 +6,7 @@ This guide explains how to install and deploy build artifacts. Repository mainta
 
 Use the repository `Package` workflow (`.github/workflows/package.yml`) for release and deployment artifacts. Do not treat local script output as the official release source.
 
-- Manual package: open GitHub Actions → `Package` → `Run workflow`, then choose `dev` or `main`; manual runs upload Actions artifacts only.
+- Manual package: open GitHub Actions → `Package` → `Run workflow`; this fork packages `main`, and manual runs upload Actions artifacts only.
 - Official release: push a `v*` tag on `main`; CI builds packages and publishes GitHub Release assets.
 - CI artifacts: `dinotty-macos` contains `.dmg`, `dinotty-linux` contains desktop `.deb` / `.AppImage` and the server `dinotty-server_*.deb`, and `dinotty-windows` contains the NSIS installer and portable `.exe`.
 - Artifact staging: CI copies packages to `dist/package-artifacts/` before upload. Manual-run artifacts are retained for 14 days by default.

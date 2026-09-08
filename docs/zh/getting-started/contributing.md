@@ -4,15 +4,19 @@
 
 ## 分支策略
 
-- **PR 只能提交到 `dev` 分支**，不要直接向 `main` 提交 PR
-- `main` 分支始终保持稳定可发布状态
-- 从 `dev` 分支创建你的功能分支：
+- 本 fork 的 **PR 统一以 `main` 为目标分支**。
+- 日常修改在短期功能分支上完成，使 `main` 始终保持稳定、可发布。
+- 每个功能或修复分支都从远端最新 `main` 创建：
 
 ```bash
-git checkout dev
-git pull origin dev
-git checkout -b feat/your-feature
+git fetch origin
+git switch main
+git pull --ff-only origin main
+git switch -c feat/your-feature
 ```
+
+检查通过后推送功能分支，并通过 PR 合并回 `main`。不再使用长期
+开发分支作为发布前的中间分支。
 
 ## 分支命名
 

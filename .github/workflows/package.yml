@@ -4,12 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       target_branch:
-        description: Branch to package; manual runs only upload Actions artifacts.
+        description: Branch to package; this fork packages main only.
         type: choice
         required: true
-        default: dev
+        default: main
         options:
-          - dev
           - main
   push:
     tags:
@@ -57,7 +56,7 @@ jobs:
 
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             case "${MANUAL_TARGET_BRANCH}" in
-              dev|main)
+              main)
                 release_tag="${MANUAL_TARGET_BRANCH}"
                 checkout_ref="${MANUAL_TARGET_BRANCH}"
                 ;;

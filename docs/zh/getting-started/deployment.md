@@ -6,7 +6,7 @@
 
 发布和部署优先使用仓库里的 `Package` workflow（`.github/workflows/package.yml`），不要手动在本机跑构建脚本作为正式产物来源。
 
-- 手动打包：进入 GitHub Actions → `Package` → `Run workflow`，选择 `dev` 或 `main`；手动运行只上传 Actions artifacts。
+- 手动打包：进入 GitHub Actions → `Package` → `Run workflow`；本 fork 固定从 `main` 打包，手动运行只上传 Actions artifacts。
 - 正式发布：在 `main` 上推送 `v*` tag；CI 会构建包并发布到 GitHub Release。
 - CI 产物：`dinotty-macos` 包含 `.dmg`，`dinotty-linux` 包含桌面 `.deb` / `.AppImage` 和服务端 `dinotty-server_*.deb`，`dinotty-windows` 包含 NSIS 安装包和 portable `.exe`。
 - 产物暂存：CI 会把包复制到 `dist/package-artifacts/` 后上传，手动运行的 artifacts 默认保留 14 天。

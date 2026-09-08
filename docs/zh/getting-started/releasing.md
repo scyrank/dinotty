@@ -1,6 +1,6 @@
 # 发布指南
 
-本文面向 Dinotty 仓库维护者，说明如何准备版本、将 `dev` 晋升到 `main`，以及通过 Git tag 触发正式发布。安装和部署产物的方法见[部署指南](deployment.md)，普通代码贡献流程见[贡献指南](contributing.md)。
+本文面向此 Dinotty fork 的维护者，说明只使用 `main` 的开发模式、版本准备流程，以及如何从 `main` 的精确提交创建 Git tag 并触发正式发布。安装和部署产物的方法见[部署指南](deployment.md)，普通代码贡献流程见[贡献指南](contributing.md)。
 
 ## 发布模型
 
@@ -34,11 +34,12 @@ version = "0.19.0"
 
 ## 2. 准备版本 PR
 
-从最新 `dev` 创建 `chore/` 分支：
+从远端最新 `main` 创建 `chore/` 分支：
 
 ```bash
-git switch dev
-git pull --ff-only origin dev
+git fetch origin
+git switch main
+git pull --ff-only origin main
 git switch -c chore/bump-version-0.19.0
 ```
 
@@ -71,7 +72,7 @@ pnpm exec vue-tsc --noEmit
 pnpm test
 ```
 
-提交并向 `dev` 创建 PR：
+提交并向 `main` 创建 PR：
 
 ```bash
 git add Cargo.toml Cargo.lock
@@ -79,32 +80,34 @@ git commit -m "chore: bump version to 0.19.0"
 git push -u origin chore/bump-version-0.19.0
 ```
 
-版本 PR 必须先合入 `dev` 并通过完整 CI。普通贡献 PR 仍然只能以 `dev` 为目标分支。
+版本 PR 必须合入 `main` 并通过完整 CI。普通贡献 PR 也统一以 `main` 为目标分支。
 
-## 3. 晋升到 main
+## 3. 验证 main
 
-版本 PR 合入且计划纳入本次发布的改动全部验证完成后，由维护者按照仓库保护规则将 `dev` 晋升到 `main`。不要直接在 `main` 上修改版本，也不要在晋升完成前创建正式 tag。
+版本 PR 和计划纳入本次发布的改动全部合入后，验证准备发布的精确 `main` 提交。该提交的 CI 通过前不要创建正式 tag。
 
-晋升后确认：
+确认：
 
 - `main` 的 CI 已通过；
 - `main` 包含预期的版本 PR 和全部计划发布的 commit；
-- `dev` 中没有尚未验证但被意外带入的改动；
 - `python3 scripts/check-workspace-version.py`（Windows 使用 `python`）输出预期版本。
 
-如需在正式发布前检查安装包，可从 GitHub Actions 手动运行 `Package`，将 `target_branch` 设为 `dev` 或 `main`。手动运行会构建并上传保留 14 天的 Actions artifacts，但不会创建 GitHub Release，也不需要 Git tag。
+如需在正式发布前检查安装包，可从 GitHub Actions 手动运行 `Package`。此 fork 固定从 `main` 打包；手动运行会构建并上传保留 14 天的 Actions artifacts，但不会创建 GitHub Release，也不需要 Git tag。
 
 ## 4. 创建正式 tag
 
-同步并检出远端 `main`，再次确认版本：
+同步远端 `main`，记录它的完整提交 SHA，并明确从该 SHA 创建 tag：
 
 ```bash
 git fetch origin main --tags
 git switch main
 git pull --ff-only origin main
+RELEASE_COMMIT=$(git rev-parse refs/remotes/origin/main)
+test "$(git rev-parse HEAD)" = "${RELEASE_COMMIT}"
 VERSION=$(python3 scripts/check-workspace-version.py)
-git log -1 --oneline
-git tag -a "v${VERSION}" -m "Dinotty v${VERSION}"
+git show --no-patch --oneline "${RELEASE_COMMIT}"
+git tag -a "v${VERSION}" "${RELEASE_COMMIT}" -m "Dinotty v${VERSION}"
+test "$(git rev-parse "v${VERSION}^{}")" = "${RELEASE_COMMIT}"
 git push origin "v${VERSION}"
 ```
 
@@ -114,14 +117,22 @@ Windows PowerShell：
 git fetch origin main --tags
 git switch main
 git pull --ff-only origin main
+$ReleaseCommit = (git rev-parse refs/remotes/origin/main).Trim()
+if ((git rev-parse HEAD).Trim() -ne $ReleaseCommit) {
+    throw '本地 main 与 origin/main 不一致'
+}
 $Version = python scripts/check-workspace-version.py
 if ($LASTEXITCODE -ne 0) { throw 'Workspace version validation failed' }
-git log -1 --oneline
-git tag -a "v$Version" -m "Dinotty v$Version"
+git show --no-patch --oneline $ReleaseCommit
+git tag -a "v$Version" $ReleaseCommit -m "Dinotty v$Version"
+$TaggedCommit = (git rev-parse "v$Version^{}").Trim()
+if ($TaggedCommit -ne $ReleaseCommit) {
+    throw '发布 tag 没有指向选定的 origin/main 提交'
+}
 git push origin "v$Version"
 ```
 
-推送前应确认 tag 名称是 `v{workspace_version}`，且当前 `HEAD` 正是要发布的 `main` commit。不要使用 `git push --force` 发布正式 tag。
+推送前应确认 tag 名称是 `v{workspace_version}`，并且 tag 解引用后的提交等于此前记录的 `origin/main` SHA。不要从尚未合并的功能分支创建发布 tag，也不要使用 `git push --force` 发布正式 tag。
 
 ## 5. 配置 macOS 签名和公证
 
@@ -164,17 +175,17 @@ Dinotty 对新版本设置了 24 小时提示缓冲。若 Release 在发布后 2
 发现严重问题时，在 GitHub Release 页面选择 **Delete this release**，或执行：
 
 ```bash
-gh release delete "v0.20.0" --repo xichan96/dinotty --yes
+gh release delete "v0.20.0" --repo scyrank/dinotty --yes
 ```
 
-只删除 Release，保留对应 Git tag；不要移动或复用该 tag。随后在 `dev` 修复问题、提升 PATCH 版本，并按正常流程发布新版本。若删除时 Release 已发布超过 24 小时，已经显示的提示及后端最长 6 小时的成功缓存无法立即撤回，只会在页面生命周期结束或缓存重新验证后消失，因此应尽快发布修复版本。
+只删除 Release，保留对应 Git tag；不要移动或复用该 tag。随后从 `main` 创建修复分支，修复问题并提升 PATCH 版本，合并回 `main` 后按正常流程发布替代版本。若删除时 Release 已发布超过 24 小时，已经显示的提示及后端最长 6 小时的成功缓存无法立即撤回，只会在页面生命周期结束或缓存重新验证后消失，因此应尽快发布修复版本。
 
 ## 失败处理
 
 - **临时 CI 或基础设施故障**：rerun 原 workflow；tag 和 commit 保持不变。
 - **tag 名称与 workspace 版本不一致**：workflow 会在 `prepare` 阶段停止，不会启动平台构建。若 tag 尚未作为正式版本发布，由仓库管理员处理错误 tag，再从正确的 `main` commit 创建正确版本；不要把强制移动 tag 当作正常发布步骤。
 - **tag 不在 `main` 历史**：workflow 会跳过打包和发布。在版本改动按流程进入 `main` 后，使用尚未占用的新版本发布。
-- **tagged commit 的代码需要修复**：在 `dev` 上修复并提升 PATCH 版本，重新走版本 PR、晋升和新 tag 流程。
+- **tagged commit 的代码需要修复**：从 `main` 创建修复分支并提升 PATCH 版本，合并回 `main` 后从新的精确 `origin/main` 提交创建新 tag。
 - **Release 已创建或产物已分发**：不要复用版本号；发布新的 PATCH 版本修复。
 
 > **强制 tag 提醒**：Git 允许仓库管理员在显式使用 force push 时移动远端 tag。GitHub 接受强制更新后，新的 tag push 仍可触发 Package workflow；只要新目标位于 `main` 历史且版本校验通过，打包和发布 jobs 就可能再次运行。这会让同一版本指向不同代码，并可能替换或混合已有 Release 资产，因此只应用于隔离的 CI/CD 测试仓库或经过审计的管理员应急处理，绝不能作为正式仓库的常规发布、修复或重试方式。

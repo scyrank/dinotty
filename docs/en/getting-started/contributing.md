@@ -4,15 +4,19 @@ PRs are welcome! Please follow these guidelines.
 
 ## Branch Strategy
 
-- **PRs must target the `dev` branch** — do not submit PRs directly to `main`
-- `main` is always kept in a stable, releasable state
-- Create your feature branch from `dev`:
+- **PRs target `main`** in this fork.
+- Keep `main` stable and releasable by doing work on short-lived feature branches.
+- Create each feature or fix branch from the latest remote `main`:
 
 ```bash
-git checkout dev
-git pull origin dev
-git checkout -b feat/your-feature
+git fetch origin
+git switch main
+git pull --ff-only origin main
+git switch -c feat/your-feature
 ```
+
+After checks pass, push the branch and merge its PR back into `main`. Do not
+use a long-lived development branch as an intermediate release branch.
 
 ## Branch Naming
 

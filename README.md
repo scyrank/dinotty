@@ -295,7 +295,7 @@ If verification code login is stuck (notifier plugin uninstalled, subscription l
 
 - [Comparison](docs/en/getting-started/comparison.md) — differences vs ttyd/gotty/Wetty and other AI coding remote solutions
 - [Deployment Guide](docs/en/getting-started/deployment.md) — systemd, Docker, Windows native run, cross-platform build, configuration
-- [Release Guide](docs/en/getting-started/releasing.md) — unified version management, version PRs, `dev` to `main` promotion, tags, and GitHub Releases
+- [Release Guide](docs/en/getting-started/releasing.md) — unified version management, `main`-based version PRs, exact-commit tags, and GitHub Releases
 - [File Editor](docs/en/features/file-editor.md) — split panes, multi-cursor editing, Cursor Group cross-file sync
 - [Notification System](docs/en/features/notifications.md) — HTTP API, Claude Code integration, Open API
 - [Plugin System](docs/en/plugins/plugins.md) — installation, manifest, API, built-in plugins

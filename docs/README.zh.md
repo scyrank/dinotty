@@ -278,7 +278,7 @@ cargo run
 
 - [方案对比](zh/getting-started/comparison.md) — 与 ttyd/gotty/Wetty 及其他 AI Coding 远程方案的差异
 - [部署指南](zh/getting-started/deployment.md) — systemd、Docker、Windows 原生运行、跨平台构建、配置说明
-- [发布指南](zh/getting-started/releasing.md) — 统一版本管理、版本 PR、`dev` 到 `main` 晋升、Tag 与 GitHub Release
+- [发布指南](zh/getting-started/releasing.md) — 统一版本管理、基于 `main` 的版本 PR、精确提交 Tag 与 GitHub Release
 - [文件编辑器](zh/features/file-editor.md) — 分屏、多光标编辑、Cursor Group 跨文件同步
 - [通知系统](zh/features/notifications.md) — HTTP API、Claude Code 集成、Open API
 - [插件系统](zh/plugins/plugins.md) — 安装、清单、API、内置插件

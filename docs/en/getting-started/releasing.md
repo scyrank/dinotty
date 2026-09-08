@@ -1,6 +1,6 @@
 # Release Guide
 
-This guide is for Dinotty repository maintainers. It explains how to prepare a version, promote `dev` to `main`, and trigger an official release with a Git tag. See the [Deployment Guide](deployment.md) for installing and deploying artifacts, and [Contributing](contributing.md) for the regular contribution workflow.
+This guide is for maintainers of this Dinotty fork. It explains the `main`-only development model, version preparation, and how to trigger a release from an exact `main` commit with a Git tag. See the [Deployment Guide](deployment.md) for installing and deploying artifacts, and [Contributing](contributing.md) for the regular contribution workflow.
 
 ## Release Model
 
@@ -34,11 +34,12 @@ Confirm that the version has not been used. An official tag is considered occupi
 
 ## 2. Prepare the Version PR
 
-Create a `chore/` branch from the latest `dev`:
+Create a `chore/` branch from the latest remote `main`:
 
 ```bash
-git switch dev
-git pull --ff-only origin dev
+git fetch origin
+git switch main
+git pull --ff-only origin main
 git switch -c chore/bump-version-0.19.0
 ```
 
@@ -71,7 +72,7 @@ pnpm exec vue-tsc --noEmit
 pnpm test
 ```
 
-Commit the change and open a PR targeting `dev`:
+Commit the change and open a PR targeting `main`:
 
 ```bash
 git add Cargo.toml Cargo.lock
@@ -79,32 +80,35 @@ git commit -m "chore: bump version to 0.19.0"
 git push -u origin chore/bump-version-0.19.0
 ```
 
-The version PR must be merged into `dev` and pass the complete CI suite. Regular contribution PRs still target `dev` only.
+The version PR must be merged into `main` and pass the complete CI suite. Regular contribution PRs also target `main`.
 
-## 3. Promote to main
+## 3. Validate main
 
-After the version PR is merged and all changes planned for the release have been validated, a maintainer promotes `dev` to `main` according to the repository protection rules. Do not edit the version directly on `main`, and do not create the official tag before promotion is complete.
+After the version PR and all planned changes are merged, validate the exact `main` commit intended for release. Do not create the tag until CI has passed on that commit.
 
-After promotion, confirm that:
+Confirm that:
 
 - CI passes on `main`.
 - `main` contains the expected version PR and every commit planned for the release.
-- `dev` did not bring in unvalidated changes by accident.
 - `python3 scripts/check-workspace-version.py` (`python` on Windows) prints the expected version.
 
-To inspect installers before the official release, manually run `Package` in GitHub Actions with `target_branch` set to `dev` or `main`. A manual run builds and uploads Actions artifacts retained for 14 days, but it does not create a GitHub Release and does not require a Git tag.
+To inspect installers before the official release, manually run `Package` in GitHub Actions. This fork always packages `main`; a manual run builds and uploads Actions artifacts retained for 14 days, but it does not create a GitHub Release and does not require a Git tag.
 
 ## 4. Create the Official Tag
 
-Synchronize and check out the remote `main`, then validate the version again:
+Synchronize the remote `main`, record its full commit SHA, and create the tag
+explicitly from that SHA:
 
 ```bash
 git fetch origin main --tags
 git switch main
 git pull --ff-only origin main
+RELEASE_COMMIT=$(git rev-parse refs/remotes/origin/main)
+test "$(git rev-parse HEAD)" = "${RELEASE_COMMIT}"
 VERSION=$(python3 scripts/check-workspace-version.py)
-git log -1 --oneline
-git tag -a "v${VERSION}" -m "Dinotty v${VERSION}"
+git show --no-patch --oneline "${RELEASE_COMMIT}"
+git tag -a "v${VERSION}" "${RELEASE_COMMIT}" -m "Dinotty v${VERSION}"
+test "$(git rev-parse "v${VERSION}^{}")" = "${RELEASE_COMMIT}"
 git push origin "v${VERSION}"
 ```
 
@@ -114,14 +118,25 @@ Windows PowerShell:
 git fetch origin main --tags
 git switch main
 git pull --ff-only origin main
+$ReleaseCommit = (git rev-parse refs/remotes/origin/main).Trim()
+if ((git rev-parse HEAD).Trim() -ne $ReleaseCommit) {
+    throw 'Local main does not match origin/main'
+}
 $Version = python scripts/check-workspace-version.py
 if ($LASTEXITCODE -ne 0) { throw 'Workspace version validation failed' }
-git log -1 --oneline
-git tag -a "v$Version" -m "Dinotty v$Version"
+git show --no-patch --oneline $ReleaseCommit
+git tag -a "v$Version" $ReleaseCommit -m "Dinotty v$Version"
+$TaggedCommit = (git rev-parse "v$Version^{}").Trim()
+if ($TaggedCommit -ne $ReleaseCommit) {
+    throw 'Release tag does not point to the selected origin/main commit'
+}
 git push origin "v$Version"
 ```
 
-Before pushing, verify that the tag is exactly `v{workspace_version}` and that the current `HEAD` is the intended `main` commit. Do not use `git push --force` for an official tag.
+Before pushing, verify that the tag is exactly `v{workspace_version}` and that
+its dereferenced commit equals the recorded `origin/main` SHA. Do not create a
+release tag from an unmerged feature branch, and do not use `git push --force`
+for an official tag.
 
 ## 5. Configure macOS Signing and Notarization
 
@@ -164,17 +179,17 @@ Dinotty applies a 24-hour notification grace period to new versions. If a Releas
 For a serious issue, select **Delete this release** on the GitHub Release page, or run:
 
 ```bash
-gh release delete "v0.20.0" --repo xichan96/dinotty --yes
+gh release delete "v0.20.0" --repo scyrank/dinotty --yes
 ```
 
-Delete only the Release and keep its Git tag; never move or reuse that tag. Fix the issue on `dev`, increment the PATCH version, and publish the replacement through the normal flow. If the Release was already more than 24 hours old, prompts already shown and the backend's successful cache of up to six hours cannot be revoked immediately; they disappear only after the page lifecycle ends or the cache revalidates, so publish the fixed version promptly.
+Delete only the Release and keep its Git tag; never move or reuse that tag. Create a fix branch from `main`, fix the issue, increment the PATCH version, merge it back into `main`, and publish the replacement through the normal flow. If the Release was already more than 24 hours old, prompts already shown and the backend's successful cache of up to six hours cannot be revoked immediately; they disappear only after the page lifecycle ends or the cache revalidates, so publish the fixed version promptly.
 
 ## Failure Handling
 
 - **Temporary CI or infrastructure failure**: rerun the original workflow; keep the tag and commit unchanged.
 - **Tag does not match the workspace version**: platform builds stop during `prepare`. If the tag has not become an official release, a repository administrator should handle the incorrect tag and create the correct version from the correct `main` commit; do not treat force-moving tags as a normal release step.
 - **Tag is not in `main` history**: the workflow skips packaging and publishing. After the version change follows the normal path into `main`, publish an unused new version.
-- **The tagged commit needs a code fix**: fix it on `dev`, increment the PATCH version, and repeat the version PR, promotion, and new-tag flow.
+- **The tagged commit needs a code fix**: create a fix branch from `main`, increment the PATCH version, merge it into `main`, and create a new tag from the resulting exact `origin/main` commit.
 - **A Release exists or artifacts were distributed**: do not reuse the version; publish a new PATCH release.
 
 > **Forced-tag warning**: Git allows a repository administrator to move a remote tag with an explicit force push. After GitHub accepts the forced update, the new tag push can still trigger the Package workflow; if the new target is in `main` history and passes version validation, the packaging and publishing jobs may run again. This makes one version refer to different code and may replace or mix existing Release assets. Use it only in an isolated CI/CD test repository or as an audited administrator emergency action, never as the normal release, fix, or retry procedure for the official repository.
