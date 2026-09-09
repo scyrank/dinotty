@@ -2,6 +2,25 @@ import { ref } from 'vue'
 import { getApiBase, apiUrl, authFetch } from './apiBase'
 import { esc, getDOMPurify } from './useFileEditor'
 
+const ZIP_MAGIC = [0x50, 0x4b, 0x03, 0x04]
+const OLE_MAGIC = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]
+
+function startsWithMagic(bytes: Uint8Array, magic: number[]): boolean {
+  return bytes.length >= magic.length && magic.every((value, index) => bytes[index] === value)
+}
+
+/**
+ * The workspace only exposes DOC/DOCX/XLS/XLSX files through this preview.
+ * officeparser otherwise detects an ArrayBuffer by magic bytes and can route a
+ * renamed PDF into its bundled PDF.js parser. Restrict the accepted containers
+ * before loading the parser so file extensions cannot bypass the intended
+ * Office-only boundary.
+ */
+export function isSupportedOfficeBuffer(buffer: ArrayBuffer): boolean {
+  const bytes = new Uint8Array(buffer)
+  return startsWithMagic(bytes, ZIP_MAGIC) || startsWithMagic(bytes, OLE_MAGIC)
+}
+
 function officeNodeToHtml(node: any): string {
   if (!node) return ''
   const type = String(node.type || '')
@@ -53,6 +72,7 @@ export function useOfficePreview(opts: { paneId: () => string }) {
       const res = await authFetch(apiUrl(`/api/workspace/raw?${q}`))
       if (!res.ok) throw new Error('raw')
       const buf = await res.arrayBuffer()
+      if (!isSupportedOfficeBuffer(buf)) throw new Error('unsupported office container')
       const [officeMod, dp] = await Promise.all([import('officeparser'), getDOMPurify()])
       const ast: any = await (officeMod.default as any).parseOffice(buf)
       const nodes = Array.isArray(ast?.content) ? ast.content : []

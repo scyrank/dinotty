@@ -1,6 +1,5 @@
 import { ref, computed, watch, type Ref } from 'vue'
-import { getApiBase, apiUrl, authFetch, getAuthToken } from './apiBase'
-import { isTauri } from './useTransport'
+import { getApiBase, apiUrl, authFetch } from './apiBase'
 
 interface Meta {
   kind: string
@@ -59,10 +58,6 @@ function rewriteImageSrcs(html: string, filePath: string, paneId: string): strin
       return `<img${prefix} src=${quote}${src}${quote}`
     const resolved = resolveImagePath(src, filePath)
     const q = new URLSearchParams({ pane_id: paneId, path: resolved })
-    if (isTauri()) {
-      const token = getAuthToken()
-      if (token) q.set('token', token)
-    }
     return `<img${prefix} src=${quote}${apiUrl(`/api/workspace/raw?${q}`)}${quote}`
   })
 }

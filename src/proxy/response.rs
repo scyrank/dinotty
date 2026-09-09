@@ -1,5 +1,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::too_many_lines)]
-use axum::{body::Body, http::header, response::Response};
+use axum::{
+    body::Body,
+    http::{header, StatusCode},
+    response::Response,
+};
 use futures_util::StreamExt;
 
 use super::rewrite::{
@@ -7,6 +11,49 @@ use super::rewrite::{
     RewriteMode,
 };
 use super::BASE_TAG_RE;
+
+const MAX_REWRITE_BODY_BYTES: usize = 32 * 1024 * 1024;
+
+fn rewrite_body_error(status: StatusCode, message: &'static str) -> Response {
+    Response::builder()
+        .status(status)
+        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+        .header(header::CACHE_CONTROL, "no-store")
+        .body(Body::from(message))
+        .unwrap()
+}
+
+fn rewrite_body_would_exceed_limit(current: usize, incoming: usize) -> bool {
+    incoming > MAX_REWRITE_BODY_BYTES.saturating_sub(current)
+}
+
+async fn read_rewrite_body(upstream_resp: reqwest::Response) -> Result<bytes::Bytes, Response> {
+    let content_length = upstream_resp.content_length();
+    if content_length.is_some_and(|length| length > MAX_REWRITE_BODY_BYTES as u64) {
+        return Err(rewrite_body_error(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "Proxy response is too large to rewrite",
+        ));
+    }
+
+    let initial_capacity =
+        content_length.and_then(|length| usize::try_from(length).ok()).unwrap_or(0);
+    let mut body = Vec::with_capacity(initial_capacity.min(MAX_REWRITE_BODY_BYTES));
+    let mut stream = upstream_resp.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|_| {
+            rewrite_body_error(StatusCode::BAD_GATEWAY, "Failed to read proxy response")
+        })?;
+        if rewrite_body_would_exceed_limit(body.len(), chunk.len()) {
+            return Err(rewrite_body_error(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "Proxy response is too large to rewrite",
+            ));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(bytes::Bytes::from(body))
+}
 
 pub async fn build_proxied_response(
     upstream_resp: reqwest::Response,
@@ -69,7 +116,10 @@ pub async fn build_proxied_response(
 
     if is_html {
         let inject = format!("{inject_base}{inject_script}");
-        let full_body = upstream_resp.bytes().await.unwrap_or_default();
+        let full_body = match read_rewrite_body(upstream_resp).await {
+            Ok(body) => body,
+            Err(response) => return response,
+        };
         let html_raw = String::from_utf8_lossy(&full_body);
         let html = BASE_TAG_RE.replace_all(&html_raw, "");
         let html = if let Some(mode) = &rewrite_mode {
@@ -101,7 +151,10 @@ pub async fn build_proxied_response(
                 RewriteMode::Internal { ref host, port } => format!("http://{host}:{port}"),
                 RewriteMode::External(ref url) => url.clone(),
             };
-            let full_body = upstream_resp.bytes().await.unwrap_or_default();
+            let full_body = match read_rewrite_body(upstream_resp).await {
+                Ok(body) => body,
+                Err(response) => return response,
+            };
             let css_raw = String::from_utf8_lossy(&full_body);
             let rewritten = rewrite_css_urls(&css_raw, &base, mode);
             builder
@@ -115,7 +168,10 @@ pub async fn build_proxied_response(
         }
     } else if is_js {
         if let Some(mode) = &rewrite_mode {
-            let full_body = upstream_resp.bytes().await.unwrap_or_default();
+            let full_body = match read_rewrite_body(upstream_resp).await {
+                Ok(body) => body,
+                Err(response) => return response,
+            };
             let js_raw = String::from_utf8_lossy(&full_body);
             let rewritten = rewrite_js_imports(&js_raw, mode);
             builder
@@ -133,7 +189,10 @@ pub async fn build_proxied_response(
                 && !content_type.contains("text/css")
                 && !content_type.contains("text/html"))
         {
-            let full_body = upstream_resp.bytes().await.unwrap_or_default();
+            let full_body = match read_rewrite_body(upstream_resp).await {
+                Ok(body) => body,
+                Err(response) => return response,
+            };
             let text = String::from_utf8_lossy(&full_body);
             let trimmed = text.trim_start();
             if trimmed.starts_with("import ")
@@ -166,5 +225,23 @@ pub async fn build_proxied_response(
         let stream =
             upstream_resp.bytes_stream().map(|result| result.map_err(std::io::Error::other));
         builder.body(Body::from_stream(stream)).unwrap()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{rewrite_body_would_exceed_limit, MAX_REWRITE_BODY_BYTES};
+
+    #[test]
+    fn rewrite_body_limit_accepts_exact_boundary() {
+        assert!(!rewrite_body_would_exceed_limit(MAX_REWRITE_BODY_BYTES - 1, 1));
+        assert!(!rewrite_body_would_exceed_limit(0, MAX_REWRITE_BODY_BYTES));
+    }
+
+    #[test]
+    fn rewrite_body_limit_rejects_overflow() {
+        assert!(rewrite_body_would_exceed_limit(MAX_REWRITE_BODY_BYTES, 1));
+        assert!(rewrite_body_would_exceed_limit(MAX_REWRITE_BODY_BYTES - 1, 2));
+        assert!(rewrite_body_would_exceed_limit(usize::MAX, usize::MAX));
     }
 }

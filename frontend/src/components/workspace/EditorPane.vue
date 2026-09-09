@@ -75,9 +75,8 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount, type Ref } from 'vue'
 import type * as monaco from 'monaco-editor'
 import { useI18n } from '../../composables/useI18n'
-import { getApiBase, apiUrl, authFetch, getAuthToken } from '../../composables/apiBase'
+import { getApiBase, apiUrl, authFetch } from '../../composables/apiBase'
 import type { DropPosition } from '../../types/pane'
-import { isTauri } from '../../composables/useTransport'
 import { createFileEditor } from '../../composables/useFileEditor'
 import { useOfficePreview } from '../../composables/useOfficePreview'
 import { useAudioPlayer } from '../../composables/useAudioPlayer'
@@ -183,10 +182,6 @@ const audioSub = computed(() => '')
 const rawUrl = computed(() => {
   if (!props.filePath) return ''
   const q = new URLSearchParams({ pane_id: props.paneId, path: props.filePath })
-  if (isTauri()) {
-    const token = getAuthToken()
-    if (token) q.set('token', token)
-  }
   return apiUrl(`/api/workspace/raw?${q}`)
 })
 

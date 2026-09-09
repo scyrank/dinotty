@@ -55,7 +55,7 @@ export function makeMobileKeyboardCtx(
         ? ref(options.nativeImeOpen)
         : (options.nativeImeOpen ?? ref(false)),
     setNativeImeOpen: options.setNativeImeOpen ?? vi.fn(),
-    onHostEvent,
+    onHostEvent: onHostEvent as KeyboardHostDeps['onHostEvent'],
   })
   return { ctx, visible, activePaneId, sendActive, onHostEvent }
 }

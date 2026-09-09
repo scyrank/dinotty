@@ -70,12 +70,6 @@ export function useFileOperations(opts: {
     if (!opts.selectedRel.value || opts.selectedIsDir.value) return ''
     const q = new URLSearchParams({ pane_id: opts.paneId(), path: opts.selectedRel.value })
     if (opts.cwdLabel.value) q.set('cwd', opts.cwdLabel.value)
-    // Browser: same-origin requests include cookies automatically.
-    // Tauri: need token in URL for tauri_fetch or direct image loads.
-    if (isTauri()) {
-      const token = getAuthToken()
-      if (token) q.set('token', token)
-    }
     if (cacheBustTs.value) q.set('_t', String(cacheBustTs.value))
     return apiUrl(`/api/workspace/raw?${q}`)
   })

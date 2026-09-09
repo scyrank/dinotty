@@ -110,11 +110,10 @@ function raised(overrides: Record<string, unknown> = {}) {
 
 function createToastSpy() {
   let nextId = 0
-  const toast = vi.fn(() => `toast-${++nextId}`) as ReturnType<typeof vi.fn> & {
-    dismiss: ReturnType<typeof vi.fn>
-  }
-  toast.dismiss = vi.fn()
-  return toast
+  return Object.assign(
+    vi.fn<(content: any, options?: any) => string>(() => `toast-${++nextId}`),
+    { dismiss: vi.fn<(id: string) => void>() }
+  )
 }
 
 beforeEach(() => {

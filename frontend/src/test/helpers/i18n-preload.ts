@@ -4,5 +4,11 @@
 // before the test files' vi.mock calls are registered.
 import { loadLocale } from '../../composables/i18n/tables'
 
+// Happy DOM 20 no longer provides the native dialog functions by default.
+// Tests replace these with spies when the return value matters.
+if (typeof window !== 'undefined' && typeof window.confirm !== 'function') {
+  window.confirm = () => false
+}
+
 await loadLocale('en')
 await loadLocale('zh')
