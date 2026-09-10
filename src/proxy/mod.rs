@@ -58,12 +58,13 @@ static HTTP_CLIENT_STREAMING: LazyLock<Client> = LazyLock::new(|| {
 pub static HTTP_CLIENT_FOLLOW_REDIRECTS: LazyLock<Client> = LazyLock::new(|| {
     Client::builder()
         .redirect(reqwest::redirect::Policy::limited(10))
-        .no_proxy()
+        // Marketplace downloads may need the user's system/environment proxy
+        // (for example Clash) to reach GitHub reliably.
         .user_agent(PROXY_USER_AGENT)
         .pool_idle_timeout(Duration::from_secs(90))
         .pool_max_idle_per_host(10)
         .connect_timeout(Duration::from_secs(5))
-        .timeout(Duration::from_secs(30))
+        .timeout(Duration::from_mins(2))
         .gzip(true)
         .brotli(true)
         .build()
