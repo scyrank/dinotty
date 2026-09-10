@@ -27,13 +27,15 @@ fn rewrite_body_would_exceed_limit(current: usize, incoming: usize) -> bool {
     incoming > MAX_REWRITE_BODY_BYTES.saturating_sub(current)
 }
 
-async fn read_rewrite_body(upstream_resp: reqwest::Response) -> Result<bytes::Bytes, Response> {
+async fn read_rewrite_body(
+    upstream_resp: reqwest::Response,
+) -> Result<bytes::Bytes, Box<Response>> {
     let content_length = upstream_resp.content_length();
     if content_length.is_some_and(|length| length > MAX_REWRITE_BODY_BYTES as u64) {
-        return Err(rewrite_body_error(
+        return Err(Box::new(rewrite_body_error(
             StatusCode::PAYLOAD_TOO_LARGE,
             "Proxy response is too large to rewrite",
-        ));
+        )));
     }
 
     let initial_capacity =
@@ -42,13 +44,13 @@ async fn read_rewrite_body(upstream_resp: reqwest::Response) -> Result<bytes::By
     let mut stream = upstream_resp.bytes_stream();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|_| {
-            rewrite_body_error(StatusCode::BAD_GATEWAY, "Failed to read proxy response")
+            Box::new(rewrite_body_error(StatusCode::BAD_GATEWAY, "Failed to read proxy response"))
         })?;
         if rewrite_body_would_exceed_limit(body.len(), chunk.len()) {
-            return Err(rewrite_body_error(
+            return Err(Box::new(rewrite_body_error(
                 StatusCode::PAYLOAD_TOO_LARGE,
                 "Proxy response is too large to rewrite",
-            ));
+            )));
         }
         body.extend_from_slice(&chunk);
     }
@@ -118,7 +120,7 @@ pub async fn build_proxied_response(
         let inject = format!("{inject_base}{inject_script}");
         let full_body = match read_rewrite_body(upstream_resp).await {
             Ok(body) => body,
-            Err(response) => return response,
+            Err(response) => return *response,
         };
         let html_raw = String::from_utf8_lossy(&full_body);
         let html = BASE_TAG_RE.replace_all(&html_raw, "");
@@ -153,7 +155,7 @@ pub async fn build_proxied_response(
             };
             let full_body = match read_rewrite_body(upstream_resp).await {
                 Ok(body) => body,
-                Err(response) => return response,
+                Err(response) => return *response,
             };
             let css_raw = String::from_utf8_lossy(&full_body);
             let rewritten = rewrite_css_urls(&css_raw, &base, mode);
@@ -170,7 +172,7 @@ pub async fn build_proxied_response(
         if let Some(mode) = &rewrite_mode {
             let full_body = match read_rewrite_body(upstream_resp).await {
                 Ok(body) => body,
-                Err(response) => return response,
+                Err(response) => return *response,
             };
             let js_raw = String::from_utf8_lossy(&full_body);
             let rewritten = rewrite_js_imports(&js_raw, mode);
@@ -191,7 +193,7 @@ pub async fn build_proxied_response(
         {
             let full_body = match read_rewrite_body(upstream_resp).await {
                 Ok(body) => body,
-                Err(response) => return response,
+                Err(response) => return *response,
             };
             let text = String::from_utf8_lossy(&full_body);
             let trimmed = text.trim_start();
