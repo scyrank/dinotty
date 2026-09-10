@@ -4,9 +4,12 @@
 //! `DINOTTY_CONFIG_SUFFIX`, toggles the `mcp.http_enabled` / `mcp.stdio_enabled`
 //! switches via the settings API, then exercises the `--mcp-stdio` proxy
 //! (which forwards JSON-RPC to the running main service) and the endpoint
-//! gating (404 when both switches are off).
+//! gating (404 when both switches are off). Dropping the server guard removes
+//! the throwaway `%USERPROFILE%\.dinotty{suffix}` and config directories.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
+
+mod common;
 
 use std::io::Write;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
@@ -16,18 +19,9 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
+use common::ServerGuard;
+
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
-
-struct ServerGuard {
-    child: std::process::Child,
-}
-
-impl Drop for ServerGuard {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
 
 static SUFFIX_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -61,7 +55,7 @@ fn spawn_server(token: &str, suffix: &str) -> TestResult<(ServerGuard, String)> 
 
     let child = cmd.spawn()?;
     let base = format!("http://127.0.0.1:{port}");
-    Ok((ServerGuard { child }, base))
+    Ok((ServerGuard::new(child, suffix), base))
 }
 
 async fn wait_until_ready(client: &reqwest::Client, base: &str) -> TestResult {

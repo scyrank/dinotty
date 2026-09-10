@@ -4,13 +4,16 @@
 //! preset, then exercises the auth mutual-exclusion behavior via plain HTTP.
 //! Each test uses a unique `DINOTTY_CONFIG_SUFFIX` so the server reads/writes
 //! its settings to a throwaway config directory, never touching the user's
-//! real `~/.dinotty` data.
+//! real `~/.dinotty` data. Dropping the server guard removes those throwaway
+//! directories.
 //!
 //! WebSocket-based event capture is intentionally avoided here - the unit
 //! tests in `src/auth/verification_code.rs` cover the code generation and
 //! verification logic; this file focuses on the HTTP-level dispatch.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
+
+mod common;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 use std::process::{Command, Stdio};
@@ -20,18 +23,9 @@ use std::time::{Duration, Instant};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 
+use common::ServerGuard;
+
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
-
-struct ServerGuard {
-    child: std::process::Child,
-}
-
-impl Drop for ServerGuard {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
 
 static SUFFIX_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -65,7 +59,7 @@ fn spawn_server(token: &str, suffix: &str) -> TestResult<(ServerGuard, String)> 
 
     let child = cmd.spawn()?;
     let base = format!("http://127.0.0.1:{port}");
-    Ok((ServerGuard { child }, base))
+    Ok((ServerGuard::new(child, suffix), base))
 }
 
 async fn wait_until_ready(client: &reqwest::Client, base: &str) -> TestResult {

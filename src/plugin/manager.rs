@@ -897,6 +897,9 @@ mod tests {
 
         assert!(manager.plugin_dir.ends_with(format!(".dinotty{suffix}/plugins")));
         assert!(manager.data_dir.ends_with(format!(".dinotty{suffix}/plugin-data")));
+        let _ = std::fs::remove_dir_all(
+            dirs::home_dir().unwrap_or_default().join(format!(".dinotty{suffix}")),
+        );
     }
 
     #[test]

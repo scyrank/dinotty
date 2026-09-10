@@ -4,9 +4,12 @@
 //! panes, then mints a token scoped to one pane and verifies that the Agent
 //! API (send/read/run) denies out-of-scope panes with `SCOPE_DENIED` while
 //! allowing the scoped pane. Uses a throwaway `DINOTTY_CONFIG_SUFFIX` so the
-//! server never touches the user's real `~/.dinotty` data.
+//! server never touches the user's real `~/.dinotty` data. Dropping the server
+//! guard removes the throwaway home and config directories for that suffix.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
+
+mod common;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 use std::process::{Command, Stdio};
@@ -16,18 +19,9 @@ use std::time::{Duration, Instant};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 
+use common::ServerGuard;
+
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
-
-struct ServerGuard {
-    child: std::process::Child,
-}
-
-impl Drop for ServerGuard {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
 
 static SUFFIX_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -61,7 +55,7 @@ fn spawn_server(token: &str, suffix: &str) -> TestResult<(ServerGuard, String)> 
 
     let child = cmd.spawn()?;
     let base = format!("http://127.0.0.1:{port}");
-    Ok((ServerGuard { child }, base))
+    Ok((ServerGuard::new(child, suffix), base))
 }
 
 async fn wait_until_ready(client: &reqwest::Client, base: &str) -> TestResult {
