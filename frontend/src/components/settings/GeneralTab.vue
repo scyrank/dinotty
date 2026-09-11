@@ -41,6 +41,23 @@
       </section>
 
       <section class="settings-section">
+        <h3>{{ t('settings.newTab') }}</h3>
+        <div class="settings-row">
+          <label>{{ t('settings.newTab.inheritCwd') }}</label>
+          <label class="toggle">
+            <input
+              v-model="settings.inherit_cwd_for_new_tab"
+              type="checkbox"
+              data-setting="inherit-cwd-for-new-tab"
+              @change="saveSettings()"
+            />
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </label>
+        </div>
+        <p class="settings-hint">{{ t('settings.newTab.inheritCwdHint') }}</p>
+      </section>
+
+      <section class="settings-section">
         <h3>{{ t('settings.virtualKeyboard') }}</h3>
         <div class="settings-row">
           <label>{{ t('settings.virtualKeyboard.show') }}</label>
@@ -67,6 +84,38 @@
           @update:model-value="onWsBadgeModeChange"
         />
         <p class="settings-hint">{{ t('settings.workspaceBadge.hint') }}</p>
+      </section>
+    </div>
+
+    <div class="settings-group">
+      <h3 class="settings-group-title">{{ t('settings.group.previews') }}</h3>
+
+      <section class="settings-section">
+        <div class="settings-row">
+          <label>{{ t('previewPanel.switchFiles') }}</label>
+          <select
+            class="shortcut-input"
+            style="flex: 1"
+            :value="previewOpenModeValue('files')"
+            @change="onPreviewOpenModeChange('files', ($event.target as HTMLSelectElement).value)"
+          >
+            <option value="split">{{ t('settings.previewOpenMode.split') }}</option>
+            <option value="floating">{{ t('settings.previewOpenMode.floating') }}</option>
+          </select>
+        </div>
+        <div class="settings-row">
+          <label>{{ t('previewPanel.switchWeb') }}</label>
+          <select
+            class="shortcut-input"
+            style="flex: 1"
+            :value="previewOpenModeValue('web')"
+            @change="onPreviewOpenModeChange('web', ($event.target as HTMLSelectElement).value)"
+          >
+            <option value="split">{{ t('settings.previewOpenMode.split') }}</option>
+            <option value="floating">{{ t('settings.previewOpenMode.floating') }}</option>
+          </select>
+        </div>
+        <p class="settings-hint">{{ t('settings.previewOpenMode.hint') }}</p>
       </section>
     </div>
 
@@ -635,7 +684,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onBeforeUnmount, onMounted } from 'vue'
+import { computed, ref, onBeforeUnmount, onMounted, watch } from 'vue'
 import { Eye, EyeOff, Copy, Check, Pencil, RefreshCw, Save, X, FolderOpen } from 'lucide-vue-next'
 import { useSettings } from '../../composables/useSettings'
 import type { WorkspaceBadgeMode } from '../../composables/useSettings'
@@ -657,6 +706,7 @@ import { uiConfirm } from '../../composables/useConfirm'
 import { onAppForegroundGain } from '../../composables/useAppForeground'
 
 const emit = defineEmits<{ 'token-changed': [] }>()
+const props = withDefaults(defineProps<{ visible?: boolean }>(), { visible: true })
 const { settings, saveSettings } = useSettings()
 const { t } = useI18n()
 const { isMobile } = useIsMobile()
@@ -725,6 +775,15 @@ function onWsBadgeModeChange(value: string) {
   saveSettings()
 }
 
+type PreviewPaneKind = 'files' | 'web'
+function previewOpenModeValue(kind: PreviewPaneKind): string {
+  return settings.preview_open_modes?.[kind] ?? 'split'
+}
+function onPreviewOpenModeChange(kind: PreviewPaneKind, mode: string) {
+  settings.preview_open_modes = { ...settings.preview_open_modes, [kind]: mode as 'split' | 'floating' }
+  saveSettings()
+}
+
 const shellPathInput = ref(settings.shell_path ?? '')
 
 function onShellSelection(selection: { kind: string; distro: string | null }) {
@@ -784,9 +843,20 @@ const {
   copied,
   qrCanvasRef,
   copyAccessUrl,
+  refreshAccessUrl,
   viewLog,
   refreshLog,
 } = accessUrlApi
+
+// SettingsPanel remains mounted after its first open, so onMounted only
+// refreshes once. Refresh whenever the user opens the General settings tab.
+watch(
+  () => props.visible,
+  (visible) => {
+    if (visible) void refreshAccessUrl()
+  },
+  { immediate: true }
+)
 
 const newIp = ref('')
 

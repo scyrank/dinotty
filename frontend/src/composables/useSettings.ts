@@ -7,12 +7,14 @@ import { canonicalizeSystemKeyboard } from '../utils/systemKeyboardLayout'
 import type { KeyboardGuardMode } from '../utils/keyboardGuardMode'
 import type { KeyBinding } from './useKeybindings'
 import type { SavedTheme } from './useDeviceThemeSelection'
+import type { PreviewOpenMode } from '../types/floatWindow'
+import type { PreviewToolbarItem } from '../utils/previewToolbar'
 export type WorkspaceBadgeMode = 'off' | 'tab' | 'icon' | 'both'
 /** 'builtin' | 'system' 为宿主键盘；其余字符串为键盘插件 id（keyboard-plugin-design.md §3.2C） */
 export type MobileInputMode = 'builtin' | 'system' | (string & {})
 export type SystemToolbarMode = 'follow_ime' | 'persistent_mobile'
 export type CloseWindowBehavior = 'ask' | 'hide_to_tray' | 'quit'
-export const SETTINGS_SCHEMA_VERSION = 14
+export const SETTINGS_SCHEMA_VERSION = 15
 export const IME_KEYBOARD_OVERLAP_MIN = 0
 export const IME_KEYBOARD_OVERLAP_MAX = 300
 
@@ -108,6 +110,7 @@ export interface SettingsData {
   keyboard_guard_mode: KeyboardGuardMode
   ime_keyboard_overlap_px: number | null
   workspace_badge_mode: WorkspaceBadgeMode | null
+  inherit_cwd_for_new_tab: boolean
   confirm_before_close_tab: boolean
   close_window_behavior: CloseWindowBehavior
   restore_session_on_startup: boolean
@@ -139,7 +142,11 @@ export interface SettingsData {
   }
   preview: {
     allow_external: boolean
+    toolbar_items: PreviewToolbarItem[]
   }
+  /** How the built-in file/web preview opens from the toolbar/palette; absent
+   *  key = 'split'. Session-persistent only (server schema has no field). */
+  preview_open_modes?: Partial<Record<'files' | 'web', PreviewOpenMode>>
   keybindings: Record<string, KeyBinding>
   log: LogConfig
   ssh_profiles: SshProfile[]
@@ -556,6 +563,7 @@ export const settings = reactive<SettingsData>({
   keyboard_guard_mode: 'off',
   ime_keyboard_overlap_px: null,
   workspace_badge_mode: null,
+  inherit_cwd_for_new_tab: false,
   confirm_before_close_tab: true,
   close_window_behavior: 'ask',
   restore_session_on_startup: true,
@@ -621,6 +629,16 @@ export const settings = reactive<SettingsData>({
   },
   preview: {
     allow_external: false,
+    toolbar_items: [
+      { id: 'broadcast', visible: true },
+      { id: 'new_tab', visible: true },
+      { id: 'plugins', visible: true },
+      { id: 'files', visible: true },
+      { id: 'web', visible: true },
+      { id: 'reload', visible: true },
+      { id: 'settings', visible: true },
+      { id: 'notifications', visible: true },
+    ],
   },
   keybindings: {},
   log: {

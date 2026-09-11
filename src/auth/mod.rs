@@ -191,6 +191,16 @@ pub async fn auth_middleware(
         return next.run(request).await;
     }
 
+    // /__srv/* is the hub relay, which carries *another* server's credentials
+    // and therefore enforces a stricter gate of its own (loopback-or-valid-auth
+    // AND not cross-site AND target in the roster AND the X-Dinotty-Relay
+    // header on writes). Checking it here as well would only produce a 403 that
+    // hides which of those failed, and would break the browser mode where the
+    // session cookie belongs to the hub, not the upstream.
+    if path.starts_with("/__srv/") {
+        return next.run(request).await;
+    }
+
     // Resolve real client IP (respects trusted_proxies for X-Forwarded-For).
     // This fixes a pre-existing vuln: behind a same-host tunnel, all traffic
     // appeared from 127.0.0.1 and bypassed auth via the loopback whitelist.

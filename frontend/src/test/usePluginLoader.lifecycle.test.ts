@@ -12,7 +12,12 @@ vi.mock('../composables/apiBase', () => ({
   authFetch: api.authFetch,
   getApiBase: api.getApiBase,
   apiUrl: api.apiUrl,
-  wsUrlWithToken: (url: string) => url,
+  wsUrl: (path: string) => {
+    const resolved = api.apiUrl(path)
+    return /^https?:\/\//.test(resolved)
+      ? resolved.replace(/^http/, 'ws')
+      : `ws://localhost${resolved}`
+  },
 }))
 
 import {
@@ -198,7 +203,7 @@ describe('usePluginLoader lifecycle', () => {
     expect(store.overlays).toHaveLength(0)
   })
 
-  it('forwards cwd and env options to streaming process spawns', () => {
+  it('forwards cwd and env options to streaming process spawns', async () => {
     const urls: string[] = []
     class CapturingWebSocket {
       onmessage: ((event: MessageEvent) => void) | null = null
@@ -214,7 +219,7 @@ describe('usePluginLoader lifecycle', () => {
     vi.stubGlobal('WebSocket', CapturingWebSocket)
 
     const context = usePluginLoader().getPluginContext('native-plugin')
-    context.exec.spawn(['serve'], { cwd: 'work', env: { MODE: 'test' } })
+    await context.exec.spawn(['serve'], { cwd: 'work', env: { MODE: 'test' } })
 
     const url = new URL(urls[0])
     expect(JSON.parse(url.searchParams.get('args')!)).toEqual(['serve'])
@@ -224,7 +229,7 @@ describe('usePluginLoader lifecycle', () => {
     })
   })
 
-  it('uses the desktop bootstrap origin for plugin WebSockets', () => {
+  it('uses the desktop bootstrap origin for plugin WebSockets', async () => {
     const urls: string[] = []
     class CapturingWebSocket {
       static OPEN = 1
@@ -243,11 +248,9 @@ describe('usePluginLoader lifecycle', () => {
     api.apiUrl.mockImplementation((path: string) => `http://127.0.0.1:49152${path}`)
 
     const context = usePluginLoader().getPluginContext('native-plugin')
-    const watcher = context.workspace.watch('.', vi.fn())
+    const watcher = await context.workspace.watch('.', vi.fn())
 
-    expect(urls).toEqual([
-      'ws://127.0.0.1:49152/ws/plugins/native-plugin/workspace/watch?path=.',
-    ])
+    expect(urls).toEqual(['ws://127.0.0.1:49152/ws/plugins/native-plugin/workspace/watch?path=.'])
     watcher.dispose()
   })
 })

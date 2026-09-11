@@ -26,6 +26,7 @@ import { FOCUS_ACTIVE_KEY } from './useFocusActive'
 import { useSshAuth } from './useSshAuth'
 import { useCursorPicker } from './useCursorPicker'
 import { useOverviewCallbacks } from './useOverviewCallbacks'
+import { markServerVerified, useRemoteServers } from './useRemoteServers'
 import { useNotificationPresentation } from './useNotificationPresentation'
 import {
   setToastInstance,
@@ -37,14 +38,31 @@ import { getIsAppForeground, onAppForegroundGain } from './useAppForeground'
 import { usePluginLoader, handlePluginChanged } from './usePluginLoader'
 import { usePluginLauncher } from './usePluginLauncher'
 import { usePluginFloatWindowsStore } from '../stores/pluginFloatWindows'
+import type { FloatWindowContent, PreviewOpenMode } from '../types/floatWindow'
+import { floatWindowId, resolvePreviewOpenMode } from '../types/floatWindow'
 import { settings } from './useSettings'
 import { useTabLifecycle } from './useTabLifecycle'
-import { setMcSender } from './useMissionControlState'
+import { setMcSender, sendMcOp, useMissionControlState } from './useMissionControlState'
 import { useSplitPane } from './useSplitPane'
 import { useSyncWebSocket, setPluginChangedHandler } from './useSyncWebSocket'
 import type { SyncClientMsg } from '../types/protocol'
 import { workspaceIdFromPaneId } from '../utils/pluginPaneId'
-import { initMonitorHistory } from './useMonitor'
+import {
+  initMonitorHistory,
+  monitorData,
+  cpuHistory,
+  memHistory,
+  netRxHistory,
+  netTxHistory,
+  gpuUtilHistory,
+  gpuMemHistory,
+} from './useMonitor'
+import {
+  activeServerId,
+  registerServerTargetResolver,
+  registerSwitchReconnect,
+  registerSwitchTeardown,
+} from './activeServer'
 import { refreshPluginPreview } from './useTabPreview'
 import { useIsMobile } from './useIsMobile'
 import { useWorkspaces, DEFAULT_WORKSPACE_ID, toActiveWorkspaceId } from './useWorkspaces'
@@ -65,6 +83,58 @@ import { useDesktopLifecycle } from './useDesktopLifecycle'
 import { useNotification } from './useNotification'
 import { useToast } from 'vue-toastification'
 import { storeToRefs } from 'pinia'
+
+// ─── Server switching: shared surface (Phase B4) ────────────────────────────
+//
+// `switchServer()` lives in `activeServer.ts`, which must not import the
+// settings singleton (`useSettings` → `apiBase` → `activeServer` is a cycle).
+// The pieces it needs — the roster lookup, and the UI's view of "which server
+// are we on" — therefore live here, at module scope, where both `useAppCore`
+// and the components can reach them.
+
+/**
+ * Reactive mirror of the device-level active server id.
+ *
+ * `activeServer.ts` keeps `activeServerId()` synchronous and non-reactive — 120
+ * synchronous `apiUrl()` call sites depend on that — so UI that has to repaint
+ * on a switch keeps its own tracked copy. Updated by the switch hooks below.
+ */
+export const activeServerIdRef = ref(activeServerId())
+
+/** Whether the status-bar server picker is showing.
+ *
+ *  This is the one switch entry - the status bar's chip is the only UI that
+ *  opens it. Mission Control cannot host a second one: its open bit is server
+ *  state, so it cannot even open while the active server is unreachable, which
+ *  is exactly when a switch is needed. */
+export const serverPickerOpen = ref(false)
+
+export function toggleServerPicker(): void {
+  serverPickerOpen.value = !serverPickerOpen.value
+}
+
+export function closeServerPicker(): void {
+  serverPickerOpen.value = false
+}
+
+/**
+ * Close every open float window, one at a time, through its own close path.
+ *
+ * Clearing the registry wholesale is *not* equivalent: every window component
+ * has to unmount so its own teardown runs, and geometry is persisted globally
+ * under `dinotty:floating-win:<id>` — a window left open by the old server
+ * would hand its size and position to the *new* server's window with the same
+ * id. Clearing the content registry alongside it drops built-in preview
+ * windows (files/web), whose entries are not in the store.
+ */
+export function closeAllFloatWindows(
+  store: Pick<ReturnType<typeof usePluginFloatWindowsStore>, 'openIds' | 'close'>,
+  contents: Record<string, FloatWindowContent>
+): void {
+  // Snapshot first: close() mutates openIds, so a live iterator would skip.
+  for (const id of [...store.openIds]) store.close(id)
+  for (const id of Object.keys(contents)) delete contents[id]
+}
 
 export interface AppCoreOptions {
   session: ReturnType<typeof useSessionStore>
@@ -125,6 +195,10 @@ export function useAppCore(options: AppCoreOptions) {
     return leaf && paneKind(leaf) === 'terminal' ? leaf : null
   })
   const hasActiveTerminalLeaf = computed(() => activeTerminalLeaf.value !== null)
+  /** Terminal leaf the built-in file-browser float window binds to; null when
+   *  the active context is not a terminal pane (split-pane previews, plugin
+   *  tabs). */
+  const activeTerminalSourcePane = computed(() => activeTerminalLeaf.value?.paneId ?? null)
   const activeKeyboardProvider = computed(() => {
     const providerId = resolveActiveKeyboardProvider(appSettings.mobile_input_mode)
     return keyboardProviders.value.get(providerId)
@@ -175,7 +249,8 @@ export function useAppCore(options: AppCoreOptions) {
   })
   const stopForegroundGainSubscription = onAppForegroundGain(evaluateActiveRead)
   const cursorPicker = useCursorPicker({ tabs, activePaneId, toast, t })
-  const { loadedPlugins, loadAll, getPluginContext, pluginList, allCommands } = usePluginLoader()
+  const { loadedPlugins, loadAll, unloadPlugin, getPluginContext, pluginList, allCommands } =
+    usePluginLoader()
 
   function showShellApiError(error: unknown, fallbackKey: string) {
     const message = shellErrorMessage(error, t, fallbackKey)
@@ -605,7 +680,12 @@ export function useAppCore(options: AppCoreOptions) {
     window.location.reload()
   }
 
-  function openOrFocusPreview(kind: 'files' | 'web') {
+  interface PreviewOpenPayload {
+    path?: string
+    url?: string
+  }
+
+  function openOrFocusPreview(kind: 'files' | 'web', payload: PreviewOpenPayload = {}) {
     const tabId = activePaneId.value
     if (!tabId) return
     const tab = tabs.value.find((t) => t.paneId === tabId)
@@ -617,8 +697,9 @@ export function useAppCore(options: AppCoreOptions) {
       splitPane.focusPane(existing.paneId)
       return
     }
-    const payload: { path?: string; url?: string } = kind === 'files' ? { path: tab.cwd || '' } : {}
-    void splitPane.insertNonTerminalPane(kind, payload)
+    const insert: PreviewOpenPayload =
+      kind === 'files' ? { path: payload.path ?? (tab.cwd || '') } : { url: payload.url }
+    void splitPane.insertNonTerminalPane(kind, insert)
   }
 
   async function openPluginPane(pluginId: string): Promise<boolean> {
@@ -793,6 +874,215 @@ export function useAppCore(options: AppCoreOptions) {
     openPane: openPluginPane,
   })
 
+  // ── Built-in preview floats (files/web) ─────────────────────────────
+  // Open ids are 'float:files' / 'float:web' (single window per kind). The
+  // rendered content lives here so the host layer can resolve — and drop — it.
+  const previewFloatContents = shallowReactive<Record<string, FloatWindowContent>>({})
+
+  function isLiveTerminalLeaf(paneId: string): boolean {
+    for (const tab of tabs.value) {
+      if (tab.type !== 'terminal') continue
+      for (const leaf of getAllLeaves(tab.layout)) {
+        if (paneKind(leaf) === 'terminal' && leaf.paneId === paneId) return true
+      }
+    }
+    return false
+  }
+
+  function getPreviewFloatContent(id: string): FloatWindowContent | undefined {
+    const content = previewFloatContents[id]
+    if (!content) return undefined
+    // A files window is bound to a concrete terminal session; once that leaf is
+    // gone the window is meaningless — return undefined so the host closes it.
+    if (content.kind === 'files' && !isLiveTerminalLeaf(content.sourcePaneId)) return undefined
+    return content
+  }
+
+  function openPreviewFloat(content: FloatWindowContent): void {
+    previewFloatContents[floatWindowId(content)] = content
+    floatWindows.open(floatWindowId(content))
+  }
+
+  function previewOpenModePref(kind: 'files' | 'web'): PreviewOpenMode {
+    return settings.preview_open_modes?.[kind] ?? 'split'
+  }
+
+  /** Open the built-in file/web preview, honoring the per-kind preference (and
+   *  falling back to a split pane on touch). 'floating' opens a draggable
+   *  window; files floats bind to the active terminal session. */
+  function openPreview(
+    kind: 'files' | 'web',
+    payload: PreviewOpenPayload = {},
+    explicit?: PreviewOpenMode
+  ) {
+    const mode = resolvePreviewOpenMode(explicit, previewOpenModePref(kind), isTouchDevice())
+    if (mode !== 'floating') {
+      openOrFocusPreview(kind, payload)
+      return
+    }
+    if (kind === 'files') {
+      const sourcePaneId = activeTerminalSourcePane.value
+      if (!sourcePaneId) {
+        toast?.warning(t('previewPanel.needActiveTerminal'))
+        return
+      }
+      const tab = activeTab.value
+      const cwd = tab && tab.type === 'terminal' ? (tab.cwd ?? '') : ''
+      openPreviewFloat({
+        kind: 'files',
+        sourcePaneId,
+        initialPath: payload.path ?? (cwd || undefined),
+      })
+      return
+    }
+    openPreviewFloat({ kind: 'web', initialUrl: payload.url })
+  }
+
+  // ─── Server switching (Phase B4) ───────────────────────────────────
+  //
+  // `switchServer()` itself lives in `activeServer.ts`, which must stay free of
+  // the `apiBase` import cycle, so the subsystems it has to tear down and bring
+  // back up register themselves here. Hooks run in registration order, so the
+  // order of the calls below *is* the teardown order from "切换时的 teardown
+  // 顺序" in the design doc (steps 2-6) followed by the bring-up order (8-9).
+  // Step 1 (the reachability probe) and step 7 (persisting the id) belong to
+  // `switchServer` itself, which brackets the two hook runs.
+
+  /** Mission Control's open bit at the moment of the switch. The mirror is
+   *  reset in step 6, so step 9 needs it captured beforehand. */
+  let mcOpenBeforeSwitch = false
+
+  /** Resolves a roster id for the pre-switch probe. It returns the id alone:
+   *  the hub looks the entry up itself, because the token never reaches the
+   *  client. Only `name`/`url` ride along, and only for error messages.
+   *
+   *  Reads the *hub's* roster (`useRemoteServers`), not the active server's
+   *  settings payload. The two differ the moment we are on a remote server,
+   *  and they differ again the moment the manager saves: a PUT updates the
+   *  hub's roster immediately but leaves this client's `settings` copy stale,
+   *  so resolving against it would refuse to switch to a server the user had
+   *  just added. `relayPrefix()` builds `/__srv/<id>` and the *hub* resolves
+   *  that id, which makes the hub's roster the only authority on whether it
+   *  exists. */
+  registerServerTargetResolver((id) => {
+    const srv = useRemoteServers().servers.value.find((s) => s.id === id)
+    return srv && !srv.local ? { id: srv.id, name: srv.name, url: srv.url } : null
+  })
+
+  // ── Steps 2-6: teardown, all of it still under the *old* server id ──
+
+  // Step 2 - flush the old server's tabs to disk. Must happen before the id
+  // moves, or the write lands in the new server's namespace
+  // (`scopedKey('dinotty_tabs')` reads the active id).
+  registerSwitchTeardown(() => {
+    persistNow()
+  })
+
+  // Step 3 - drop the session's panes. Their unmount runs
+  // `transport.disconnect()` for every TerminalPane; awaiting the tick means
+  // the old panes are gone before the new server's arrive.
+  registerSwitchTeardown(async () => {
+    session.setTabs([])
+    activePaneId.value = null
+    await nextTick()
+  })
+
+  // Step 4 - drop the sync socket. It must not auto-reconnect: the old socket
+  // belongs to the old server, and a reconnect racing step 9 would re-open it
+  // against the wrong server (or leak a second one).
+  registerSwitchTeardown(() => {
+    syncWs.closeWs()
+  })
+
+  // Step 5 - float windows and the per-server state that outlives the
+  // component tree.
+  registerSwitchTeardown(async () => {
+    closeAllFloatWindows(floatWindows, previewFloatContents)
+    // Let the host unmount each window so its own teardown runs before the new
+    // server mounts anything.
+    await nextTick()
+    // Unload every plugin module: they were activated against the old server,
+    // and a full unload is what removes their injected CSS and closes the
+    // workspace-watch sockets they opened. Without `stopUiProcesses` this is
+    // local-only — we leave the old server silently, never sending it a
+    // shutdown it did not ask for. `loadAll()` in step 8 re-populates the
+    // registry from the new server.
+    for (const id of [...loadedPlugins.keys()]) await unloadPlugin(id)
+    // Monitor samples, histories and notifications all describe the old
+    // server. Clearing the list re-persists the session history as empty.
+    monitorData.value = null
+    cpuHistory.value = []
+    memHistory.value = []
+    netRxHistory.value = []
+    netTxHistory.value = []
+    gpuUtilHistory.value = []
+    gpuMemHistory.value = []
+    notif.notifications.value = []
+  })
+
+  // Step 6 - reset the Mission Control mirror. It is a module-level singleton,
+  // so without this the new server would open showing the old server's
+  // selection.
+  registerSwitchTeardown(() => {
+    const mc = useMissionControlState()
+    mcOpenBeforeSwitch = mc.open
+    mc.open = false
+    mc.selectedWorkspaceId = null
+    mc.selectedTabId = null
+    mc.selectedTabTitle = null
+  })
+
+  // ── Steps 8-9: bring-up against the new server ──
+
+  registerSwitchReconnect(async () => {
+    // The UI mirror is updated here rather than in `switchServer` so a failing
+    // bring-up cannot leave it claiming a server we never reached.
+    activeServerIdRef.value = activeServerId()
+    closeServerPicker()
+    // Everything below is addressed to the hub, and the hub is where this
+    // session is actually authenticated (loopback bypass in the desktop app,
+    // the hub cookie in the browser). Without this the new id has no session
+    // flag, `hasAuthToken()` is false, and `loadSettings()` below early-returns
+    // — leaving the old server's settings in place for the next PUT to write
+    // to the new server.
+    markCookieAuthenticated()
+    // Step 8 - `settings` is a global singleton ref, so it still holds the old
+    // server's values.
+    await settingsStore.load()
+    // The switched-to server is in the roster by definition: `switchServer`
+    // refuses an id the resolver cannot find, and the probe passed with the
+    // token we hold. Recording it keeps the switchers' lock icon honest now
+    // that it is no longer inferred from a relayed settings payload.
+    markServerVerified(activeServerId())
+    void loadAll()
+  })
+
+  registerSwitchReconnect(async () => {
+    // Step 9 - reconnect, then restore Mission Control on the new server.
+    syncWs.connectSyncWS()
+    if (!mcOpenBeforeSwitch) return
+    mcOpenBeforeSwitch = false
+    // `sendSync` silently drops the op while the socket is CONNECTING, so the
+    // Set has to wait for the channel. The `syncConnected` *flag* is not enough
+    // to test: step 4 closed the old socket, and its `onclose` may not have
+    // flipped the flag back yet, so it can still read `true` here while the
+    // only socket is the new, unopened one. `isConnected()` asks the socket.
+    if (!(await waitForSyncOpen())) {
+      console.warn('[activeServer] sync socket did not come up; Mission Control stays closed')
+      return
+    }
+    sendMcOp({ kind: 'set', open: true })
+  })
+
+  /** Resolve `true` once the sync socket is OPEN, or `false` after ~5s. */
+  async function waitForSyncOpen(attempts = 25, intervalMs = 200): Promise<boolean> {
+    for (let i = 0; i < attempts; i++) {
+      if (syncWs.isConnected()) return true
+      await new Promise((resolve) => setTimeout(resolve, intervalMs))
+    }
+    return syncWs.isConnected()
+  }
+
   // ─── Save as Template dialog ───────────────────────────────────────
   const saveTemplateVisible = ref(false)
   const saveTemplateSourceTabId = ref('')
@@ -842,6 +1132,16 @@ export function useAppCore(options: AppCoreOptions) {
     if (!tab) return
 
     if (tab.type !== 'terminal') {
+      const closed = await splitPane.closePane(paneId)
+      if (!closed) await closeTab(tabId)
+      return
+    }
+
+    // Files, web previews, and plugins are view-only panes: closing one does
+    // not terminate a PTY. Do not show the terminal-session confirmation for
+    // these panes, even when the tab-close confirmation preference is enabled.
+    const leaf = findLeaf(tab.layout, paneId)
+    if (leaf && paneKind(leaf) !== 'terminal') {
       const closed = await splitPane.closePane(paneId)
       if (!closed) await closeTab(tabId)
       return
@@ -986,6 +1286,7 @@ export function useAppCore(options: AppCoreOptions) {
     onPreviewLink,
     reloadApp,
     openOrFocusPreview,
+    openPreview,
     onFileClick,
     onTerminalInsertPath,
     onTerminalInsertText,
@@ -1011,6 +1312,8 @@ export function useAppCore(options: AppCoreOptions) {
     pluginList,
     allCommands,
     openPlugin,
+    getPreviewFloatContent,
+    openPreviewFloat,
     isMobile,
     // cursor picker
     cursorPickerVisible: cursorPicker.cursorPickerVisible,

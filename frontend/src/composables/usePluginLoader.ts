@@ -1,6 +1,6 @@
 import type { Component } from 'vue'
 import { reactive, ref, computed, watch, onMounted, onUnmounted, h } from 'vue'
-import { authFetch, apiUrl, wsUrlWithToken, getApiBase } from './apiBase'
+import { authFetch, apiUrl, wsUrl, getApiBase } from './apiBase'
 import { usePluginMonitorStore } from '../stores/pluginMonitor'
 import { usePluginOverlaysStore } from '../stores/pluginOverlays'
 import type { MonitorSeries } from '../stores/pluginMonitor'
@@ -11,13 +11,6 @@ import { describeHttpError } from '../utils/httpError'
 import { KEYBOARD_API_VERSION } from '../keyboard/createKeyboardContext'
 import { useKeyboardProviders } from './useKeyboardProviders'
 import type { KeyboardContribution, OverlayContribution } from '../../../plugin-api/index'
-
-function pluginWebSocketUrl(path: string): string {
-  const resolved = apiUrl(path)
-  if (/^https?:\/\//.test(resolved)) return resolved.replace(/^http/, 'ws')
-  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${location.host}${resolved}`
-}
 
 // Plugin modules are verified by the server, then loaded from a short-lived
 // blob URL. @vite-ignore keeps the URL dynamic without requiring unsafe-eval.
@@ -114,10 +107,12 @@ export interface PluginContext {
       args: string[],
       options?: { cwd?: string; env?: Record<string, string>; timeout?: number }
     ): Promise<{ code: number; stdout: string; stderr: string }>
+    /** The socket is dialled asynchronously (the server origin is not known
+     *  synchronously); the returned streams buffer until it is up. */
     spawn(
       args: string[],
       options?: { cwd?: string; env?: Record<string, string> }
-    ): { stdout: ReadableStream<string>; stderr: ReadableStream<string>; kill(): void }
+    ): Promise<{ stdout: ReadableStream<string>; stderr: ReadableStream<string>; kill(): void }>
   }
 
   terminal: {
@@ -218,6 +213,8 @@ export interface PluginContext {
       is_dir: boolean
       modified: number | null
     }>
+    /** The socket is dialled asynchronously (the server origin is not known
+     *  synchronously); the returned handle is usable straight away. */
     watch(
       path: string,
       cb: (event: {
@@ -226,7 +223,7 @@ export interface PluginContext {
         kind?: string
         message?: string
       }) => void
-    ): Disposable
+    ): Promise<Disposable>
     mkdir(path: string): Promise<void>
     delete(path: string): Promise<void>
     rename(path: string, newName: string): Promise<void>
@@ -358,14 +355,13 @@ function createPluginContext(pluginId: string): PluginContext {
       if (!res.ok) throw new Error(await describeHttpError(res, 'Plugin command failed'))
       return res.json()
     },
-    spawn(args, options) {
+    async spawn(args, options) {
       const query = new URLSearchParams({ args: JSON.stringify(args) })
       if (options) query.set('options', JSON.stringify(options))
-      const ws = new WebSocket(
-        wsUrlWithToken(
-          pluginWebSocketUrl(`/api/plugins/${pluginId}/spawn?${query.toString()}`)
-        )
-      )
+      // `wsUrl()` needs the Tauri origin cached, so prime it first; the browser
+      // resolves immediately (see the contract on `wsUrl` in `apiBase.ts`).
+      await getApiBase()
+      const ws = new WebSocket(wsUrl(`/api/plugins/${pluginId}/spawn?${query.toString()}`))
       let stdoutCtrl: ReadableStreamDefaultController<string>
       let stderrCtrl: ReadableStreamDefaultController<string>
 
@@ -402,6 +398,8 @@ function createPluginContext(pluginId: string): PluginContext {
       ws.onclose = closeStreams
       ws.onerror = closeStreams
 
+      // The socket buffers outbound data while CONNECTING, so the streams are
+      // returned immediately and callers keep their existing `.stdout` shape.
       return { stdout, stderr, kill: () => ws.close() }
     },
   }
@@ -501,13 +499,10 @@ function createPluginContext(pluginId: string): PluginContext {
       if (!res.ok) throw new Error(await describeHttpError(res, 'workspace.stat failed'))
       return res.json()
     },
-    watch(path, cb) {
+    async watch(path, cb) {
       const query = new URLSearchParams({ path })
-      const ws = new WebSocket(
-        wsUrlWithToken(
-          pluginWebSocketUrl(`/ws/plugins/${pluginId}/workspace/watch?${query.toString()}`)
-        )
-      )
+      await getApiBase()
+      const ws = new WebSocket(wsUrl(`/ws/plugins/${pluginId}/workspace/watch?${query.toString()}`))
       let sockets = pluginWatchSockets.get(pluginId)
       if (!sockets) {
         sockets = new Set()

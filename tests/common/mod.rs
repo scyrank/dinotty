@@ -45,15 +45,15 @@ fn config_dir() -> Option<PathBuf> {
     }
     #[cfg(windows)]
     {
-        return std::env::var_os("APPDATA").map(PathBuf::from);
+        std::env::var_os("APPDATA").map(PathBuf::from)
     }
     #[cfg(target_os = "macos")]
     {
-        return home_dir().map(|home| home.join("Library").join("Application Support"));
+        home_dir().map(|home| home.join("Library").join("Application Support"))
     }
     #[cfg(not(any(windows, target_os = "macos")))]
     {
-        return home_dir().map(|home| home.join(".config"));
+        home_dir().map(|home| home.join(".config"))
     }
 }
 
@@ -70,7 +70,7 @@ fn remove_dir_best_effort(path: &Path) {
     let _ = std::fs::remove_dir_all(path);
 }
 
-fn remove_named_dir(parent: PathBuf, name: &str) {
+fn remove_named_dir(parent: &Path, name: &str) {
     let path = parent.join(name);
     if path.file_name().and_then(|file_name| file_name.to_str()) != Some(name) {
         return;
@@ -83,10 +83,10 @@ pub fn remove_throwaway_instance_dirs(suffix: &str) {
         return;
     }
     if let Some(home) = home_dir() {
-        remove_named_dir(home, &format!(".dinotty{suffix}"));
+        remove_named_dir(&home, &format!(".dinotty{suffix}"));
     }
     if let Some(config) = config_dir() {
-        remove_named_dir(config, &format!("dinotty{suffix}"));
+        remove_named_dir(&config, &format!("dinotty{suffix}"));
     }
 }
 

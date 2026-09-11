@@ -8,6 +8,7 @@ import { createHostClipboardPasteController } from '../utils/hostClipboardPaste'
 import { readHostClipboard } from '../utils/clipboard'
 import { resolveResponsiveToastPosition } from '../utils/toastPosition'
 import { getTerminalSequenceAppAction, isDispatchableAppAction } from '../utils/appActionCatalog'
+import { toggleServerPicker } from './useAppCore'
 import { isWindowsClient } from '../utils/clientPlatform'
 import { getEffectiveSuperviseReload } from './useDeviceSuperviseReload'
 import type { AppActionOptions } from '../components/keyboard/mkbTypes'
@@ -36,7 +37,7 @@ export function useAppActions(options: AppActionsOptions) {
     requestCloseTab,
     activateTab,
     onClosePane,
-    openOrFocusPreview,
+    openPreview,
     triggerAddCursors,
     adjustActiveTerminalFontSize,
     getSendFn,
@@ -130,13 +131,13 @@ export function useAppActions(options: AppActionsOptions) {
         icon: '⊡',
         title: t('palette.openFilePreview'),
         subtitle: t('palette.openFilePreviewDesc'),
-        action: () => openOrFocusPreview('files'),
+        action: () => openPreview('files'),
       },
       {
         icon: '⊙',
         title: t('palette.openWebPreview'),
         subtitle: t('palette.openWebPreviewDesc'),
-        action: () => openOrFocusPreview('web'),
+        action: () => openPreview('web'),
       },
       {
         icon: '⠿',
@@ -150,6 +151,13 @@ export function useAppActions(options: AppActionsOptions) {
         title: t('palette.sshConnect'),
         subtitle: t('palette.sshConnectDesc'),
         action: () => sshPanelRef.value?.open(),
+      },
+      {
+        icon: '⛁',
+        title: t('palette.switchServer'),
+        subtitle: t('palette.switchServerDesc'),
+        kbd: formatBinding(getBinding('switchServer')),
+        action: () => toggleServerPicker(),
       },
       // Only show "New Local Terminal" when active tab is an SSH session
       ...(activeTab.value?.type === 'terminal' && activeTab.value.connectionId
@@ -248,6 +256,10 @@ export function useAppActions(options: AppActionsOptions) {
     },
     pasteTerminal: (options) => void hostClipboardPaste.trigger(options?.autoEnter ?? true),
     missionControl: () => openOverview(),
+    // Escape hatch: Mission Control is where servers are normally picked, but
+    // it can be closed — or stuck on its "not connected" screen when the
+    // active server is down. The status-bar picker works either way.
+    switchServer: () => toggleServerPicker(),
     superviseTabs: () =>
       void supervise((id) => activateTab(id, { defer: true }))
         .then((activated) => {

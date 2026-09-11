@@ -247,14 +247,13 @@ fn parse_bind_ip() -> IpAddr {
 }
 
 async fn server_info(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let lan_ip =
-        local_ip_address::local_ip().map_or_else(|_| "127.0.0.1".to_string(), |ip| ip.to_string());
-    Json(serde_json::json!({
-        "lan_ip": lan_ip,
-        "port": state.port,
-        "version": state.git_info.version,
-        "repo_url": state.git_info.repo_url,
-    }))
+    // Shared with the Tauri host's copy so the two cannot drift; see
+    // `api::info` for why `settings_version` is part of the payload.
+    Json(dinotty_server::api::info::info_payload(
+        state.port,
+        &state.git_info.version,
+        &state.git_info.repo_url,
+    ))
 }
 
 #[tokio::main]
@@ -634,6 +633,18 @@ async fn main() {
             .route("/preview/:port", any(proxy::proxy_handler_root))
             .route("/preview/:port/", any(proxy::proxy_handler_root))
             .route("/preview/:port/*path", any(proxy::proxy_handler_wildcard))
+            // Hub relay to a roster server. One dispatcher serves all three
+            // shapes and splits HTTP from WebSocket on the Upgrade header; the
+            // gate lives inside the relay, not in auth_middleware (see the
+            // `/__srv/` early return there).
+            .route("/__srv/:id", any(proxy::relay_dispatch_handler))
+            .route("/__srv/:id/", any(proxy::relay_dispatch_handler))
+            .route("/__srv/:id/*rest", any(proxy::relay_dispatch_handler))
+            .route(
+                "/api/remote-servers",
+                get(settings::get_remote_servers).put(settings::put_remote_servers),
+            )
+            .route("/api/remote-servers/probe", post(settings::probe_remote_server))
             .route("/assets/*path", get(static_handler))
             .route("/icons/*path", get(icon_handler))
             .route("/manifest.json", get(manifest_handler))

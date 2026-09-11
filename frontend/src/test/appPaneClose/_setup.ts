@@ -102,7 +102,7 @@ vi.mock('../../composables/apiBase', () => ({
   authenticateEmbeddedDesktop: async () => true,
   validateToken: async () => ({ ok: true }),
   hasAuthToken: () => true,
-  wsUrlWithToken: (url: string) => url,
+  wsUrl: (path: string) => `ws://127.0.0.1:7681${path}`,
   checkTokenConfigured: async () => false,
 }))
 vi.mock('../../composables/useTransport', () => ({ isTauri: () => false, tauriInvoke: vi.fn() }))
@@ -351,6 +351,7 @@ export const TabBarStub = defineComponent({
   props: {
     tabs: { type: Array as PropType<any[]>, default: () => [] },
     indicators: { type: Object, default: () => ({}) },
+    toolbarOrder: { type: Array as PropType<string[]>, default: () => [] },
   },
   setup(props, { slots, expose }) {
     expose({
@@ -364,7 +365,10 @@ export const TabBarStub = defineComponent({
           class: 'tab-bar-stub',
           'data-indicators': JSON.stringify(props.indicators),
         },
-        slots.right?.()
+        [
+          ...props.toolbarOrder.map((itemId) => slots['toolbar-item']?.({ itemId }) ?? []),
+          slots.more?.() ?? [],
+        ]
       )
   },
 })

@@ -208,6 +208,11 @@ pub(crate) fn migrate_settings(settings: &mut Settings) -> bool {
     // uninitialized so the first capable client can seed its previous device-local value.
     // v13 also adds the remembered desktop window-close behavior. Missing or invalid legacy
     // values safely default to asking every time, so no explicit data transform is needed.
+    // v14 adds the opt-in new-tab CWD inheritance switch. Its serde default keeps the
+    // established behavior (start at the configured workspace/default directory).
+    // v15 adds the remote-server roster for the Mission Control server switcher. Its
+    // serde default is an empty list, so an upgraded config keeps relaying to nothing
+    // until the user adds a server - no data transform.
     settings.settings_version = CURRENT_SETTINGS_VERSION;
     true
 }

@@ -68,16 +68,18 @@ export function useOverviewCallbacks(opts: OverviewCallbacksOptions): OverviewCa
   const overviewOpen = computed(() => mcState.open)
 
   function openOverview(): void {
-    // Toggle only if currently closed - the hardware keyboard / other
-    // client may have opened it; we don't want to flip it back to closed.
+    // `set` rather than `toggle`: the local `open` bit is only a mirror of the
+    // server's, so a stale copy would make a toggle flip the wrong way. Asking
+    // for the state we actually want is idempotent, and a duplicate op from a
+    // second client is a no-op instead of a close.
     if (!mcState.open) {
-      sendSync({ type: 'mission_control_op', op: { kind: 'toggle' } })
+      sendSync({ type: 'mission_control_op', op: { kind: 'set', open: true } })
     }
   }
 
   function closeOverview(): void {
     if (mcState.open) {
-      sendSync({ type: 'mission_control_op', op: { kind: 'toggle' } })
+      sendSync({ type: 'mission_control_op', op: { kind: 'set', open: false } })
     }
   }
 

@@ -18,7 +18,7 @@ import {
   resetOverride,
   setOverride,
 } from './useDeviceTextSettings'
-import { wsUrlWithToken } from './apiBase'
+import { wsUrl } from './apiBase'
 import { useKeybindings } from './useKeybindings'
 import { hostTarget, isWindowsClient } from '../utils/clientPlatform'
 import { setupTouchScroll } from '../utils/touchScroll'
@@ -1237,10 +1237,10 @@ export class TerminalInstance {
   // ── Private ──────────────────────────────────────────────
 
   private _connectWS() {
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const url = wsUrlWithToken(
-      `${proto}//${location.host}/ws?paneId=${encodeURIComponent(this.paneId)}`
-    )
+    // `wsUrl` resolves the hub origin and the relay prefix for the active
+    // server. Tauri never reaches this path (see `createTransport`), and the
+    // browser is same-origin, so no await is needed to prime it.
+    const url = wsUrl(`/ws?paneId=${encodeURIComponent(this.paneId)}`)
     this.ws = new WebSocket(url)
 
     this.ws.onopen = () => {
