@@ -9,10 +9,10 @@
   1. `dist\Dinotty_<version>_<arch>-portable.exe`：带版本号的 portable。
   2. `dist\Dinotty_<arch>-portable.exe`：不带版本号的 portable。
   3. `target\release\bundle\nsis\Dinotty_<version>_<arch>-setup.exe`：Windows NSIS 安装包。
-- 使用 `powershell -ExecutionPolicy Bypass -File .\scripts\build-portable.ps1` 在本机生成两份 portable；只有依赖已通过锁文件安装完毕时才可以加 `-SkipInstall`。
+- 使用 `powershell -ExecutionPolicy Bypass -File .\scripts\build-portable.ps1` 在本机生成两份 portable；只有依赖已通过锁文件安装完毕时才可以加 `-SkipInstall`。需要同步共享软件目录时，显式增加 `-PublishToShared`；共享根目录优先读取 `-SharedRoot`，其次读取 `MYTOOLS_SHARED_SOFTWARE_ROOT`。
 - 使用 `cargo tauri build --bundles nsis --ci -- --locked` 在本机生成 Windows NSIS 安装包。若构建前端依赖尚未安装，先在 `frontend` 目录执行 `pnpm install --frozen-lockfile`。
 - 构建成功后，必须逐一确认上述 3 个文件存在，并至少核对文件大小和 SHA-256。两个 portable 应来自同一个本次 release 可执行文件，因此 SHA-256 必须相同。
 - 将不带版本号的 `dist\Dinotty_<arch>-portable.exe` 复制到 `D:\GitHub\Khala\dinotty\Dinotty_<arch>-portable.exe`，允许覆盖旧版本；只能在本次构建成功且哈希验证通过后覆盖。
+- 使用 `-PublishToShared` 且构建和哈希验证成功后，将不带版本号的 `dist\Dinotty_<arch>-portable.exe` 复制到 `${SharedRoot}\dinotty\Dinotty_<arch>-portable.exe`。`${SharedRoot}` 由 `-SharedRoot` 或 `MYTOOLS_SHARED_SOFTWARE_ROOT` 提供；目标子目录可以自动创建，但共享根目录不存在时必须报错。复制前检查目标程序是否仍在运行；若文件被占用，先关闭对应的 Dinotty 进程再重试。复制完成后必须核对目标文件大小和 SHA-256。
 - 将上述 3 个本机 Windows 产物上传到对应版本的 GitHub Release，并在上传后核对远端资产的文件名、大小、SHA-256 和上传状态。不要上传旧构建或 GitHub Actions 生成的同名 Windows 文件。
 - 推送 `v*` 标签会触发现有 `.github/workflows/package.yml`。即使该工作流产生了 Windows artifact，正式 Release 仍以上述本机产物为准；发布前应检查 Release 中是否已有自动上传的同名资产，避免混用或重复。
-
